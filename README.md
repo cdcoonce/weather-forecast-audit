@@ -27,8 +27,32 @@ The same gate CI runs:
 uv run ruff check .
 uv run pytest -m "not network"
 export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb" && mkdir -p .ci
+uv run wfa init-db
 uv run dbt build --project-dir dbt --profiles-dir dbt
 uv run sqlfluff lint dbt/models
+```
+
+### The `wfa` CLI
+
+`wfa` fetches, loads, and resolves NWS archive data into the DuckDB
+warehouse. `WFA_DUCKDB_PATH` is required for every command:
+
+```bash
+export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
+uv run wfa init-db
+uv run wfa ingest --station KPHX --start 2023-07-14 --end 2023-07-14
+```
+
+### Tracer bullet
+
+`scripts/tracer_kphx.sh` ingests ~5 months of KPHX guidance and observations
+(straddling the 2026-04-30 NBS cycle changeover), builds dbt, and prints the
+headline verification queries. It makes real, politely rate-limited network
+requests to IEM:
+
+```bash
+export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
+./scripts/tracer_kphx.sh
 ```
 
 ### Layout
@@ -36,13 +60,22 @@ uv run sqlfluff lint dbt/models
 | Path | What |
 | --- | --- |
 | `src/weather_forecast_audit/` | Python package |
+| `src/weather_forecast_audit/iem/` | IEM HTTP client (`http.py`) and per-product parsers (`guidance.py`, `observations.py`) |
+| `src/weather_forecast_audit/resolver.py` | Pure NBM verification-window resolver (no I/O, no time zones) |
+| `src/weather_forecast_audit/warehouse.py` | Owns all `raw.*` DDL and the idempotent DuckDB loaders |
+| `src/weather_forecast_audit/pipeline.py` | `ingest_station`/`resolve_station`: fetch, load, resolve one station |
+| `src/weather_forecast_audit/cli.py` | The `wfa` CLI (`init-db`, `ingest`) |
 | `dbt/` | dbt project on `dbt-duckdb`; the database file is `$WFA_DUCKDB_PATH` |
 | `dbt/profiles.yml` | Checked-in profile, env vars only; also carries an unused `snowflake` target |
 | `dbt/.sqlfluff` | Snowflake-dialect lint config (the portability guard) |
+| `dbt/seeds/` | `station_registry.csv`, `nbs_cycle_regimes.csv` — the only source of station metadata and cycle-changeover dates |
+| `dbt/models/marts/fct_forecast_verification.sql` | The verification fact table |
+| `docs/methodology.md` | Verification windows, scope, completeness threshold, and known caveats |
 | `tests/` | pytest suite |
 | `src/weather_forecast_audit/definitions.py` | Dagster code location, served on gRPC 4002 on rammingspeed |
 | `Dockerfile` | Code-location image; also the image every run container starts from |
 | `scripts/offline.sh` | Runs a command with no network access (Linux CI only) |
+| `scripts/tracer_kphx.sh` | Ingests, builds, and prints the KPHX verification tracer bullet |
 
 ### Conventions
 
