@@ -8,19 +8,21 @@ models:
       source = 'raw_nbm'; baseline/challenger sources land in a later slice.
     data_tests:
       - unique_combination_of_columns:
-          combination_of_columns:
-            - station
-            - run_date
-            - lead_day
-            - variable
-            - source
+          arguments:
+            combination_of_columns:
+              - station
+              - run_date
+              - lead_day
+              - variable
+              - source
     columns:
       - name: station
         data_tests:
           - not_null
           - relationships:
-              to: ref('station_registry')
-              field: icao
+              arguments:
+                to: ref('station_registry')
+                field: icao
       - name: run_date
         data_tests:
           - not_null
@@ -31,9 +33,11 @@ models:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["max", "min"]
+              arguments:
+                values: ["max", "min"]
       - name: source
         data_tests:
           - not_null
           - accepted_values:
-              values: ["raw_nbm", "baseline", "challenger"]
+              arguments:
+                values: ["raw_nbm", "baseline", "challenger"]
