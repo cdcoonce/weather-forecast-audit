@@ -1,0 +1,28 @@
+version: 2
+
+seeds:
+  - name: nbs_cycle_regimes
+    description: >
+      Which archived NBS cycle counts as "nearest 12Z" for a run date. The
+      changeover date and canonical hours are probed facts (build spec
+      fact 2); this seed is their single source, read by
+      `weather_forecast_audit.regimes` and cross-checked here.
+    config:
+      column_types:
+        regime_id: varchar
+        valid_from: date
+        valid_to: date
+        canonical_cycle_hour: integer
+        archived_cycles: varchar
+        note: varchar
+    columns:
+      - name: regime_id
+        data_tests:
+          - unique
+          - not_null
+      - name: valid_from
+        data_tests:
+          - not_null
+      - name: canonical_cycle_hour
+        data_tests:
+          - not_null

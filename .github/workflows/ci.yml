@@ -61,6 +61,10 @@ jobs:
       - name: dbt build (DuckDB)
         run: |
           mkdir -p "$(dirname "$WFA_DUCKDB_PATH")"
+          rm -f "$WFA_DUCKDB_PATH"
+          # dbt never creates the raw schema; wfa init-db does, so the
+          # empty CI database has raw.* tables (empty) before dbt reads them.
+          scripts/offline.sh uv run wfa init-db
           scripts/offline.sh uv run dbt build --project-dir dbt --profiles-dir dbt
 
       - name: sqlfluff (Snowflake dialect)

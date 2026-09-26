@@ -1,0 +1,3 @@
+regime_id,valid_from,valid_to,canonical_cycle_hour,archived_cycles,note
+1,2020-02-25,2026-04-29,13,"1,7,13,19","IEM help text: archived at 1,7,13,19 UTC only after 25 Feb 2020. Canonical cycle nearest 12Z is 13Z through 2026-04-29 (probed)."
+2,2026-04-30,,12,"0,1,7,8-23 (04-30); all 24 (05-01..05-04); 0-12,18 (05-05); 0,6,12,18 from 05-06","Probed changeover: 2026-04-30 the archive gains an hourly cadence and the canonical cycle nearest 12Z becomes 12Z; 2026-05-06 is the first day back to the steady-state {0,6,12,18} archived cycles."

@@ -1,0 +1,23 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Raw tables loaded by weather_forecast_audit.warehouse and
+      weather_forecast_audit.pipeline; dbt only reads this schema, never
+      creates it (`wfa init-db` does, via warehouse.init_db).
+    schema: raw
+    tables:
+      - name: nbs_guidance
+        description: Archived NBM (NBS product) station guidance, canonical-cycle rows only.
+      - name: asos_hourly
+        description: Hourly ASOS tmpf observations.
+      - name: cli_daily
+        description: NWS CLI daily high/low reports.
+      - name: ingest_gaps
+        description: Gaps recorded by the IEM clients when a run, obs, or report is missing.
+      - name: resolved_windows
+        description: >
+          Verification windows and observed extremes computed by
+          weather_forecast_audit.resolver, one row per (station, runtime,
+          ftime) txn guidance row.

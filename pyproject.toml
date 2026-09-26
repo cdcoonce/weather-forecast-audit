@@ -14,10 +14,16 @@ dependencies = [
     "lightgbm>=4.6",
     "numpy>=2.0",
     "polars[rtcompat]>=1.30",
+    # DuckDB's polars integration (used by weather_forecast_audit.warehouse's
+    # loaders) converts through Arrow under duckdb 1.5 / polars 1.44.
+    "pyarrow>=25.0.1",
     # SQLAlchemy 2.1 defaults postgresql:// to psycopg (v3); dagster-postgres ships
     # psycopg2, so run workers on rammingspeed cannot open instance storage.
     "sqlalchemy>=2.0,<2.1",
 ]
+
+[project.scripts]
+wfa = "weather_forecast_audit.cli:main"
 
 [project.optional-dependencies]
 deploy = [

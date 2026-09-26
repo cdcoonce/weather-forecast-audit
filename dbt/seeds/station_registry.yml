@@ -1,0 +1,24 @@
+version: 2
+
+seeds:
+  - name: station_registry
+    description: >
+      Stations audited by this project, one row each. lat/lon/elevation are
+      verified against IEM station metadata (site.php), not hand-typed.
+    config:
+      column_types:
+        cli_station: varchar
+        icao: varchar
+        nbm_station_id: varchar
+        iana_tz: varchar
+        lat: double
+        lon: double
+        elevation_m: integer
+        label: varchar
+        climate_region: varchar
+        coastal_flag: boolean
+    columns:
+      - name: icao
+        data_tests:
+          - unique
+          - not_null
