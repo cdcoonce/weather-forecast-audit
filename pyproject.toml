@@ -16,6 +16,7 @@ dependencies = [
     "polars[rtcompat]>=1.30",
     # SQLAlchemy 2.1 defaults postgresql:// to psycopg (v3); dagster-postgres ships
     # psycopg2, so run workers on rammingspeed cannot open instance storage.
+    "pyarrow>=25.0.1",
     "sqlalchemy>=2.0,<2.1",
 ]
 
