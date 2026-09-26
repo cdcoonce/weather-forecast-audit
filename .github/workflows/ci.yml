@@ -37,6 +37,13 @@ jobs:
 
       - name: Prove the offline wrapper blocks the network
         run: |
+          # The mechanism engaged: the wrapper runs in a different network
+          # namespace from the runner, not a passthrough that happens to fail.
+          outer=$(readlink /proc/self/ns/net)
+          inner=$(scripts/offline.sh readlink /proc/self/ns/net)
+          echo "runner netns $outer, wrapper netns $inner"
+          test -n "$inner" && test "$outer" != "$inner"
+          # The symptom: a connect has no route (ENETUNREACH, not a timeout).
           probe='import socket; socket.create_connection(("1.1.1.1", 443), timeout=5)'
           if out=$(scripts/offline.sh uv run python -c "$probe" 2>&1); then
             echo "::error::network reachable inside scripts/offline.sh"
