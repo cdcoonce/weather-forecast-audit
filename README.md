@@ -15,6 +15,8 @@ The plan is [PRD #1](https://github.com/cdcoonce/weather-forecast-audit/issues/1
 
 Requires [uv](https://docs.astral.sh/uv/). uv installs Python 3.12 if needed.
 
+On macOS, LightGBM also needs the OpenMP runtime: `brew install libomp`. Linux needs `libgomp1`, which the Docker image installs.
+
 ```bash
 uv sync
 ```
@@ -38,6 +40,8 @@ uv run sqlfluff lint dbt/models
 | `dbt/profiles.yml` | Checked-in profile, env vars only; also carries an unused `snowflake` target |
 | `dbt/.sqlfluff` | Snowflake-dialect lint config (the portability guard) |
 | `tests/` | pytest suite |
+| `src/weather_forecast_audit/definitions.py` | Dagster code location, served on gRPC 4002 on rammingspeed |
+| `Dockerfile` | Code-location image; also the image every run container starts from |
 | `scripts/offline.sh` | Runs a command with no network access (Linux CI only) |
 
 ### Conventions

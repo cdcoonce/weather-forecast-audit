@@ -1,0 +1,33 @@
+# VCS / editor / assistant metadata.
+.git
+.github
+.claude
+.vscode
+
+# Python and tooling caches.
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+
+# Secrets never enter the image; runtime values arrive from the run launcher.
+.env
+.env.*
+
+# Local data and build output; dbt parse regenerates target/ in the image.
+*.duckdb
+*.duckdb.wal
+.ci/
+data/
+logs/
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
+
+# Docs and tests. README.md stays: hatchling reads it for `readme`.
+docs
+tests
+*.md
+!README.md
