@@ -1,0 +1,2 @@
+cli_station,icao,nbm_station_id,iana_tz,lat,lon,elevation_m,label,climate_region,coastal_flag
+KPHX,KPHX,KPHX,America/Phoenix,33.43428,-112.01158,337,"Phoenix, AZ",Southwest,false
