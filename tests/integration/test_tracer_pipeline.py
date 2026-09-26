@@ -7,8 +7,9 @@ script makes for real (`scripts/tracer_kphx.sh`): the hand-checked KPHX
 
 import json
 import os
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import duckdb
 import pytest
@@ -43,6 +44,27 @@ def _read(name: str) -> bytes:
     return (FIXTURES / name).read_bytes()
 
 
+def _asos_in_requested_range(url: str) -> bytes:
+    """The ASOS fixture clipped to the request's [sts, ets), as the service does.
+
+    Serving the whole file regardless of range would hide a pipeline that
+    fetches too narrow a span: its lead-2/3 windows would still find their
+    observations here, though the live service would not return them.
+    """
+    query = parse_qs(urlparse(url).query)
+    sts = datetime.fromisoformat(query["sts"][0].replace("Z", "+00:00"))
+    ets = datetime.fromisoformat(query["ets"][0].replace("Z", "+00:00"))
+    header, *rows = _read("asos_kphx_2023-07-13_2023-07-17.csv").decode().splitlines()
+    kept = [
+        row
+        for row in rows
+        if sts
+        <= datetime.strptime(row.split(",")[1], "%Y-%m-%d %H:%M").replace(tzinfo=UTC)
+        < ets
+    ]
+    return ("\n".join([header, *kept]) + "\n").encode()
+
+
 class FixtureFetcher:
     """Routes NBS/ASOS/CLI requests to the recorded fixtures by URL shape.
 
@@ -61,7 +83,7 @@ class FixtureFetcher:
             raise AssertionError(f"unexpected mos.py request: {url}")
         if "asos.py" in url:
             if "sts=2023-07" in url:
-                return HttpResponse(200, _read("asos_kphx_2023-07-13_2023-07-17.csv"))
+                return HttpResponse(200, _asos_in_requested_range(url))
             if "sts=2026" in url:
                 return HttpResponse(200, ASOS_HEADER_ONLY)
             raise AssertionError(f"unexpected asos.py request: {url}")
