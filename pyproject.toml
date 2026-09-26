@@ -7,8 +7,19 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = [
+    "dagster==1.13.22",
     "dbt-core>=1.12",
     "dbt-duckdb>=1.11",
+    "duckdb>=1.5",
+    "lightgbm>=4.6",
+    "numpy>=2.0",
+    "polars[rtcompat]>=1.30",
+]
+
+[project.optional-dependencies]
+deploy = [
+    "dagster-docker==0.29.22",
+    "dagster-postgres==0.29.22",
 ]
 
 [dependency-groups]
