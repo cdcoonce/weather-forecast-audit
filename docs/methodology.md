@@ -36,11 +36,10 @@ max/min forecast, not a max-minus-min range; it is carried through as
 
 ## target_date and lead_day
 
-- `target_date` is the UTC calendar date the window covers (`D` above),
-  taken from the window's own definition, not derived from `ftime` by a
-  fixed offset in one direction: a `max` row's `ftime` lands at `D+1 00Z`,
-  so `target_date = ftime.date() - 1 day`; a `min` row's `ftime` lands at
-  `D 12Z`, so `target_date = ftime.date()`.
+- `target_date` is the UTC date the window starts on (`D` above). The two
+  variables are reported at different offsets from their windows: a `max`
+  is reported at `D+1 00Z` (`target_date = ftime.date() - 1 day`), a `min`
+  at `D 12Z` (`target_date = ftime.date()`).
 - `run_date` is the UTC calendar date of the guidance run's `runtime`.
 - `lead_day = target_date - run_date`, in whole days.
 
@@ -54,26 +53,32 @@ raw and resolved tables for later slices to use:
   window starts at 12Z the same day, i.e. its own issuance hour). A 13Z run
   has already missed that day's max window's start, so it never carries a
   lead-0 max at all.
-- **Lead-3 max never occurs in NBS.** For a 13Z run, the max window for
-  `run_date + 3` would need an `ftime` at `run_date + 4, 00Z`, one hour past
-  NBS's guidance horizon; NBS simply does not emit that row. The resolver
+- **Lead-3 max never occurs in NBS.** It would be reported at
+  `run_date + 4, 00Z`, beyond the short-range NBS horizon: the last `TXN` a
+  13Z or 12Z run carries is the lead-3 min at `run_date + 3, 12Z`. So at
+  lead 3 the audit grades minimums only. The resolver
   treats any `ftime` hour other than `00` or `12` as a parse error rather
   than silently accepting an unexpected shape.
 
 ## Cycle regimes: which archived run is canonical
 
-IEM's NBS archive keeps only the run "nearest 12Z" for older dates, plus
-denser cadences right around a 2026-04-30 changeover. Probed evidence (KPHX
-and KORD identical):
+IEM archives four NBS cycles a day, and which four changed in spring 2026.
+The audit grades one run per day: the archived cycle nearest 12Z. Probed
+evidence (KPHX and KORD identical):
 
-- **2020-02-25 through 2026-04-29**: only the **13Z** run is archived
-  (`{1, 7, 13, 19}` UTC cycles exist; 13Z is nearest 12Z of those). The
-  2020-02-25 start date is from IEM's own help text ("archived at 1, 7, 13,
-  19 UTC only after 25 Feb 2020"), not independently probed.
-- **2026-04-30 onward**: the archive gains denser cadences (2026-04-30 has
-  `{0, 1, 7, 8-23}`; 2026-05-01 through 2026-05-04 have all 24 hours;
-  2026-05-05 has `{0-12, 18}`) and settles back to a steady `{0, 6, 12, 18}`
-  cadence from 2026-05-06. The canonical cycle nearest 12Z becomes **12Z**.
+- **2020-02-25 through 2026-04-29**: cycles `{1, 7, 13, 19}` UTC, so the
+  canonical run is **13Z**. The 2020-02-25 start comes from IEM's own help
+  text ("archived at 1, 7, 13, 19 UTC only after 25 Feb 2020") and was not
+  independently probed.
+- **2026-04-30 onward**: the canonical run is **12Z**. 2026-04-30 is the
+  first day a 12Z run is archived. The transition days hold extra cycles
+  (2026-04-30 has `{0, 1, 7, 8-23}`, 2026-05-01 through 2026-05-04 have all
+  24 hours, 2026-05-05 has `{0-12, 18}`), and the archive settles to
+  `{0, 6, 12, 18}` from 2026-05-06.
+
+When the canonical run for a date is missing, the day gets a `missing_run`
+gap record. The pipeline never falls back to a neighboring cycle, which
+would mix issuance times within one lead bucket.
 
 These dates and hours live only in `dbt/seeds/nbs_cycle_regimes.csv`, read
 by `weather_forecast_audit.regimes`; nothing in the Python resolver hard-codes
@@ -101,16 +106,18 @@ methodology once more stations are in the audit.
 
 Windows are half-open: **`[start, end)`**. An observation exactly at the
 window's start counts; one exactly at the window's end does not. The MDL
-text card does not specify this either way — this is this project's own
+text card does not specify this either way, so this is the project's own
 convention, applied consistently by the resolver and unit-tested at the
 boundary (`tests/unit/test_resolver.py`).
 
 ## Hourly-sampling caveat
 
-The hourly-ASOS-derived observed extreme is a lower bound on the true daily
-extreme: it only sees the top-of-hour-ish routine and special reports IEM
-archives, not the full 1-minute ASOS record NWS uses to compile the CLI
-product. On the hand-checked KPHX days, the published CLI daily report was
+The observed extreme comes from the routine (about :51 past each hour) and
+special METAR reports IEM archives, not from the continuous sensor record
+behind the CLI report. Sampling can only miss the peak, so the hourly max
+reads low and the hourly min reads high. Left uncorrected, that makes the
+forecast look too warm on highs and too cold on lows. On the hand-checked
+KPHX days, the published CLI daily report was
 **1°F more extreme than the hourly-derived value on both the max and the
 min**, on both days:
 
@@ -121,5 +128,7 @@ min**, on both days:
 
 `fct_forecast_verification.cli_f` carries the CLI value alongside the
 hourly-derived `observed_f` specifically so this gap is visible per row,
-not just in this note. Issue #6 is expected to measure how often and by how
-much this happens across more stations and more days.
+not just in this note. The tracer's first numbers show the same signature
+(KPHX, summer 2023 plus spring 2026: highs +1.4°F, lows −0.9°F), so no bias
+figure is published until issue #6 measures this effect and chooses the
+extreme source.
