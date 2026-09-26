@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from weather_forecast_audit.gaps import FetchResult, GapRecord
+from weather_forecast_audit.iem._chunking import date_range, month_chunks
 from weather_forecast_audit.iem.http import Fetcher, FetchError
 from weather_forecast_audit.regimes import CycleRegime, canonical_cycle_hour
 
@@ -54,30 +55,10 @@ def parse_nbs_csv(body: bytes) -> list[dict[str, str]]:
     return list(reader)
 
 
-def _month_chunks(start: date, end: date) -> list[tuple[date, date]]:
-    """Split [start, end] into calendar-month chunks, clipped to the range."""
-    chunks: list[tuple[date, date]] = []
-    cursor = start
-    while cursor <= end:
-        if cursor.month == 12:
-            next_month_start = date(cursor.year + 1, 1, 1)
-        else:
-            next_month_start = date(cursor.year, cursor.month + 1, 1)
-        chunk_end = min(end, next_month_start - timedelta(days=1))
-        chunks.append((cursor, chunk_end))
-        cursor = chunk_end + timedelta(days=1)
-    return chunks
-
-
 def _guidance_url(station: str, chunk_start: date, chunk_end: date) -> str:
     sts = f"{chunk_start.isoformat()}T00:00Z"
     ets = f"{(chunk_end + timedelta(days=1)).isoformat()}T00:00Z"
     return f"{BASE_URL}?station={station}&model=NBS&sts={sts}&ets={ets}&format=csv"
-
-
-def _date_range(start: date, end: date) -> list[date]:
-    days = (end - start).days
-    return [start + timedelta(days=offset) for offset in range(days + 1)]
 
 
 def fetch_guidance(
@@ -97,8 +78,8 @@ def fetch_guidance(
     rows: list[GuidanceRow] = []
     gaps: list[GapRecord] = []
 
-    for chunk_start, chunk_end in _month_chunks(start, end):
-        chunk_dates = _date_range(chunk_start, chunk_end)
+    for chunk_start, chunk_end in month_chunks(start, end):
+        chunk_dates = date_range(chunk_start, chunk_end)
         url = _guidance_url(station, chunk_start, chunk_end)
         try:
             response = fetcher.get(url)
