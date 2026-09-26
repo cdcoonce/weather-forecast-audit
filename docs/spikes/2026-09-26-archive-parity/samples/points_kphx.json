@@ -1,0 +1,112 @@
+{
+    "@context": [
+        "https://geojson.org/geojson-ld/geojson-context.jsonld",
+        {
+            "@version": "1.1",
+            "wx": "https://api.weather.gov/ontology#",
+            "s": "https://schema.org/",
+            "geo": "http://www.opengis.net/ont/geosparql#",
+            "unit": "http://codes.wmo.int/common/unit/",
+            "@vocab": "https://api.weather.gov/ontology#",
+            "geometry": {
+                "@id": "s:GeoCoordinates",
+                "@type": "geo:wktLiteral"
+            },
+            "city": "s:addressLocality",
+            "state": "s:addressRegion",
+            "distance": {
+                "@id": "s:Distance",
+                "@type": "s:QuantitativeValue"
+            },
+            "bearing": {
+                "@type": "s:QuantitativeValue"
+            },
+            "value": {
+                "@id": "s:value"
+            },
+            "unitCode": {
+                "@id": "s:unitCode",
+                "@type": "@id"
+            },
+            "forecastOffice": {
+                "@type": "@id"
+            },
+            "forecastGridData": {
+                "@type": "@id"
+            },
+            "publicZone": {
+                "@type": "@id"
+            },
+            "county": {
+                "@type": "@id"
+            }
+        }
+    ],
+    "id": "https://api.weather.gov/points/33.4342,-112.0116",
+    "type": "Feature",
+    "geometry": {
+        "type": "Point",
+        "coordinates": [
+            -112.0116,
+            33.4342
+        ]
+    },
+    "properties": {
+        "@id": "https://api.weather.gov/points/33.4342,-112.0116",
+        "@type": "wx:Point",
+        "cwa": "PSR",
+        "type": "land",
+        "forecastOffice": "https://api.weather.gov/offices/PSR",
+        "gridId": "PSR",
+        "gridX": 161,
+        "gridY": 57,
+        "forecast": "https://api.weather.gov/gridpoints/PSR/161,57/forecast",
+        "forecastHourly": "https://api.weather.gov/gridpoints/PSR/161,57/forecast/hourly",
+        "forecastGridData": "https://api.weather.gov/gridpoints/PSR/161,57",
+        "observationStations": "https://api.weather.gov/gridpoints/PSR/161,57/stations",
+        "relativeLocation": {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    -112.0901324,
+                    33.5721544
+                ]
+            },
+            "properties": {
+                "city": "Phoenix",
+                "state": "AZ",
+                "distance": {
+                    "unitCode": "wmoUnit:m",
+                    "value": 0
+                },
+                "bearing": {
+                    "unitCode": "wmoUnit:degree_(angle)",
+                    "value": 0
+                }
+            }
+        },
+        "forecastZone": "https://api.weather.gov/zones/forecast/AZZ543",
+        "county": "https://api.weather.gov/zones/county/AZC013",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/AZZ132",
+        "timeZone": "America/Phoenix",
+        "radarStation": "KIWA",
+        "astronomicalData": {
+            "sunrise": "2026-09-26T06:19:06-07:00",
+            "sunset": "2026-09-26T18:19:24-07:00",
+            "transit": "2026-09-26T12:19:15-07:00",
+            "civilTwilightBegin": "2026-09-26T05:54:24-07:00",
+            "civilTwilightEnd": "2026-09-26T18:44:06-07:00",
+            "nauticalTwilightBegin": "2026-09-26T05:25:33-07:00",
+            "nauticalTwilightEnd": "2026-09-26T19:12:57-07:00",
+            "astronomicalTwilightBegin": "2026-09-26T04:56:29-07:00",
+            "astronomicalTwilightEnd": "2026-09-26T19:42:01-07:00"
+        },
+        "nwr": {
+            "transmitter": "KEC94",
+            "sameCode": "004013",
+            "areaBroadcast": "https://api.weather.gov/radio/KEC94/broadcast",
+            "pointBroadcast": "https://api.weather.gov/points/33.4342,-112.0116/radio"
+        }
+    }
+}
