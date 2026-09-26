@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: scaffold_heartbeat
+    description: Scaffold smoke model; one constant row.
+    columns:
+      - name: heartbeat_id
+        data_tests:
+          - unique
+          - not_null
