@@ -1,0 +1,16 @@
+# Portability guard: dbt models are written for DuckDB but must parse as
+# Snowflake SQL, so a later move to Snowflake is a profile change, not a rewrite.
+#
+# Templater: `jinja` with dbt builtins, not `dbt`. The guard only needs the SQL
+# to parse in the Snowflake dialect; `ref()`/`source()` rendering to bare names
+# is enough for that. The `dbt` templater would compile through the DuckDB
+# adapter (coupling the lint to a live profile and dbt-core's internal API) and
+# is several times slower. Cost: project macros are not expanded, so a model
+# that relies on one needs a stub under `library_path` before it will lint.
+[sqlfluff]
+dialect = snowflake
+templater = jinja
+max_line_length = 88
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True

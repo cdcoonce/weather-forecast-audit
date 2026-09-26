@@ -1,0 +1,50 @@
+[project]
+name = "weather-forecast-audit"
+dynamic = ["version"]
+description = "Public calibration audit of NWS National Blend of Models temperature guidance, with a walk-forward bias-correction experiment"
+authors = [{ name = "Charles Coonce" }]
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+dependencies = [
+    "dbt-core>=1.12",
+    "dbt-duckdb>=1.11",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pyyaml>=6.0",
+    "ruff>=0.16",
+    "sqlfluff>=4.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/weather_forecast_audit/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/weather_forecast_audit"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# WAGA's core rule set (Weather_Adjusted_Generation_Analytics pyproject).
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "A", "C4", "DTZ", "T10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "unit: fast, isolated tests with no I/O beyond the repo checkout",
+    "integration: tests spanning several components (e.g. dbt + DuckDB + Python)",
+    "io: tests that read or write files outside the repo checkout",
+    "dagster: tests that load or materialize Dagster definitions",
+    "dbt: tests that parse, compile, build, or lint the dbt project",
+    "network: tests that reach the internet; deselected in CI",
+]

@@ -1,0 +1,26 @@
+# Checked-in profile: every environment-specific value comes from an env var,
+# so this file holds no secrets and doubles as the example profile.
+#
+#   WFA_DUCKDB_PATH  path to the DuckDB database file (required for `duckdb`)
+#
+# The `snowflake` target is a portability placeholder and is not used in CI.
+# dbt renders only the selected target, so its env vars are needed only when
+# running with `--target snowflake` (which also needs `dbt-snowflake`).
+weather_forecast_audit:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('WFA_DUCKDB_PATH') }}"
+      threads: 4
+
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('WFA_SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('WFA_SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('WFA_SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      role: "{{ env_var('WFA_SNOWFLAKE_ROLE') }}"
+      warehouse: "{{ env_var('WFA_SNOWFLAKE_WAREHOUSE') }}"
+      database: "{{ env_var('WFA_SNOWFLAKE_DATABASE') }}"
+      schema: "{{ env_var('WFA_SNOWFLAKE_SCHEMA', 'weather_forecast_audit') }}"
+      threads: 4
