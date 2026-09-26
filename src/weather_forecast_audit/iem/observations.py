@@ -131,13 +131,17 @@ def fetch_cli(
 
     One request per year. A `missing_report` gap is emitted for every local
     date in range with no report, or with both high and low missing ("M").
+
+    Rows carry the station's ICAO (not the CLI product id, used only to
+    build the request) so every raw table's `station` column is the same
+    join key back to the station registry.
     """
-    cli_station = station.cli_station
+    icao = station.icao
     by_date: dict[date, CliDaily] = {}
     gaps: list[GapRecord] = []
 
     for year in range(start.year, end.year + 1):
-        url = f"{CLI_URL}?station={cli_station}&year={year}"
+        url = f"{CLI_URL}?station={station.cli_station}&year={year}"
         year_start = max(start, date(year, 1, 1))
         year_end = min(end, date(year, 12, 31))
         try:
@@ -148,9 +152,7 @@ def fetch_cli(
             for day in date_range(year_start, year_end):
                 gaps.append(
                     GapRecord(
-                        station=cli_station,
-                        source="cli",
-                        expected=day.isoformat(),
+                        station=icao, source="cli", expected=day.isoformat(),
                         reason=reason,
                     )
                 )
@@ -162,7 +164,7 @@ def fetch_cli(
             if not (start <= local_date <= end):
                 continue
             by_date[local_date] = CliDaily(
-                station=cli_station,
+                station=icao,
                 local_date=local_date,
                 high_f=_parse_optional_int(record.get("high")),
                 low_f=_parse_optional_int(record.get("low")),
@@ -174,7 +176,7 @@ def fetch_cli(
         if daily is None or (daily.high_f is None and daily.low_f is None):
             gaps.append(
                 GapRecord(
-                    station=cli_station,
+                    station=icao,
                     source="cli",
                     expected=day.isoformat(),
                     reason="missing_report",

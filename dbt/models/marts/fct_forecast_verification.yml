@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: fct_forecast_verification
+    description: >
+      Daily max/min temperature forecast verification, one row per station,
+      run date, lead day (1-3), variable, and source. v1 only populates
+      source = 'raw_nbm'; baseline/challenger sources land in a later slice.
+    data_tests:
+      - unique_combination_of_columns:
+          combination_of_columns:
+            - station
+            - run_date
+            - lead_day
+            - variable
+            - source
+    columns:
+      - name: station
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('station_registry')
+              field: icao
+      - name: run_date
+        data_tests:
+          - not_null
+      - name: lead_day
+        data_tests:
+          - not_null
+      - name: variable
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["max", "min"]
+      - name: source
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["raw_nbm", "baseline", "challenger"]
