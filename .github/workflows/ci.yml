@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Lint, test, dbt build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Everything after the install step runs through scripts/offline.sh, in a
+      # network namespace with no route out; uv must not try to sync or resolve.
+      UV_NO_SYNC: "1"
+      UV_OFFLINE: "1"
+      WFA_DUCKDB_PATH: ${{ github.workspace }}/.ci/warehouse.duckdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (the only networked step)
+        env:
+          UV_OFFLINE: "0"
+        run: uv sync --locked
+
+      - name: Prove the offline wrapper blocks the network
+        run: |
+          probe='import socket; socket.create_connection(("1.1.1.1", 443), timeout=5)'
+          if out=$(scripts/offline.sh uv run python -c "$probe" 2>&1); then
+            echo "::error::network reachable inside scripts/offline.sh"
+            exit 1
+          fi
+          echo "$out" | tail -n 1
+          echo "$out" | grep -q "Network is unreachable"
+
+      - name: Ruff
+        run: scripts/offline.sh uv run ruff check .
+
+      - name: Pytest
+        run: scripts/offline.sh uv run pytest -m "not network"
+
+      - name: dbt build (DuckDB)
+        run: |
+          mkdir -p "$(dirname "$WFA_DUCKDB_PATH")"
+          scripts/offline.sh uv run dbt build --project-dir dbt --profiles-dir dbt
+
+      - name: sqlfluff (Snowflake dialect)
+        run: scripts/offline.sh uv run sqlfluff lint dbt/models
