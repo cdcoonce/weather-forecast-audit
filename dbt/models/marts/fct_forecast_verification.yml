@@ -29,6 +29,12 @@ models:
       - name: lead_day
         data_tests:
           - not_null
+          # v1 scope. A 12Z run also carries a same-day (lead 0) max; the mart
+          # must drop it, not pass it through.
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3]
+                quote: false
       - name: variable
         data_tests:
           - not_null
