@@ -193,11 +193,14 @@ def test_load_resolved_windows_is_idempotent(conn: duckdb.DuckDBPyConnection) ->
             lead_day=1,
             window_start_utc=_utc("2023-07-15 12:00:00"),
             window_end_utc=_utc("2023-07-16 06:00:00"),
-            observed_f=117.0,
+            observed_f=118.04,
             n_obs=18,
             hours_covered=18,
             hours_expected=18,
             scorable=True,
+            extreme_source="metar_6h",
+            periods_found=3,
+            hourly_observed_f=117.0,
         )
     ]
     warehouse.load_resolved_windows(
@@ -208,3 +211,82 @@ def test_load_resolved_windows_is_idempotent(conn: duckdb.DuckDBPyConnection) ->
     )
 
     assert conn.execute("select count(*) from raw.resolved_windows").fetchone() == (1,)
+
+
+def test_load_resolved_windows_writes_extreme_source_columns(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    rows = [
+        ResolvedWindowRow(
+            station="KPHX",
+            runtime_utc=_utc("2023-07-16 13:00:00"),
+            ftime_utc=_utc("2023-07-17 12:00:00"),
+            variable="min",
+            target_date=date(2023, 7, 17),
+            lead_day=1,
+            window_start_utc=_utc("2023-07-17 00:00:00"),
+            window_end_utc=_utc("2023-07-17 18:00:00"),
+            observed_f=None,
+            n_obs=12,
+            hours_covered=12,
+            hours_expected=18,
+            scorable=False,
+            extreme_source="none",
+            periods_found=2,
+            hourly_observed_f=None,
+        )
+    ]
+    warehouse.load_resolved_windows(
+        conn, "KPHX", date(2023, 7, 16), date(2023, 7, 16), rows
+    )
+
+    result = conn.execute(
+        "select observed_f, extreme_source, periods_found, hourly_observed_f "
+        "from raw.resolved_windows where station = 'KPHX'"
+    ).fetchone()
+    assert result == (None, "none", 2, None)
+
+
+def test_init_db_upgrades_resolved_windows_old_schema(tmp_path: Path) -> None:
+    """A pre-#6 database lacks extreme_source/periods_found/hourly_observed_f.
+
+    init_db must add them in place, matching the max_6h_f/min_6h_f upgrade
+    already done for raw.asos_hourly in phase 1 (build spec item 2).
+    """
+    old_db = tmp_path / "old_warehouse.duckdb"
+    connection = duckdb.connect(str(old_db))
+    connection.execute("create schema if not exists raw")
+    connection.execute(
+        "create table raw.resolved_windows ("
+        "station varchar not null, runtime_utc timestamp not null, "
+        "ftime_utc timestamp not null, variable varchar not null, "
+        "target_date date not null, lead_day integer not null, "
+        "window_start_utc timestamp not null, window_end_utc timestamp not null, "
+        "observed_f double, n_obs integer not null, hours_covered integer not null, "
+        "hours_expected integer not null, scorable boolean not null)"
+    )
+    connection.execute(
+        "insert into raw.resolved_windows values ("
+        "'KPHX', '2023-07-14 13:00:00', '2023-07-15 00:00:00', 'max', "
+        "'2023-07-15', 1, '2023-07-15 12:00:00', '2023-07-16 06:00:00', "
+        "117.0, 18, 18, 18, true)"
+    )
+
+    warehouse.init_db(connection)
+
+    columns = {
+        row[0]
+        for row in connection.execute(
+            "select column_name from information_schema.columns "
+            "where table_schema = 'raw' and table_name = 'resolved_windows'"
+        ).fetchall()
+    }
+    assert {"extreme_source", "periods_found", "hourly_observed_f"} <= columns
+    assert connection.execute(
+        "select count(*) from raw.resolved_windows"
+    ).fetchone() == (1,)
+    row = connection.execute(
+        "select station, observed_f, extreme_source, periods_found, "
+        "hourly_observed_f from raw.resolved_windows"
+    ).fetchone()
+    assert row == ("KPHX", 117.0, None, None, None)
