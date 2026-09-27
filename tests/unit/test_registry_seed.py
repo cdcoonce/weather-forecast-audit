@@ -11,13 +11,19 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from weather_forecast_audit.registry_sources import CLIMATE_REGIONS
+from weather_forecast_audit.registry_sources import (
+    CLIMATE_REGIONS,
+    COASTAL_THRESHOLD_KM,
+)
 
 pytestmark = pytest.mark.unit
 
 REPO = Path(__file__).resolve().parents[2]
 REGISTRY_SEED = REPO / "dbt" / "seeds" / "station_registry.csv"
 EXCLUSIONS_SEED = REPO / "dbt" / "seeds" / "station_exclusions.csv"
+PROBE_RESULTS = (
+    REPO / "docs" / "spikes" / "2026-09-26-station-registry" / "probe_results.csv"
+)
 EVIDENCE_README = REPO / "docs" / "spikes" / "2026-09-26-station-registry" / "README.md"
 
 # CONUS bounding box (build spec #7 acceptance criteria).
@@ -64,3 +70,23 @@ def test_registry_row_count_matches_evidence_readme() -> None:
     match = re.search(r"Included in `station_registry\.csv`: (\d+)", content)
     assert match, "evidence README must state the included row count"
     assert len(rows) == int(match.group(1))
+
+
+def test_coastal_flags_match_recorded_distances_under_current_threshold() -> None:
+    """The seed's coastal_flag is generated offline; pin it to the constant.
+
+    Changing COASTAL_THRESHOLD_KM without regenerating the registry, or
+    hand-editing a flag, makes the seed disagree with its own evidence.
+    """
+    distances = {
+        row["icao"]: float(row["coastal_distance_km"])
+        for row in _read_rows(PROBE_RESULTS)
+        if row["coastal_distance_km"]
+    }
+    mismatches = [
+        (row["icao"], row["coastal_flag"], distances[row["icao"]])
+        for row in _read_rows(REGISTRY_SEED)
+        if _parse_bool(row["coastal_flag"])
+        != (distances[row["icao"]] <= COASTAL_THRESHOLD_KM)
+    ]
+    assert mismatches == []

@@ -59,6 +59,11 @@ CONUS_STATE_CODES = frozenset(
     }
 )  # fmt: skip
 
+# A station is coastal when the Natural Earth 1:10m ocean coastline is within
+# this great-circle distance (build spec #7, decision 3). Lives here, not in
+# the network-only build script, so the seed's flags can be checked against it.
+COASTAL_THRESHOLD_KM = 25.0
+
 CLIMATE_REGIONS = (
     "Northwest",
     "West",

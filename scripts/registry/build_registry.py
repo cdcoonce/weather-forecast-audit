@@ -53,7 +53,6 @@ ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 # Settled decisions (build spec #7, decision 4): fixed probe runtimes/days.
 NBS_PROBE_RUNTIMES = ("2025-06-01T13:00Z", "2025-12-01T13:00Z")
 ASOS_PROBE_DAYS = (date(2025, 3, 1), date(2025, 6, 1), date(2025, 9, 1))
-COASTAL_THRESHOLD_KM = 25.0
 # Padded well beyond the CONUS bbox (lat 24-49.5, lon -125 to -66.5) so no
 # real coastal station's nearest segment is cut off by the prefilter.
 BBOX = {"min_lat": 20.0, "max_lat": 53.0, "min_lon": -128.0, "max_lon": -64.0}
@@ -236,7 +235,7 @@ def main() -> None:
             row["lat"], row["lon"], a_lat, a_lon, b_lat, b_lon
         )
         row["coastal_distance_km"] = distance_km
-        row["coastal_flag"] = distance_km <= COASTAL_THRESHOLD_KM
+        row["coastal_flag"] = distance_km <= rs.COASTAL_THRESHOLD_KM
 
     great_lakes_violations = [
         icao
