@@ -68,7 +68,8 @@ def main() -> None:
 
     cli_url = f"{CLI_URL}?station={kord.cli_station}&year=2023"
     cli_body = fetcher.get(cli_url).body
-    _write("cli_kord_2023.json", _clip_cli_json(cli_body, date(2023, 7, 1), date(2023, 7, 31)))
+    clipped = _clip_cli_json(cli_body, date(2023, 7, 1), date(2023, 7, 31))
+    _write("cli_kord_2023.json", clipped)
 
 
 if __name__ == "__main__":

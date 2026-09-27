@@ -17,13 +17,14 @@ time, and `prepare_if_dev()` is a no-op outside the `dagster dev` CLI.
 """
 
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import dagster as dg
 from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from weather_forecast_audit._paths import find_repo_root
+
+REPO_ROOT = find_repo_root(__file__)
 DBT_PROJECT_DIR = REPO_ROOT / "dbt"
 
 dbt_project = DbtProject(project_dir=DBT_PROJECT_DIR, profiles_dir=DBT_PROJECT_DIR)
