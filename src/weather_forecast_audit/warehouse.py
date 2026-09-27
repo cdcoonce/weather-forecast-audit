@@ -247,7 +247,21 @@ def load_gaps(
     for the same `(station, source, expected, reason)` keeps its original
     `first_seen`; a gap not seen before gets `first_seen = now`; a gap that
     was on file but is absent from `gaps` is deleted (build spec D3).
+
+    Every gap must belong to the slice being replaced. One outside it would
+    be inserted but never deleted by a re-run of this slice, so partitions
+    would silently accumulate duplicate gaps.
     """
+    for gap in gaps:
+        gap_date = date.fromisoformat(gap.expected[:10])
+        if gap.station != station or gap.source != source or not (
+            start <= gap_date <= end
+        ):
+            msg = (
+                f"gap {gap} is outside the replaced slice "
+                f"({station}, {source}, {start}..{end})"
+            )
+            raise ValueError(msg)
     conn.execute("begin transaction")
     try:
         existing_first_seen = {

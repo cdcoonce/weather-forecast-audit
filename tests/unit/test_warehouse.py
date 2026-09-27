@@ -259,6 +259,33 @@ def test_load_gaps_deletes_vanished_gap(conn: duckdb.DuckDBPyConnection) -> None
     assert rows == [("2023-07-14T13:00Z", first_run)]
 
 
+@pytest.mark.parametrize(
+    "gap",
+    [
+        # Outside the window: would be inserted but never deleted by a re-run
+        # of this window, so it would accumulate duplicates silently.
+        GapRecord("KPHX", "nbs", "2023-07-15T13:00Z", "missing_run"),
+        GapRecord("KORD", "nbs", "2023-07-14T13:00Z", "missing_run"),
+        GapRecord("KPHX", "asos", "2023-07-14T13:00Z", "missing_observations"),
+    ],
+    ids=["outside-window", "other-station", "other-source"],
+)
+def test_load_gaps_rejects_gap_it_could_never_replace(
+    conn: duckdb.DuckDBPyConnection, gap: GapRecord
+) -> None:
+    with pytest.raises(ValueError, match="outside the replaced slice"):
+        warehouse.load_gaps(
+            conn,
+            "KPHX",
+            "nbs",
+            date(2023, 7, 14),
+            date(2023, 7, 14),
+            [gap],
+            now=_naive_now("2024-01-01 00:00:00"),
+        )
+    assert conn.execute("select count(*) from raw.ingest_gaps").fetchone() == (0,)
+
+
 def test_init_db_upgrades_ingest_gaps_old_schema(tmp_path: Path) -> None:
     """A pre-#10 database lacks `first_seen`; init_db must add it in place."""
     old_db = tmp_path / "old_warehouse.duckdb"
