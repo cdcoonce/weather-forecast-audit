@@ -93,7 +93,9 @@ def test_freshness_check_job_passes_just_after_and_fails_far_after(
     }
 
 
-def _gap_rate_results(db_path: Path, only: list[str], iem_resource: object) -> dict:
+def _gap_rate_results(
+    db_path: Path, only: list[str], iem_resource: object
+) -> dict[str, tuple[bool, str]]:
     test_defs = build_ingest_test_defs(str(db_path), only, iem_resource)
     job = test_defs.resolve_job_def("ingest_job")
     with DagsterInstance.ephemeral() as instance:
@@ -103,7 +105,10 @@ def _gap_rate_results(db_path: Path, only: list[str], iem_resource: object) -> d
             asset_selection=[RAW_NBS_GUIDANCE_KEY],
         )
         assert result.success
-    return {e.check_name: e.passed for e in result.get_asset_check_evaluations()}
+    return {
+        e.check_name: (e.passed, e.severity.value)
+        for e in result.get_asset_check_evaluations()
+    }
 
 
 def test_gap_rate_check_fails_warn_when_gaps_exceed_threshold(tmp_path: Path) -> None:
@@ -114,7 +119,11 @@ def test_gap_rate_check_fails_warn_when_gaps_exceed_threshold(tmp_path: Path) ->
         db_path, ["KPHX", "KORD"], OneStationMissingGuidanceIemResource()
     )
 
-    assert evaluations["guidance_gap_rate"] is False
+    passed, severity = evaluations["guidance_gap_rate"]
+    assert passed is False
+    # D7: gap-rate failures are a WARN, not an ERROR -- a backfill's failing
+    # gap rate must not be treated as gravely as a stale/empty table.
+    assert severity == "WARN"
 
 
 def test_gap_rate_check_passes_when_no_stations_have_a_gap(tmp_path: Path) -> None:
@@ -122,4 +131,6 @@ def test_gap_rate_check_passes_when_no_stations_have_a_gap(tmp_path: Path) -> No
 
     evaluations = _gap_rate_results(db_path, ["KPHX", "KORD"], FixtureIemResource())
 
-    assert evaluations["guidance_gap_rate"] is True
+    passed, severity = evaluations["guidance_gap_rate"]
+    assert passed is True
+    assert severity == "WARN"
