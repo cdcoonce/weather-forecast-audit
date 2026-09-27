@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weather-forecast-audit.example/export_schema/v1/city.schema.json",
+  "title": "city",
+  "description": "One station's full stat table: n, bias, CI, and flags per variable x lead_day x season.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "icao", "label", "stats", "typical_miss"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "icao": { "type": "string" },
+    "label": { "type": "string" },
+    "stats": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/stat" }
+    },
+    "typical_miss": { "$ref": "#/$defs/typical_miss" }
+  },
+  "$defs": {
+    "typical_miss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max", "min"],
+      "description": "Lead-1 MAE (degrees F) pooled over seasons, per variable. Null when no lead-1 slice for that variable has min_sample_flag false.",
+      "properties": {
+        "max": { "type": ["number", "null"] },
+        "min": { "type": ["number", "null"] }
+      }
+    },
+    "stat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variable",
+        "lead_day",
+        "season",
+        "n",
+        "n_dates",
+        "bias_f",
+        "bias_lo_f",
+        "bias_hi_f",
+        "mae_f",
+        "min_sample_flag",
+        "no_detectable_bias"
+      ],
+      "properties": {
+        "variable": { "type": "string", "enum": ["max", "min"] },
+        "lead_day": { "type": "integer", "enum": [1, 2, 3] },
+        "season": { "type": "string", "enum": ["DJF", "MAM", "JJA", "SON"] },
+        "n": { "type": "integer", "minimum": 0 },
+        "n_dates": { "type": "integer", "minimum": 0 },
+        "bias_f": { "type": ["number", "null"] },
+        "bias_lo_f": { "type": ["number", "null"] },
+        "bias_hi_f": { "type": ["number", "null"] },
+        "mae_f": { "type": ["number", "null"] },
+        "min_sample_flag": { "type": "boolean" },
+        "no_detectable_bias": { "type": "boolean" }
+      }
+    }
+  }
+}

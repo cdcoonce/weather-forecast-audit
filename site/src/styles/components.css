@@ -1,0 +1,176 @@
+/* CitySearch (combobox), CityCard, and its stat table. Semantic tokens only. */
+
+/* -- CitySearch ----------------------------------------------------------- */
+
+.city-search {
+  position: relative;
+  max-width: var(--container-narrow);
+}
+
+.city-search__label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.city-search__input {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.city-search__listbox {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  position: absolute;
+  z-index: 10;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.city-search__option {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.city-search__option--active {
+  background: var(--accent-surface-strong);
+  border-left: 3px solid var(--focus);
+  padding-left: calc(var(--space-4) - 3px);
+}
+
+.city-search__option-icao {
+  color: var(--text-muted);
+}
+
+/* -- CityCard --------------------------------------------------------------- */
+
+.city-card {
+  max-width: var(--container-content);
+}
+
+.city-card__title {
+  font-size: var(--text-2xl);
+  margin: 0 0 var(--space-4);
+}
+
+.city-card__icao {
+  color: var(--text-muted);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-lg);
+}
+
+.city-card__summary {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.city-card__summary--significant {
+  color: var(--text);
+}
+
+.city-card__typical-miss {
+  color: var(--text);
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-3);
+}
+
+.city-card__explainer {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-8);
+  max-width: var(--container-narrow);
+}
+
+/* A safety net, not the primary fix for the 400px-width requirement: the
+   table itself uses table-layout: fixed and compact padding so every lead
+   column fits without scrolling (design-review decision 1). */
+.city-card__table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.city-card__table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.city-card__table caption {
+  text-align: left;
+  font-weight: var(--weight-semibold);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+  background: var(--surface);
+}
+
+.city-card__table th,
+.city-card__table td {
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--border);
+  text-align: left;
+  overflow-wrap: break-word;
+}
+
+/* Wide enough for the longest season word ("summer") in the semibold row
+   header, which must never break mid-word; ~94px per lead column remains at
+   400px, enough for an interval like "−1.8 to −0.7". */
+.city-card__table th:first-child,
+.city-card__table td:first-child {
+  width: 5.25rem;
+  white-space: nowrap;
+}
+
+.city-card__table thead th {
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-xs);
+}
+
+.city-card__cell-primary {
+  display: block;
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.city-card__cell-secondary {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.city-card__cell--muted {
+  color: var(--text-muted);
+}
+
+.city-card__table-caption {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin: var(--space-2) 0 var(--space-8);
+}
+
+.city-card__footnote {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  max-width: var(--container-narrow);
+}

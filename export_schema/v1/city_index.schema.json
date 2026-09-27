@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weather-forecast-audit.example/export_schema/v1/city_index.schema.json",
+  "title": "city_index",
+  "description": "Every audited city's label, coordinates, and plain-language summary. Drives site search.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "cities"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "cities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/city_index_entry" }
+    }
+  },
+  "$defs": {
+    "city_index_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["icao", "label", "lat", "lon", "climate_region", "summary"],
+      "properties": {
+        "icao": { "type": "string" },
+        "label": { "type": "string" },
+        "lat": { "type": "number" },
+        "lon": { "type": "number" },
+        "climate_region": { "type": "string" },
+        "summary": { "$ref": "#/$defs/summary" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "significant"],
+      "properties": {
+        "text": { "type": "string" },
+        "significant": { "type": "boolean" },
+        "variable": { "type": "string", "enum": ["max", "min"] },
+        "lead_day": { "type": "integer", "enum": [1, 2, 3] },
+        "season": { "type": "string", "enum": ["DJF", "MAM", "JJA", "SON"] },
+        "bias_f": { "type": "number" }
+      }
+    }
+  }
+}
