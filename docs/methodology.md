@@ -207,3 +207,143 @@ window's start counts; one exactly at the window's end does not. The MDL
 text card does not specify this either way, so this is the project's own
 convention, applied consistently by the resolver and unit-tested at the
 boundary (`tests/unit/test_resolver.py`).
+
+## Scoring and uncertainty
+
+`weather_forecast_audit.scoring.score` (issue #8) turns
+`fct_forecast_verification` rows into every headline number the site
+publishes: bias, MAE, skill, and their uncertainty, sliced any way a page
+needs. It is a pure function -- no I/O, no DuckDB, no dbt -- so it can be
+unit-tested against hand-built and synthetic fixtures
+(`tests/unit/test_scoring.py`).
+
+### Input and slicing
+
+Only `scorable = true` rows with a non-null `error_f` are scored; anything
+else is dropped before any statistic is computed. A slice can combine
+`station`, `month`, `season`, `lead_day`, and `variable`; `source` is
+always an implicit grouping key on top of whatever else is requested,
+because pooling error across `raw_nbm`, `baseline`, and `challenger` would
+average away the exact comparison the audit exists to make.
+
+`month` and `season` (meteorological: DJF/MAM/JJA/SON) are derived from
+**`target_date`**, not `run_date`. "Highs run cold in July" is a statement
+about the weather day being forecast, not the day guidance was issued: a
+lead-3 run issued 2025-06-29 verifies 2025-07-02, and belongs in July's
+bucket even though it was produced in June.
+
+### Bias, MAE, and skill
+
+`bias` is mean signed error (`mean(error_f)`); `mae` is mean absolute
+error. `skill = 1 - MAE_source / MAE_raw_nbm` is computed on **matched
+pairs only**: a row of a non-`raw_nbm` source counts toward skill only
+when a scorable `raw_nbm` row exists for the same `(station, run_date,
+lead_day, variable)`, and both MAEs in the ratio are taken over that same
+matched set, not each source's full slice. Without this restriction, a
+challenger that only issues guidance on a favorable subset of days could
+look skillful by comparison to `raw_nbm`'s unrestricted MAE, which includes
+harder days the challenger never attempted. Unmatched rows still count
+toward that source's own `bias`/`mae` -- they are simply excluded from the
+head-to-head skill ratio. `raw_nbm` is skill's reference by construction,
+so its own skill is always exactly `0.0`. A slice with no matched pairs, or
+whose matched `raw_nbm` MAE is exactly 0, reports `skill` (and its CI) as
+null rather than dividing by zero.
+
+### Why the bootstrap resamples calendar dates, not rows
+
+A single bad NBM cycle does not miss at one station and hit at the other
+39 -- it runs warm or cold everywhere that cycle's guidance touched, because
+the same model run, the same synoptic pattern, and often the same
+observational network drive every station's error that day. Rows within
+an issuance date are correlated; rows across stations on the *same* date
+are correlated with each other in a way that i.i.d. resampling assumes
+away.
+
+Resampling individual verification rows with replacement (row-level
+bootstrap) treats each row as an independent draw, which is only true
+*across* dates, not *within* one. It systematically understates the true
+sampling uncertainty: the resampled dataset still contains roughly the
+same number of "cycle went warm" days as "cycle went cold" days in about
+the same proportion every single time, because the correlated groups
+never move as a unit. The confidence interval comes out narrower than
+reality and can miss the true bias outright.
+
+The date-block bootstrap instead resamples **calendar blocks of issuance
+dates** with replacement -- every row sharing a block moves together as
+one unit, preserving whatever correlation exists within a block. Measured
+on synthetic data built to have exactly this day-to-day correlation (a
+day effect shared by all 40 synthetic stations plus independent
+per-station noise, true bias `μ = 0.7`), 200 simulations of a 95% date-block
+interval covered `μ` in the "known-good" 90-99% band that a well-calibrated
+95% interval should hit, while row-level resampling on the identical data
+covered `μ` in only about 30% of simulations -- a large, "materially lower"
+gap, not the usual bootstrap wobble.  (See
+`test_date_block_coverage_beats_row_level` in `tests/unit/test_scoring.py`
+for the exact generator and the measured numbers; the module's own
+`_block_bootstrap` is reused for both arms, passing individual-row block
+ids to get the row-level comparison, so the two paths differ only in what
+"block" means.)
+
+Concretely: `block_id = (run_date - 1970-01-01).days // block_days`, so
+`BLOCK_DAYS = 1` (the current default) resamples one issuance date at a
+time; larger values group consecutive calendar dates into one resampling
+unit. The bootstrap itself operates on per-block sums (`Σ error`, `Σ
+|error|`, and for skill, the matched-pair sums of `|error_source|` and
+`|error_raw|`), not on materialized resampled rows, so it stays cheap even
+at `N_BOOT = 2000` replicates. The CI is the ordinary bootstrap percentile
+interval at the requested `ci_level`. A slice with fewer than two distinct
+blocks cannot support a bootstrap at all; its CI is null and
+`no_detectable_bias` defaults to `True` -- conservative, so an
+unestimated interval never gets reported as a confident "no bias" finding
+by omission.
+
+Every slice's random draws come from a generator seeded from a stable hash
+(`sha256` of the slice's own key, combined with a fixed base `SEED`), never
+Python's built-in `hash()` (which is salted per process and would make
+results irreproducible run to run). This makes a slice's CI bit-identical
+across repeated calls and independent of what other, unrelated slices
+happen to be present in the same call -- adding a second station's rows
+cannot perturb the first station's confidence interval.
+
+### `min_sample_flag` and `no_detectable_bias`
+
+`min_sample_flag` fires when a slice has fewer than `MIN_SAMPLE_DATES`
+(default 30) **distinct issuance dates**, not rows. Dates, not
+verification rows, are the bootstrap's independent unit -- a slice built
+from 30 stations reporting on a single date is not more trustworthy than
+one station reporting on 30 dates, and counting rows would make it look
+that way.
+
+`no_detectable_bias` is `bias_lo <= 0 <= bias_hi` (both endpoints
+inclusive: a CI that touches exactly zero still "spans" it). When the CI
+is undefined, it defaults to `True` for the same conservative reason as
+above.
+
+### Limitation 1: pooled-lead slices understate correlation across leads
+
+Blocks are keyed on **issuance date**, not target/weather date. When a
+slice pools several lead days together (e.g. `by=("station",)` with no
+`lead_day` restriction), the rows verifying the *same* weather day come
+from *different* issuance dates -- a lead-1 and a lead-3 row that both
+verify against 2025-07-02 were issued on 2025-07-01 and 2025-06-29
+respectively, and land in different date blocks. That splits up
+correlation that a same-weather-day view would otherwise capture as one
+unit, so pooled-lead intervals are somewhat too narrow. The site's headline
+numbers are always reported per lead day, so this only affects pooled
+summaries and is not fixed here.
+
+### Limitation 2: `BLOCK_DAYS = 1` is not a measured default
+
+`BLOCK_DAYS = 1` treats consecutive issuance dates as independent of each
+other. In practice, forecast errors persist across multi-day weather
+regimes -- a stuck upper-level pattern can bias guidance the same way for
+a week at a time -- so treating every date as its own independent block
+likely understates uncertainty further, just less severely than row-level
+resampling does. `test_block_days_seven_beats_block_days_one_on_ar1_data`
+demonstrates that a longer block length measurably improves coverage on
+serially correlated synthetic data (AR(1) day effect, ρ = 0.8); it proves
+the knob works, not that 7 is the right number for real data. The default
+block length this site actually publishes bias claims with must come from
+a **pre-registered measurement on real verification rows** -- specifically,
+the error autocorrelation by lag, station-by-station -- before it can be
+trusted. That measurement is a follow-up issue, not part of this slice.
