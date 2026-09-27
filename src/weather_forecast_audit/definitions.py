@@ -16,6 +16,7 @@ from dagster import (
     MaterializeResult,
     asset,
     define_asset_job,
+    in_process_executor,
 )
 
 from weather_forecast_audit.assets import (
@@ -110,7 +111,13 @@ freshness_check_job = define_asset_job(
     tags={"dagster/max_runtime": str(MAX_RUNTIME_SECONDS)},
 )
 
+# One process per run: DuckDB allows a single writer process per database
+# file, and the default multiprocess executor would run a run's independent
+# raw assets in parallel subprocesses that race for the write lock
+# (rammingspeed run 8e53a237). The run slot serializes runs; this serializes
+# steps. Set on Definitions so every job, including future ones, inherits it.
 defs = Definitions(
+    executor=in_process_executor,
     assets=[
         platform_smoke,
         *RAW_INGEST_ASSETS,
