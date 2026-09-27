@@ -7,6 +7,7 @@ deliberately separate from `tests/integration/test_tracer_pipeline.py`'s own
 integration test"), even though both read from `tests/fixtures/iem/`.
 """
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -123,6 +124,29 @@ class OneStationMissingGuidanceFetcher(DagsterFixtureFetcher):
 class OneStationMissingGuidanceIemResource(FixtureIemResource):
     def fetcher(self) -> OneStationMissingGuidanceFetcher:
         return OneStationMissingGuidanceFetcher()
+
+
+class OneStationMissingCliReportFetcher(DagsterFixtureFetcher):
+    """As `DagsterFixtureFetcher`, but KORD's CLI report is missing for 07-14.
+
+    Unlike a missing guidance run, a missing CLI report doesn't cascade:
+    `pipeline.resolve_station` never reads `raw.cli_daily`, so both stations
+    still get full guidance/asos/resolved rows -- letting a materialize test
+    show both "gaps recorded where fixtures lack data" (this gap) and "rows
+    exist for both stations in every raw table" (nothing else is missing) at
+    once, and letting a downstream dbt-build test still see both stations in
+    fct_forecast_verification.
+    """
+
+    def get(self, url: str) -> HttpResponse:
+        if "cli.py" in url and "station=KORD" in url:
+            return HttpResponse(200, json.dumps({"results": []}).encode())
+        return super().get(url)
+
+
+class OneStationMissingCliReportIemResource(FixtureIemResource):
+    def fetcher(self) -> OneStationMissingCliReportFetcher:
+        return OneStationMissingCliReportFetcher()
 
 
 def build_ingest_test_defs(

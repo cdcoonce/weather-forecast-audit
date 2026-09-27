@@ -9,7 +9,7 @@ import pytest
 from conftest import (
     DagsterFixtureFetcher,
     FixtureIemResource,
-    OneStationMissingGuidanceIemResource,
+    OneStationMissingCliReportIemResource,
     build_ingest_test_defs,
 )
 from dagster import AssetKey, DagsterInstance
@@ -87,7 +87,7 @@ def test_materialize_one_partition_for_two_stations_writes_rows_and_gaps(
 
     with DagsterInstance.ephemeral() as instance:
         _materialize_kphx_kord(
-            db_path, instance, OneStationMissingGuidanceIemResource()
+            db_path, instance, OneStationMissingCliReportIemResource()
         )
 
     with duckdb.connect(str(db_path)) as conn:
@@ -103,23 +103,24 @@ def test_materialize_one_partition_for_two_stations_writes_rows_and_gaps(
                 "select distinct station from raw.asos_hourly"
             ).fetchall()
         }
-        cli_stations = {
+        resolved_stations = {
             row[0]
             for row in conn.execute(
-                "select distinct station from raw.cli_daily"
+                "select distinct station from raw.resolved_windows"
             ).fetchall()
         }
         gap_rows = conn.execute(
             "select station, source, reason from raw.ingest_gaps"
         ).fetchall()
 
-    # Both stations get asos and cli rows.
+    # Both stations get rows in every raw table that has any data at all --
+    # KORD's engineered gap is in cli_daily (a missing_report), which
+    # pipeline.resolve_station never reads, so it doesn't cascade into
+    # guidance/asos/resolved.
+    assert guidance_stations == {"KPHX", "KORD"}
     assert asos_stations == {"KPHX", "KORD"}
-    assert cli_stations == {"KPHX", "KORD"}
-    # KORD's guidance run is engineered missing for 2023-07-14 -- a real gap,
-    # not a manufactured assertion -- so only KPHX has a guidance row.
-    assert guidance_stations == {"KPHX"}
-    assert ("KORD", "nbs", "missing_run") in {(r[0], r[1], r[2]) for r in gap_rows}
+    assert resolved_stations == {"KPHX", "KORD"}
+    assert ("KORD", "cli", "missing_report") in {(r[0], r[1], r[2]) for r in gap_rows}
 
 
 def test_idempotent_rematerialize_same_row_counts_and_first_seen(
@@ -129,7 +130,7 @@ def test_idempotent_rematerialize_same_row_counts_and_first_seen(
 
     with DagsterInstance.ephemeral() as instance:
         _materialize_kphx_kord(
-            db_path, instance, OneStationMissingGuidanceIemResource()
+            db_path, instance, OneStationMissingCliReportIemResource()
         )
     counts_first = _table_counts(db_path)
     with duckdb.connect(str(db_path)) as conn:
@@ -147,7 +148,7 @@ def test_idempotent_rematerialize_same_row_counts_and_first_seen(
     # checks do, per D5).
     with DagsterInstance.ephemeral() as instance:
         _materialize_kphx_kord(
-            db_path, instance, OneStationMissingGuidanceIemResource()
+            db_path, instance, OneStationMissingCliReportIemResource()
         )
     counts_second = _table_counts(db_path)
     with duckdb.connect(str(db_path)) as conn:
