@@ -175,24 +175,34 @@ def _missing(n_present: int) -> tuple[int, float]:
     return n_missing, n_missing / _EXPECTED_N_DATES
 
 
+# PREREG.md's five (variable, lead) series, in its fixed order. The replay's
+# seed streams are assigned by this order, so it is a constant, never read
+# off the data: a missing key must stop the analysis, not shift every seed.
+_SERIES_KEYS: tuple[tuple[str, int], ...] = (
+    ("max", 1),
+    ("max", 2),
+    ("min", 1),
+    ("min", 2),
+    ("min", 3),
+)
+
+
 def _series_keys(pooled: pl.DataFrame) -> list[tuple[str, int]]:
-    """The (variable, lead_day) keys present, in PREREG order.
-
-    `pooled_series`' own sort (variable ascending, then lead_day ascending)
-    already yields PREREG.md's canonical order: (max, 1), (max, 2), (min,
-    1), (min, 2), (min, 3).
-    """
-    return list(
-        pooled.select("variable", "lead_day")
-        .unique()
-        .sort(["variable", "lead_day"])
-        .rows()
-    )
+    """PREREG.md's five keys; raise if the data's keys differ in any way."""
+    present = set(pooled.select("variable", "lead_day").unique().rows())
+    if present != set(_SERIES_KEYS):
+        msg = (
+            f"pooled series keys {sorted(present)} != PREREG keys "
+            f"{list(_SERIES_KEYS)}; the pre-registration has no rule for this"
+        )
+        raise SystemExit(msg)
+    return list(_SERIES_KEYS)
 
 
-def _optimal_block_length(values: np.ndarray) -> float | None:
+def _optimal_block_length(values: np.ndarray) -> float:
     if values.size < 2:
-        return None
+        msg = f"cannot estimate a block length from {values.size} value(s)"
+        raise SystemExit(msg)
     return float(optimal_block_length(values)["circular"].iloc[0])
 
 
@@ -262,7 +272,7 @@ def cmd_analyze(data_path: Path, out_dir: Path) -> None:
             n_st_dates = values.size
             n_st_missing, _ = _missing(n_st_dates)
             excluded = n_st_dates < _MIN_STATION_DATES
-            b_station = _optimal_block_length(values)
+            b_station = _optimal_block_length(values) if values.size >= 2 else None
             station_estimates_rows.append(
                 {
                     "station": station,
@@ -293,15 +303,14 @@ def cmd_analyze(data_path: Path, out_dir: Path) -> None:
                 ):
                     row["is_upper_median"] = True
         else:
-            b_station_value = 0.0
-            median_station = None
-            median_values = None
-            print(
-                f"WARNING: no station qualifies for the median at "
-                f"(variable={variable}, lead_day={lead_day}); b_station=0.0"
+            msg = (
+                f"no station series qualifies for the median at "
+                f"(variable={variable}, lead_day={lead_day}); the "
+                f"pre-registration has no rule for this"
             )
+            raise SystemExit(msg)
 
-        b_by_key[(variable, lead_day)] = (b_pooled or 0.0, b_station_value)
+        b_by_key[(variable, lead_day)] = (b_pooled, b_station_value)
         median_station_by_key[(variable, lead_day)] = median_station
         median_station_values_by_key[(variable, lead_day)] = median_values
 
@@ -330,13 +339,7 @@ def cmd_analyze(data_path: Path, out_dir: Path) -> None:
     for variable, lead_day in keys:
         key = (variable, lead_day)
         values = median_station_values_by_key[key]
-        if values is not None:
-            label = f"station:{median_station_by_key[key]}"
-        else:
-            # No station qualified (rule 1's warning above already fired):
-            # fall back to the pooled series so the replay still runs.
-            label = "station:none (fell back to pooled)"
-            values = pooled_values_by_key[key]
+        label = f"station:{median_station_by_key[key]}"
         replay_series.append((label, key, values))
 
     seed_children = np.random.SeedSequence(_REPLAY_SEED).spawn(10)
