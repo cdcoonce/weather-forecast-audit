@@ -343,3 +343,54 @@ bias claim must come from a **pre-registered measurement on real
 verification rows**: the persistence of the daily cross-station mean
 error, by variable and lead. That measurement is a follow-up issue and
 blocks the public launch.
+
+## Regime boundaries
+
+Every `fct_forecast_verification` row is tagged with two independent
+regime boundaries (issue #12), because both change bias in ways that read
+as unexplained drift if left untagged: an NBM version upgrade changes the
+underlying model, and the archived-cycle changeover changes which run
+"nearest 12Z" means.
+
+### NBM operational versions
+
+`dbt/seeds/nbm_versions.csv` is every NBM operational version covering the
+archive's history (2020-09-29 onward), sourced from NWS Service Change
+Notices (SCNs) at weather.gov/notification/, following each notice's
+delay chain to its final "Updated" version where one exists:
+
+| version | valid from (UTC) | verified | source |
+| --- | --- | --- | --- |
+| v4.0 | 2020-09-29 12:00 | yes | [SCN 20-78 Updated](https://www.weather.gov/media/notification/pdf2/scn20-78nbm_v4_aaa.pdf) |
+| v4.1 | 2023-01-17 12:00 | yes | [SCN 22-131](https://www.weather.gov/media/notification/pdf2/scn22-131_nbm_v4.1.pdf) |
+| v4.2 | 2024-05-15 12:00 | yes | [SCN 24-41](https://www.weather.gov/media/notification/pdf_2023_24/scn24-41_nbm_v4.2.pdf) |
+| v4.3 | 2025-05-27 12:00 | yes | [SCN 25-34 Updated](https://www.weather.gov/media/notification/pdf_2025/nbm_v4.3_scn_aaa.pdf) |
+| v5.0 | 2026-04-30 13:00 | yes | [SCN 26-24 Updated (AAC)](https://www.weather.gov/media/notification/pdf_2026/scn26-24_Updated_NBM_V5.0_aac.pdf) |
+
+Notably, SCN 20-78's "September 29, 2020" implementation date for v4.0
+matches `dbt/seeds/nbs_archive.csv`'s independently-probed 2020-09-29
+pinned archive start exactly -- the project's empirical archive-start
+finding and the documented NBM v4.0 rollout are the same date. v5.0's row
+carries a flag: MDL's own vlab.noaa.gov news post states the upgrade
+completed "On May 5, 2026", five days after the final located SCN's
+stated date, with no citable SCN found documenting that further slip. A
+future v5.1 upgrade is publicly planned for around October 2026 but has
+no Service Change Notice yet, so it is not included.
+
+`fct_forecast_verification.nbm_version` is joined by `runtime_utc` against
+this seed's half-open `[valid_from_utc, valid_to_utc)`.
+
+### Archived cycle regimes
+
+`dbt/seeds/nbs_cycle_regimes.csv` (issue #5/#7) is which archived NBS
+cycle counts as "nearest 12Z" for a run date; see that seed and
+`src/weather_forecast_audit/regimes.py` for its own documentation.
+`fct_forecast_verification.cycle_regime` is joined by `run_date` against
+this seed's inclusive `[valid_from, valid_to]`.
+
+### Combined annotations
+
+`dim_regime_boundaries` unions both seeds into one `(kind, id, starts_at,
+verified, citation)` boundary list, for a future export (issue #9) to
+read as time-series annotations. It does not itself build an export or
+change any export schema version.

@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: dim_regime_boundaries
+    description: >
+      All regime boundaries that fct_forecast_verification is tagged by
+      (issue #12), unioned into one annotation list: NBM operational
+      versions (dbt/seeds/nbm_versions.csv) and archived NBS cycle regimes
+      (dbt/seeds/nbs_cycle_regimes.csv). Intended to be read by a future
+      export as time-series annotations (issue #9); this model does not
+      build that export or touch its schema version.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - kind
+              - id
+    columns:
+      - name: kind
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["nbm_version", "cycle_regime"]
+      - name: id
+        data_tests:
+          - not_null
+      - name: starts_at
+        data_tests:
+          - not_null
+      - name: citation
+        data_tests:
+          - not_null

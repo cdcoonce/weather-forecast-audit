@@ -1,0 +1,39 @@
+version: 2
+
+seeds:
+  - name: nbm_versions
+    description: >
+      NBM operational versions and their implementation timestamps, sourced
+      from NWS Service Change Notices (SCNs) and Public Information
+      Statements (PNSs) at weather.gov/notification/, cross-checked against
+      MDL's NBM version pages (vlab.noaa.gov/web/mdl/nbm-versions). Each row
+      is a version's `[valid_from_utc, valid_to_utc)` half-open window
+      (`valid_to_utc` null for the current version), citing the final
+      notice in that version's amendment chain when a notice was delayed.
+      `verified = false` would mark a date this project could not confirm
+      from a primary source; issue #12. Read by
+      `dbt/models/marts/fct_forecast_verification.sql` and
+      `dbt/models/marts/dim_regime_boundaries.sql`.
+    config:
+      column_types:
+        nbm_version: varchar
+        valid_from_utc: timestamp
+        valid_to_utc: timestamp
+        verified: boolean
+        source_url: varchar
+        note: varchar
+    columns:
+      - name: nbm_version
+        data_tests:
+          - unique
+          - not_null
+      - name: valid_from_utc
+        data_tests:
+          - unique
+          - not_null
+      - name: verified
+        data_tests:
+          - not_null
+      - name: source_url
+        data_tests:
+          - not_null
