@@ -19,8 +19,9 @@ import polars as pl
 
 # Pre-registered before any scoring; never tuned on backfill skill (that
 # would fit the evaluation itself). See the docstrings below and
-# docs/methodology.md for the justification. Sensitivity at W=14 and W=60 is
-# reported in the PR as exploratory only, never used to change these.
+# docs/methodology.md for the justification. Sensitivity at W=60 is reported
+# in the PR as exploratory only, never used to change these. (W=14 is not a
+# valid configuration with k=15: see the window_days >= min_pairs guard.)
 WINDOW_DAYS = 30
 """~1 month: short enough to follow seasonal drift (biases differ by season
 at the same station, which is exactly what the audit exists to show), and
@@ -49,6 +50,15 @@ class BaselineModel:
     def __init__(
         self, window_days: int = WINDOW_DAYS, min_pairs: int = MIN_PAIRS
     ) -> None:
+        # A group gains at most one pair per day, so a window shorter than
+        # min_pairs could never reach min_pairs: every group would fall back
+        # forever without any error.
+        if window_days < min_pairs:
+            msg = (
+                f"window_days ({window_days}) must be >= min_pairs ({min_pairs}); "
+                "otherwise no group can ever be corrected"
+            )
+            raise ValueError(msg)
         self.window_days = window_days
         self.min_pairs = min_pairs
         self.name = "baseline"
@@ -90,7 +100,14 @@ class BaselineModel:
         min_pairs`, else the raw `forecast_f` unchanged. `fallback` is true
         whenever the group has no estimate or fewer than `min_pairs`.
         """
-        joined = run_rows.join(self._stats, on=list(_GROUP_KEYS), how="left")
+        # Output rows must align positionally with run_rows (the evaluator
+        # checks length, not keys), and a polars join does not guarantee row
+        # order, so restore it explicitly from a row index.
+        joined = (
+            run_rows.with_row_index("_row")
+            .join(self._stats, on=list(_GROUP_KEYS), how="left")
+            .sort("_row")
+        )
         has_estimate = pl.col("n_pairs").is_not_null()
         meets_min = has_estimate & (pl.col("n_pairs") >= self.min_pairs)
 

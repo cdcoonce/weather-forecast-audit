@@ -453,8 +453,11 @@ constants, fixed **before** any scoring and never tuned on backfill skill
 - **k = 15** is half the window: a station with patchy data is corrected
   only when its estimate has SE ≲ 0.65°F; otherwise it falls back to raw.
 
-Sensitivity at W = 14 and W = 60 is reported in the PR as exploratory only
-and does not change these defaults.
+Sensitivity at W = 60 is reported in the PR as exploratory only and does not
+change these defaults. W = 14 was also planned, but with k = 15 it is not a
+valid configuration. A group gains at most one pair per day, so a window
+shorter than k can never reach k, and every group would silently fall back to
+raw. `BaselineModel` now rejects `window_days < min_pairs` outright.
 
 ### Fallback
 

@@ -369,3 +369,60 @@ def test_empty_training_set_means_everything_falls_back() -> None:
     assert result.height > 0
     assert result["fallback"].all()
     assert result["forecast_f"].equals(result["raw_forecast_f"])
+
+
+def test_window_shorter_than_min_pairs_is_rejected() -> None:
+    # One pair per group per day, so a window shorter than min_pairs can never
+    # reach min_pairs: every group would fall back forever, silently (the W=14,
+    # k=15 sensitivity run was 100% fallback). Refuse the configuration.
+    with pytest.raises(ValueError, match="window_days"):
+        BaselineModel(window_days=14, min_pairs=15)
+    BaselineModel(window_days=15, min_pairs=15)  # the boundary is allowed
+
+
+def test_predict_detail_rows_stay_aligned_to_run_rows() -> None:
+    # The evaluator checks length, not alignment: if a join reordered rows,
+    # corrected forecasts would land on the wrong station with no error.
+    # Groups get distinct biases, run rows arrive in a scrambled order, and
+    # every output row must carry its own group's correction.
+    end = datetime(2025, 1, 31, 6, tzinfo=UTC)
+    biases = {
+        ("KAAA", 1, "max"): 1.0,
+        ("KBBB", 2, "min"): 5.0,
+        ("KCCC", 1, "min"): -3.0,
+    }
+    rows = []
+    for (station, lead, variable), bias in biases.items():
+        for day in range(20):
+            rows.append(
+                {
+                    "station": station,
+                    "lead_day": lead,
+                    "variable": variable,
+                    "forecast_f": 50.0 + bias,
+                    "observed_f": 50.0,
+                    "window_end_utc": end - timedelta(days=day),
+                }
+            )
+    training = pl.DataFrame(rows).sort("window_end_utc")
+    model = BaselineModel(window_days=30, min_pairs=15)
+    model.fit(training)
+
+    run_rows = pl.DataFrame(
+        {
+            "station": ["KCCC", "KAAA", "KBBB", "KAAA", "KCCC", "KBBB"],
+            "lead_day": [1, 1, 2, 1, 1, 2],
+            "variable": ["min", "max", "min", "max", "min", "min"],
+            "forecast_f": [10.0, 20.0, 30.0, 40.0, 60.0, 70.0],
+        }
+    )
+    detail = model.predict_detail(run_rows)
+
+    expected = [
+        forecast - biases[(station, lead, variable)]
+        for station, lead, variable, forecast in run_rows.select(
+            "station", "lead_day", "variable", "forecast_f"
+        ).iter_rows()
+    ]
+    assert detail["forecast_f"].to_list() == expected
+    assert not detail["fallback"].any()
