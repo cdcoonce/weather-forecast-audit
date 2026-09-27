@@ -295,6 +295,46 @@ def test_month_and_season_derived_from_target_date_not_run_date() -> None:
     assert by_month[3] == "MAM"
 
 
+# -- 6b. block bootstrap percentile pinned to the nominal alpha --------------
+
+
+def test_block_bootstrap_ci_matches_numpy_quantile_at_nominal_alpha() -> None:
+    """Direct, deterministic pin on the percentile endpoints.
+
+    The stochastic coverage tests (7, 8) can pass under a systematically
+    wrong percentile choice -- e.g. reading off (alpha/2, 1 - alpha/2)
+    instead of (alpha, 1 - alpha) widens every interval, which either still
+    lands inside the coverage band or even improves apparent coverage. This
+    test instead recomputes the replicate quantiles independently (same
+    multinomial draws, same seed) and pins the CI to exactly
+    numpy.quantile(replicates, [0.025, 0.975]) for ci_level=0.95.
+    """
+    numerator = np.array([1.0, -2.0, 3.0, 0.5, -1.5])
+    denominator = np.ones_like(numerator)
+    block_ids = np.array([0, 1, 2, 3, 4])
+    n_boot = 500
+    ci_level = 0.95
+
+    lo, hi = _block_bootstrap(
+        numerator,
+        denominator,
+        block_ids,
+        np.random.default_rng(12345),
+        n_boot,
+        ci_level,
+    )
+
+    n_blocks = block_ids.size
+    weights = np.random.default_rng(12345).multinomial(
+        n_blocks, np.full(n_blocks, 1.0 / n_blocks), size=n_boot
+    )
+    replicates = (weights @ numerator) / (weights @ denominator)
+    expected_lo, expected_hi = np.quantile(replicates, [0.025, 0.975])
+
+    assert lo == pytest.approx(expected_lo, abs=1e-12)
+    assert hi == pytest.approx(expected_hi, abs=1e-12)
+
+
 # -- 7. coverage: the headline test ------------------------------------------
 
 
