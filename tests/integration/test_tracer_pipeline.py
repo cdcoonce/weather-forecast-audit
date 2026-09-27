@@ -6,19 +6,17 @@ script makes for real (`scripts/tracer_kphx.sh`): the hand-checked KPHX
 """
 
 import csv
-import json
 import os
 import re
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import duckdb
 import pytest
 from dbt.cli.main import dbtRunner
+from support.fixture_fetcher import FixtureFetcher
 
 from weather_forecast_audit import warehouse
-from weather_forecast_audit.iem.http import HttpResponse
 from weather_forecast_audit.pipeline import ingest_station
 from weather_forecast_audit.regimes import load_cycle_regimes
 from weather_forecast_audit.registry import load_registry
@@ -28,9 +26,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.io, pytest.mark.dbt]
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "tests" / "fixtures" / "iem"
 DBT_DIR = REPO / "dbt"
-
-ASOS_HEADER_ONLY = b"station,valid,tmpf,metar\n"
-CLI_EMPTY = json.dumps({"results": []}).encode("utf-8")
 
 # -- independent derivation of the known answers ------------------------------
 #
@@ -170,62 +165,6 @@ for _target, _lead, _variable, _forecast, _observed, _error, _ in KNOWN_ANSWERS:
             f"{_target} {_variable}: derived error {_error}, "
             f"spec says {_expected_error}"
         )
-
-
-def _read(name: str) -> bytes:
-    return (FIXTURES / name).read_bytes()
-
-
-def _asos_in_requested_range(url: str) -> bytes:
-    """The ASOS fixture clipped to the request's [sts, ets), as the service does.
-
-    Serving the whole file regardless of range would hide a pipeline that
-    fetches too narrow a span: its lead-2/3 windows would still find their
-    observations here, though the live service would not return them.
-    """
-    query = parse_qs(urlparse(url).query)
-    sts = datetime.fromisoformat(query["sts"][0].replace("Z", "+00:00"))
-    ets = datetime.fromisoformat(query["ets"][0].replace("Z", "+00:00"))
-    header, *rows = _read("asos_kphx_2023-07-13_2023-07-17.csv").decode().splitlines()
-    kept = [
-        row
-        for row in rows
-        if sts
-        <= datetime.strptime(row.split(",")[1], "%Y-%m-%d %H:%M").replace(tzinfo=UTC)
-        < ets
-    ]
-    return ("\n".join([header, *kept]) + "\n").encode()
-
-
-class FixtureFetcher:
-    """Routes NBS/ASOS/CLI requests to the recorded fixtures by URL shape.
-
-    ASOS/CLI serve the 2023 fixture for 2023 requests and an empty payload
-    for 2026 requests, matching the build spec's integration-test recipe.
-    """
-
-    def get(self, url: str) -> HttpResponse:
-        if "mos.py" in url:
-            if "sts=2023-07" in url:
-                return HttpResponse(200, _read("nbs_kphx_2023-07-14.csv"))
-            if "sts=2026-04" in url:
-                return HttpResponse(200, _read("nbs_kphx_2026-04-29.csv"))
-            if "sts=2026-05" in url:
-                return HttpResponse(200, _read("nbs_kphx_2026-05-06.csv"))
-            raise AssertionError(f"unexpected mos.py request: {url}")
-        if "asos.py" in url:
-            if "sts=2023-07" in url:
-                return HttpResponse(200, _asos_in_requested_range(url))
-            if "sts=2026" in url:
-                return HttpResponse(200, ASOS_HEADER_ONLY)
-            raise AssertionError(f"unexpected asos.py request: {url}")
-        if "cli.py" in url:
-            if "year=2023" in url:
-                return HttpResponse(200, _read("cli_kphx_2023.json"))
-            if "year=2026" in url:
-                return HttpResponse(200, CLI_EMPTY)
-            raise AssertionError(f"unexpected cli.py request: {url}")
-        raise AssertionError(f"unexpected request: {url}")
 
 
 def _run_ingest(db_path: Path) -> None:

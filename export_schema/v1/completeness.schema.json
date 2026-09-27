@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weather-forecast-audit.example/export_schema/v1/completeness.schema.json",
+  "title": "completeness",
+  "description": "Data-completeness stub. v1 always writes an empty `stations` array; issue #15 fills in its per-station shape and bumps this schema then.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stations"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "stations": {
+      "type": "array",
+      "items": false,
+      "maxItems": 0
+    }
+  }
+}

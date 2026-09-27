@@ -1,0 +1,12 @@
+{
+  "data_through": "2023-07-16",
+  "files": [
+    "manifest.json",
+    "city_index.json",
+    "completeness.json",
+    "cities/KPHX.json"
+  ],
+  "generated_at": "2026-09-27T18:10:47Z",
+  "schema_version": "1.0.0",
+  "station_count": 1
+}

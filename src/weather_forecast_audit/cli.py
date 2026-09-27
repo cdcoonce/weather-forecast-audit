@@ -7,9 +7,11 @@ database per environment (local dev, CI, the tracer script), set once.
 import argparse
 import os
 from datetime import date
+from pathlib import Path
 
 import duckdb
 
+from weather_forecast_audit import export as export_module
 from weather_forecast_audit import warehouse
 from weather_forecast_audit.iem.http import UrllibFetcher
 from weather_forecast_audit.pipeline import ingest_station
@@ -61,6 +63,17 @@ def _cmd_ingest(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_export(args: argparse.Namespace) -> None:
+    db_path = _db_path()
+    with duckdb.connect(db_path) as conn:
+        summary = export_module.export(conn, Path(args.out))
+    print(
+        f"wfa export: {summary.station_count} stations, "
+        f"data_through={summary.data_through}, {len(summary.files)} files "
+        f"-> {summary.out_dir}"
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="wfa")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -77,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_parser.add_argument("--start", required=True, help="YYYY-MM-DD")
     ingest_parser.add_argument("--end", required=True, help="YYYY-MM-DD")
     ingest_parser.set_defaults(func=_cmd_ingest)
+
+    export_parser = subparsers.add_parser(
+        "export", help="Write the v1 export contract (manifest, city stats) to --out"
+    )
+    export_parser.add_argument("--out", required=True, help="Output directory")
+    export_parser.set_defaults(func=_cmd_export)
 
     return parser
 

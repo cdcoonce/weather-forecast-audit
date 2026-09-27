@@ -1,0 +1,187 @@
+/* Base layout, reset, and accessibility primitives. Components below use
+   only the semantic tokens from theme.css (--bg, --surface, --text,
+   --text-muted, --border, --focus, --accent-surface) plus tokens.css's
+   typography/spacing/radius scale -- never raw --gray-* values. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+a {
+  color: var(--text);
+}
+
+a:visited {
+  color: var(--text);
+}
+
+/* -- accessibility primitives ---------------------------------------- */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--surface);
+  color: var(--text);
+  padding: var(--space-2) var(--space-4);
+  border: 2px solid var(--focus);
+  border-radius: var(--radius-sm);
+}
+
+.skip-link:focus {
+  left: var(--space-4);
+  top: var(--space-4);
+}
+
+/* Visually hidden but still present for assistive tech: the standard
+   clip-based technique (never display:none/visibility:hidden, which would
+   also remove it from the accessibility tree). Used for a table cell's full
+   accessible name (e.g. "no detectable bias") when the sighted glyph alone
+   ("–") would read as just "dash". */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* -- layout ------------------------------------------------------------ */
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.site-header__brand {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.last-updated {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+main {
+  max-width: var(--container-content);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-16);
+}
+
+@media (min-width: 480px) {
+  .site-header {
+    padding: var(--space-4) var(--space-8);
+  }
+
+  main {
+    padding: var(--space-8) var(--space-8) var(--space-16);
+  }
+}
+
+/* -- theme toggle -------------------------------------------------------- */
+
+.theme-toggle {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-4);
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.theme-toggle:hover {
+  background: var(--accent-surface);
+}
+
+/* Pressed (dark) state: visually filled, using only semantic tokens, so the
+   fixed "Dark mode" label doesn't have to carry the whole distinction. */
+.theme-toggle[aria-pressed="true"] {
+  background: var(--accent-surface-strong);
+  border-color: var(--focus);
+}
+
+/* -- home ---------------------------------------------------------------- */
+
+.home__intro {
+  max-width: var(--container-narrow);
+  color: var(--text-secondary, var(--text));
+  margin-bottom: var(--space-8);
+}
+
+/* -- states: loading / error / not-found --------------------------------- */
+
+.fetch-error {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-6);
+  background: var(--surface);
+}
+
+.fetch-error button,
+.not-found a {
+  font-family: var(--font-sans);
+}
+
+.fetch-error button {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-6);
+  cursor: pointer;
+}
+
+.not-found {
+  padding: var(--space-8) 0;
+}

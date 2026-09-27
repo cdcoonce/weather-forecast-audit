@@ -37,6 +37,19 @@ def test_init_db_creates_raw_schema(
     assert "nbs_guidance" in tables
 
 
+def test_export_requires_wfa_duckdb_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DUCKDB_PATH", raising=False)
+    with pytest.raises(SystemExit, match="WFA_DUCKDB_PATH"):
+        cli.main(["export", "--out", "/tmp/wfa-export-does-not-run"])
+
+
+def test_export_parser_requires_out_flag() -> None:
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["export"])
+
+
 def test_ingest_unknown_station_raises_clear_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
