@@ -39,7 +39,9 @@ create table if not exists raw.nbs_guidance (
 create table if not exists raw.asos_hourly (
     station varchar not null,
     valid_utc timestamp not null,
-    tmpf double
+    tmpf double,
+    max_6h_f double,
+    min_6h_f double
 );
 
 create table if not exists raw.cli_daily (
@@ -92,7 +94,17 @@ class ResolvedWindowRow:
 
 
 def init_db(conn: duckdb.DuckDBPyConnection) -> None:
+    """Create every `raw` table, then upgrade any that predate a schema change.
+
+    `create table if not exists` alone leaves an already-existing table on
+    its old schema; the DuckDB file is a long-lived cache, so the explicit
+    `alter table ... add column if not exists` calls below let a database
+    created before the METAR 6-hour columns existed pick them up in place,
+    without dropping its rows.
+    """
     conn.execute(DDL)
+    conn.execute("alter table raw.asos_hourly add column if not exists max_6h_f double")
+    conn.execute("alter table raw.asos_hourly add column if not exists min_6h_f double")
 
 
 def _naive(value: datetime) -> datetime:
@@ -161,9 +173,15 @@ def load_hourly(
     end: date,
     rows: list[HourlyObservation],
 ) -> None:
-    columns = ["station", "valid_utc", "tmpf"]
+    columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
     records = [
-        {"station": row.station, "valid_utc": _naive(row.valid_utc), "tmpf": row.tmpf}
+        {
+            "station": row.station,
+            "valid_utc": _naive(row.valid_utc),
+            "tmpf": row.tmpf,
+            "max_6h_f": row.max_6h_f,
+            "min_6h_f": row.min_6h_f,
+        }
         for row in rows
     ]
     _replace(
