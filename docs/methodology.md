@@ -251,22 +251,18 @@ null rather than dividing by zero.
 
 ### Why the bootstrap resamples calendar dates, not rows
 
-A single bad NBM cycle does not miss at one station and hit at the other
-39 -- it runs warm or cold everywhere that cycle's guidance touched, because
-the same model run, the same synoptic pattern, and often the same
-observational network drive every station's error that day. Rows within
-an issuance date are correlated; rows across stations on the *same* date
-are correlated with each other in a way that i.i.d. resampling assumes
-away.
+A bad NBM cycle rarely misses at one station and hits at the rest. The
+same model run and the same synoptic pattern drive every station's error
+that day, so errors from different stations on the same issuance date
+are correlated.
 
-Resampling individual verification rows with replacement (row-level
-bootstrap) treats each row as an independent draw, which is only true
-*across* dates, not *within* one. It systematically understates the true
-sampling uncertainty: the resampled dataset still contains roughly the
-same number of "cycle went warm" days as "cycle went cold" days in about
-the same proportion every single time, because the correlated groups
-never move as a unit. The confidence interval comes out narrower than
-reality and can miss the true bias outright.
+Resampling individual verification rows (a row-level bootstrap) treats
+every row as an independent draw. With 40 stations on 60 dates it behaves
+as if it had 2,400 independent errors, when the shared day-to-day
+component has only 60 independent draws. Its standard error shrinks with
+the row count instead of the date count, so the interval comes out far
+too narrow and misses the true bias much more often than its nominal
+rate.
 
 The date-block bootstrap instead resamples **calendar blocks of issuance
 dates** with replacement -- every row sharing a block moves together as
@@ -274,10 +270,9 @@ one unit, preserving whatever correlation exists within a block. Measured
 on synthetic data built to have exactly this day-to-day correlation (a
 day effect shared by all 40 synthetic stations plus independent
 per-station noise, true bias `μ = 0.7`), 200 simulations of a 95% date-block
-interval covered `μ` in the "known-good" 90-99% band that a well-calibrated
-95% interval should hit, while row-level resampling on the identical data
-covered `μ` in only about 30% of simulations -- a large, "materially lower"
-gap, not the usual bootstrap wobble.  (See
+interval covered `μ` in 96.5% of simulations (the test requires 90-99%),
+while row-level resampling on the identical data covered it in 30.5%.
+(See
 `test_date_block_coverage_beats_row_level` in `tests/unit/test_scoring.py`
 for the exact generator and the measured numbers; the module's own
 `_block_bootstrap` is reused for both arms, passing individual-row block
@@ -293,9 +288,9 @@ unit. The bootstrap itself operates on per-block sums (`Σ error`, `Σ
 at `N_BOOT = 2000` replicates. The CI is the ordinary bootstrap percentile
 interval at the requested `ci_level`. A slice with fewer than two distinct
 blocks cannot support a bootstrap at all; its CI is null and
-`no_detectable_bias` defaults to `True` -- conservative, so an
-unestimated interval never gets reported as a confident "no bias" finding
-by omission.
+`no_detectable_bias` defaults to `True`. That choice is conservative: a
+slice whose interval could not be estimated is shown as "no detectable
+bias", never as a detected bias.
 
 Every slice's random draws come from a generator seeded from a stable hash
 (`sha256` of the slice's own key, combined with a fixed base `SEED`), never
@@ -335,15 +330,16 @@ summaries and is not fixed here.
 ### Limitation 2: `BLOCK_DAYS = 1` is not a measured default
 
 `BLOCK_DAYS = 1` treats consecutive issuance dates as independent of each
-other. In practice, forecast errors persist across multi-day weather
-regimes -- a stuck upper-level pattern can bias guidance the same way for
-a week at a time -- so treating every date as its own independent block
-likely understates uncertainty further, just less severely than row-level
-resampling does. `test_block_days_seven_beats_block_days_one_on_ar1_data`
-demonstrates that a longer block length measurably improves coverage on
-serially correlated synthetic data (AR(1) day effect, ρ = 0.8); it proves
-the knob works, not that 7 is the right number for real data. The default
-block length this site actually publishes bias claims with must come from
-a **pre-registered measurement on real verification rows** -- specifically,
-the error autocorrelation by lag, station-by-station -- before it can be
-trusted. That measurement is a follow-up issue, not part of this slice.
+other. Forecast errors persist across multi-day weather regimes, since a
+stuck upper-level pattern can bias guidance the same way for a week, so
+per-date intervals are too narrow whenever that persistence is real. How
+much it matters is not small:
+`test_block_days_seven_beats_block_days_one_on_ar1_data` gives the shared
+day effect AR(1) persistence with ρ = 0.8, and nominal 95% intervals then
+cover the true bias in 48% of simulations with 1-day blocks and 82% with
+7-day blocks. That test proves the knob works, not that 7 is the right
+number for real data. The default block length used for any published
+bias claim must come from a **pre-registered measurement on real
+verification rows**: the persistence of the daily cross-station mean
+error, by variable and lead. That measurement is a follow-up issue and
+blocks the public launch.
