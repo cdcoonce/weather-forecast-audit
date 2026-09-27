@@ -343,3 +343,71 @@ bias claim must come from a **pre-registered measurement on real
 verification rows**: the persistence of the daily cross-station mean
 error, by variable and lead. That measurement is a follow-up issue and
 blocks the public launch.
+
+## Regime boundaries
+
+Every `fct_forecast_verification` row is tagged with two independent
+regime boundaries (issue #12), because both change bias in ways that read
+as unexplained drift if left untagged: an NBM version upgrade changes the
+underlying model, and the archived-cycle changeover changes which run
+"nearest 12Z" means.
+
+### NBM operational versions
+
+`dbt/seeds/nbm_versions.csv` lists every NBM operational version from the
+archive start (2020-09-29) onward. Each row cites the NWS Service Change
+Notice (SCN) that announced the version, following any delay chain to its
+final notice. The boundary itself does not come from the notice. It
+comes from the archived bulletins, because an SCN date is a plan, not a
+record.
+
+Each NBS station block's header names the version that produced it
+(`KPHX    NBM V4.3 NBS GUIDANCE    4/30/2026  1300 UTC`). AWS Open Data
+keeps one NBS text file per hourly run, uniform in version, so
+`scripts/probe_nbm_version_headers.py` reads the first 4 KB of every
+hourly run around each announced date. The boundary is the **first stable
+run**: the earliest run showing the new version after which no run
+reverts. The rule was fixed before any data was read. The details, raw
+CSVs and results are in `docs/analysis/2026-09-27-nbm-version-headers/`.
+
+| version | announced (SCN) | first stable run (headers) | isolated flips before it |
+| --- | --- | --- | --- |
+| v4.0 | 2020-09-29 12Z ([SCN 20-78](https://www.weather.gov/media/notification/pdf2/scn20-78nbm_v4_aaa.pdf)) | 2020-09-29 12Z | 0 |
+| v4.1 | 2023-01-17 12Z ([SCN 22-131](https://www.weather.gov/media/notification/pdf2/scn22-131_nbm_v4.1.pdf)) | 2023-01-17 12Z | 0 |
+| v4.2 | 2024-05-15 12Z ([SCN 24-41](https://www.weather.gov/media/notification/pdf_2023_24/scn24-41_nbm_v4.2.pdf)) | 2024-05-15 **11Z** | 9 |
+| v4.3 | 2025-05-27 12Z ([SCN 25-34](https://www.weather.gov/media/notification/pdf_2025/nbm_v4.3_scn_aaa.pdf)) | 2025-05-27 12Z | 5 |
+| v5.0 | 2026-04-30 13Z ([SCN 26-24 AAC](https://www.weather.gov/media/notification/pdf_2026/scn26-24_Updated_NBM_V5.0_aac.pdf)) | **2026-05-05 12Z** | 8 |
+
+Three things in this table are not in any notice:
+
+- **v5.0 took over five days after its final SCN date.** Every bulletin
+  from 2026-04-30 13Z through 2026-05-05 11Z is V4.3, apart from eight
+  isolated V5.0 runs. The header date matches MDL's own announcement ("On
+  May 5, 2026"). The IEM archive's 2026-04-30 cycle changeover
+  (`nbs_cycle_regimes.csv`) is therefore an archive change, not the v5.0
+  rollout; the two regime boundaries are independent.
+- **The later upgrades alternated between versions for about a day before
+  settling.** Isolated new-version runs reverted to the old version. None
+  of them fell on this project's canonical cycle (13Z, or 12Z from
+  2026-04-30), so each canonical run carries one unambiguous version.
+- **v4.0's first stable run equals the independently probed archive
+  start.** The day the archive first carries `txn` for every registry
+  station (`nbs_archive.csv`) is the v4.0 rollout day.
+
+`fct_forecast_verification.nbm_version` is joined by `runtime_utc` against
+this seed's half-open `[valid_from_utc, valid_to_utc)`.
+
+### Archived cycle regimes
+
+`dbt/seeds/nbs_cycle_regimes.csv` (issue #5/#7) is which archived NBS
+cycle counts as "nearest 12Z" for a run date; see that seed and
+`src/weather_forecast_audit/regimes.py` for its own documentation.
+`fct_forecast_verification.cycle_regime` is joined by `run_date` against
+this seed's inclusive `[valid_from, valid_to]`.
+
+### Combined annotations
+
+`dim_regime_boundaries` unions both seeds into one `(kind, id, starts_at,
+verified, citation)` boundary list, for a future export (issue #9) to
+read as time-series annotations. It does not itself build an export or
+change any export schema version.

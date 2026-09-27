@@ -1,0 +1,42 @@
+version: 2
+
+seeds:
+  - name: nbm_versions
+    description: >
+      NBM operational versions and the first run each one actually produced.
+      `source_url` cites the NWS Service Change Notice (the final notice in
+      its delay chain) that announced the version. `valid_from_utc` is not
+      the announced date: it is the first stable run whose archived NBS
+      bulletin header carries the new version (AWS noaa-nbm-grib2-pds
+      text/blend_nbstx), because announced dates can be wrong -- v5.0 was
+      announced for 2026-04-30 13Z and actually took over 2026-05-05 12Z
+      (docs/analysis/2026-09-27-nbm-version-headers/). Each row is a
+      half-open `[valid_from_utc, valid_to_utc)` window (`valid_to_utc`
+      null for the current version). `verified = true` means the boundary
+      is confirmed by bulletin headers; `false` would mark one that could
+      not be; issue #12. Read by
+      `dbt/models/marts/fct_forecast_verification.sql` and
+      `dbt/models/marts/dim_regime_boundaries.sql`.
+    config:
+      column_types:
+        nbm_version: varchar
+        valid_from_utc: timestamp
+        valid_to_utc: timestamp
+        verified: boolean
+        source_url: varchar
+        note: varchar
+    columns:
+      - name: nbm_version
+        data_tests:
+          - unique
+          - not_null
+      - name: valid_from_utc
+        data_tests:
+          - unique
+          - not_null
+      - name: verified
+        data_tests:
+          - not_null
+      - name: source_url
+        data_tests:
+          - not_null
