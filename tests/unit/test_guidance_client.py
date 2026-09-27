@@ -124,6 +124,43 @@ def test_fetch_guidance_missing_run_gap_when_canonical_rows_absent() -> None:
     assert gap.expected == "2023-07-14T13:00Z"
 
 
+def test_fetch_guidance_no_txn_gap_when_canonical_run_has_rows_but_no_txn() -> None:
+    # Pre-v4.0 NBM (before autumn 2020) carries the daily max/min in a column
+    # named `n_x`, not `txn` (build spec #7 orchestrator redirect); a
+    # canonical run with rows but an all-null txn column must not pass
+    # silently as if it had usable guidance.
+    body = _read("nbs_kphx_2023-07-14.csv")
+    lines = body.decode("utf-8").splitlines(keepends=True)
+    header, data_lines = lines[0], lines[1:]
+    txn_index = header.rstrip("\n").split(",").index("txn")
+
+    def _blank_txn(line: str) -> str:
+        if not line.startswith("2023-07-14 13:00:00"):
+            return line
+        cols = line.rstrip("\n").split(",")
+        cols[txn_index] = ""
+        return ",".join(cols) + "\n"
+
+    blanked_body = (header + "".join(_blank_txn(line) for line in data_lines)).encode(
+        "utf-8"
+    )
+
+    fetcher = FakeFetcher(
+        [(lambda u: "2023-07" in u, HttpResponse(200, blanked_body))]
+    )
+    result = fetch_guidance(
+        "KPHX", date(2023, 7, 14), date(2023, 7, 14), fetcher, REGIMES
+    )
+
+    assert result.rows  # the canonical run's rows are still kept
+    assert all(row.txn is None for row in result.rows)
+    assert len(result.gaps) == 1
+    gap = result.gaps[0]
+    assert gap.reason == "no_txn"
+    assert gap.station == "KPHX"
+    assert gap.expected == "2023-07-14T13:00Z"
+
+
 def test_fetch_guidance_empty_body_emits_missing_run_for_every_day() -> None:
     fetcher = FakeFetcher(
         [(lambda _u: True, HttpResponse(200, _read("nbs_kphx_empty.csv")))]
