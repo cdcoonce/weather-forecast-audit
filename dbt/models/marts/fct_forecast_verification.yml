@@ -4,10 +4,13 @@ models:
   - name: fct_forecast_verification
     description: >
       Daily max/min temperature forecast verification, one row per station,
-      run date, lead day (1-3), variable, and source. v1 only populates
-      source = 'raw_nbm'; baseline/challenger sources land in a later slice.
-      Every row is tagged with `nbm_version` and `cycle_regime`, its NBM
-      operational version and archived-cycle regime boundaries (issue #12).
+      run date, lead day (1-3), variable, and source. `raw_nbm` rows come
+      from int_raw_verification_pairs; a `baseline` (issue #18) or
+      `challenger` row is a model prediction joined back to its raw pair on
+      (station, run_date, lead_day, variable), inheriting every
+      observation-side column from it. Every row is tagged with
+      `nbm_version` and `cycle_regime`, its NBM operational version and
+      archived-cycle regime boundaries (issue #12).
     data_tests:
       - unique_combination_of_columns:
           arguments:
@@ -77,266 +80,71 @@ models:
                 field: regime_id
 
 unit_tests:
-  - name: test_nbm_version_boundary_tagged_correctly
+  - name: test_baseline_prediction_joins_to_its_raw_row
     description: >
-      A run issued the day before and the day after a real NBM upgrade
-      (v4.1 -> v4.2, SCN 24-41, 2024-05-15 1200 UTC) gets the correct
-      nbm_version tag. Both runs fall in the same (single, whole-archive)
-      cycle regime, so cycle_regime is asserted equal on both to prove the
-      two joins are independent. A third run mocked at the exact boundary
-      timestamp (2024-05-15 12:00:00, the first v4.2 run per SCN 24-41)
-      proves the boundary is half-open: it must land in v4.2, not v4.1,
-      and must match exactly one version row, not both.
+      One raw_nbm row plus one baseline prediction for the same (station,
+      run_date, lead_day, variable) gives exactly two output rows: the raw
+      row unchanged, and a baseline row whose error_f equals the corrected
+      forecast minus the same observed value inherited from the raw row
+      (build spec #18 D3.4).
     model: fct_forecast_verification
     given:
-      - input: ref('int_window_matched_pairs')
+      - input: ref('int_raw_verification_pairs')
         rows:
-          - station: KDEN
-            runtime_utc: "2024-05-14 13:00:00"
+          - station: KPHX
+            run_date: "2024-07-01"
             lead_day: 1
             variable: max
+            source: raw_nbm
             cycle_hour: 13
-            target_date: "2024-05-15"
-            forecast_f: 70.0
+            runtime_utc: "2024-07-01 13:00:00"
+            target_date: "2024-07-02"
+            forecast_f: 110.0
             spread_f: 3.0
-            observed_f: 71.0
-            window_start_utc: "2024-05-14 12:00:00"
-            window_end_utc: "2024-05-15 06:00:00"
+            observed_f: 108.0
+            window_start_utc: "2024-07-01 12:00:00"
+            window_end_utc: "2024-07-02 06:00:00"
             n_obs: 3
             hours_covered: 18
             scorable: true
             extreme_source: metar_6h
             periods_found: 3
-            hourly_observed_f: 70.5
-            cli_f: 71.0
-          - station: KDEN
-            runtime_utc: "2024-05-15 13:00:00"
+            hourly_observed_f: 107.5
+            cli_f: 108.0
+            error_f: 2.0
+            nbm_version: v4.3
+            cycle_regime: iem_01_07_13_19
+      - input: ref('stg_model_predictions')
+        rows:
+          - station: KPHX
+            run_date: "2024-07-01"
+            runtime_utc: "2024-07-01 13:00:00"
             lead_day: 1
             variable: max
-            cycle_hour: 13
-            target_date: "2024-05-16"
-            forecast_f: 72.0
-            spread_f: 3.0
-            observed_f: 73.0
-            window_start_utc: "2024-05-15 12:00:00"
-            window_end_utc: "2024-05-16 06:00:00"
-            n_obs: 3
-            hours_covered: 18
-            scorable: true
-            extreme_source: metar_6h
-            periods_found: 3
-            hourly_observed_f: 72.5
-            cli_f: 73.0
-          - station: KDEN
-            runtime_utc: "2024-05-15 12:00:00"
-            lead_day: 1
-            variable: min
-            cycle_hour: 12
-            target_date: "2024-05-16"
-            forecast_f: 71.0
-            spread_f: 3.0
-            observed_f: 72.0
-            window_start_utc: "2024-05-15 11:00:00"
-            window_end_utc: "2024-05-16 05:00:00"
-            n_obs: 3
-            hours_covered: 18
-            scorable: true
-            extreme_source: metar_6h
-            periods_found: 3
-            hourly_observed_f: 71.5
-            cli_f: 72.0
-      - input: ref('nbm_versions')
-        rows:
-          - nbm_version: v4.1
-            valid_from_utc: "2023-01-17 12:00:00"
-            valid_to_utc: "2024-05-15 12:00:00"
-            verified: true
-            source_url: https://example.test/v4.1
-            note: fixture
-          - nbm_version: v4.2
-            valid_from_utc: "2024-05-15 12:00:00"
-            valid_to_utc: "2025-05-27 12:00:00"
-            verified: true
-            source_url: https://example.test/v4.2
-            note: fixture
-      - input: ref('nbs_cycle_regimes')
-        rows:
-          - regime_id: iem_01_07_13_19
-            valid_from: "2020-09-29"
-            valid_to: "2026-04-29"
-            canonical_cycle_hour: 13
-            archived_cycles: "1,7,13,19"
-            note: fixture
+            target_date: "2024-07-02"
+            source: baseline
+            forecast_f: 107.5
+            raw_forecast_f: 110.0
+            retrained_on: "2024-07-01"
+            trained_through: "2024-06-30 06:00:00"
+            fallback: false
+            params: '{"window_days": 30, "min_pairs": 15}'
+            generated_at: "2024-07-01 13:05:00"
     expect:
       rows:
-        - station: KDEN
-          runtime_utc: "2024-05-14 13:00:00"
-          nbm_version: v4.1
-          cycle_regime: iem_01_07_13_19
-        - station: KDEN
-          runtime_utc: "2024-05-15 13:00:00"
-          nbm_version: v4.2
-          cycle_regime: iem_01_07_13_19
-        - station: KDEN
-          runtime_utc: "2024-05-15 12:00:00"
-          nbm_version: v4.2
-          cycle_regime: iem_01_07_13_19
-
-  - name: test_cycle_regime_boundary_tagged_correctly
-    description: >
-      A run issued the day before and the day after the 2026-04-29/04-30
-      archived-cycle changeover (nbs_cycle_regimes.csv, probed per issue #7)
-      gets the correct cycle_regime tag. Both runs fall under NBM v4.3 (the
-      cycle changeover is an IEM archive change, not the v5.0 rollout), so
-      nbm_version is asserted equal on both. A third run (2026-04-29
-      13Z, lead_day 1, so target_date 2026-04-30) proves cycle_regime keys
-      off run_date, not target_date: it must stay in the run_date's regime
-      even though its target_date falls in the newer one. The canonical 12Z
-      runs on 2026-05-04 and 2026-05-05 straddle the real v5.0 rollout (first
-      stable V5.0 bulletin header 2026-05-05 12Z,
-      docs/analysis/2026-09-27-nbm-version-headers/); the second sits exactly
-      on valid_from_utc and exercises the open-ended (valid_to null) branch.
-    model: fct_forecast_verification
-    given:
-      - input: ref('int_window_matched_pairs')
-        rows:
-          - station: KDEN
-            runtime_utc: "2026-04-29 13:00:00"
-            lead_day: 1
-            variable: min
-            cycle_hour: 13
-            target_date: "2026-04-29"
-            forecast_f: 40.0
-            spread_f: 3.0
-            observed_f: 41.0
-            window_start_utc: "2026-04-29 00:00:00"
-            window_end_utc: "2026-04-29 18:00:00"
-            n_obs: 3
-            hours_covered: 18
-            scorable: true
-            extreme_source: metar_6h
-            periods_found: 3
-            hourly_observed_f: 40.5
-            cli_f: 41.0
-          - station: KDEN
-            runtime_utc: "2026-04-30 12:00:00"
-            lead_day: 1
-            variable: min
-            cycle_hour: 12
-            target_date: "2026-04-30"
-            forecast_f: 42.0
-            spread_f: 3.0
-            observed_f: 43.0
-            window_start_utc: "2026-04-30 00:00:00"
-            window_end_utc: "2026-04-30 18:00:00"
-            n_obs: 3
-            hours_covered: 18
-            scorable: true
-            extreme_source: metar_6h
-            periods_found: 3
-            hourly_observed_f: 42.5
-            cli_f: 43.0
-          - station: KDEN
-            runtime_utc: "2026-04-29 13:00:00"
-            lead_day: 1
-            variable: max
-            cycle_hour: 13
-            target_date: "2026-04-30"
-            forecast_f: 68.0
-            spread_f: 3.0
-            observed_f: 69.0
-            window_start_utc: "2026-04-29 12:00:00"
-            window_end_utc: "2026-04-30 06:00:00"
-            n_obs: 3
-            hours_covered: 18
-            scorable: true
-            extreme_source: metar_6h
-            periods_found: 3
-            hourly_observed_f: 68.5
-            cli_f: 69.0
-          - station: KDEN
-            runtime_utc: "2026-05-04 12:00:00"
-            lead_day: 1
-            variable: max
-            cycle_hour: 12
-            target_date: "2026-05-05"
-            forecast_f: 55.0
-            spread_f: 3.0
-            observed_f: 56.0
-            window_start_utc: "2026-05-05 12:00:00"
-            window_end_utc: "2026-05-06 06:00:00"
-            n_obs: 3
-            hours_covered: 18
-            scorable: true
-            extreme_source: metar_6h
-            periods_found: 3
-            hourly_observed_f: 55.5
-            cli_f: 56.0
-          - station: KDEN
-            runtime_utc: "2026-05-05 12:00:00"
-            lead_day: 1
-            variable: max
-            cycle_hour: 12
-            target_date: "2026-05-06"
-            forecast_f: 57.0
-            spread_f: 3.0
-            observed_f: 58.0
-            window_start_utc: "2026-05-06 12:00:00"
-            window_end_utc: "2026-05-07 06:00:00"
-            n_obs: 3
-            hours_covered: 18
-            scorable: true
-            extreme_source: metar_6h
-            periods_found: 3
-            hourly_observed_f: 57.5
-            cli_f: 58.0
-      - input: ref('nbm_versions')
-        rows:
-          - nbm_version: v4.3
-            valid_from_utc: "2025-05-27 12:00:00"
-            valid_to_utc: "2026-05-05 12:00:00"
-            verified: true
-            source_url: https://example.test/v4.3
-            note: fixture
-          - nbm_version: v5.0
-            valid_from_utc: "2026-05-05 12:00:00"
-            valid_to_utc: null
-            verified: true
-            source_url: https://example.test/v5.0
-            note: fixture
-      - input: ref('nbs_cycle_regimes')
-        rows:
-          - regime_id: iem_01_07_13_19
-            valid_from: "2020-09-29"
-            valid_to: "2026-04-29"
-            canonical_cycle_hour: 13
-            archived_cycles: "1,7,13,19"
-            note: fixture
-          - regime_id: iem_hourly_then_00_06_12_18
-            valid_from: "2026-04-30"
-            valid_to: null
-            canonical_cycle_hour: 12
-            archived_cycles: "0,6,12,18"
-            note: fixture
-    expect:
-      rows:
-        - station: KDEN
-          runtime_utc: "2026-04-29 13:00:00"
-          nbm_version: v4.3
-          cycle_regime: iem_01_07_13_19
-        - station: KDEN
-          runtime_utc: "2026-04-30 12:00:00"
-          nbm_version: v4.3
-          cycle_regime: iem_hourly_then_00_06_12_18
-        - station: KDEN
-          runtime_utc: "2026-04-29 13:00:00"
-          nbm_version: v4.3
-          cycle_regime: iem_01_07_13_19
-        - station: KDEN
-          runtime_utc: "2026-05-04 12:00:00"
-          nbm_version: v4.3
-          cycle_regime: iem_hourly_then_00_06_12_18
-        - station: KDEN
-          runtime_utc: "2026-05-05 12:00:00"
-          nbm_version: v5.0
-          cycle_regime: iem_hourly_then_00_06_12_18
+        - station: KPHX
+          run_date: "2024-07-01"
+          lead_day: 1
+          variable: max
+          source: raw_nbm
+          forecast_f: 110.0
+          observed_f: 108.0
+          error_f: 2.0
+        - station: KPHX
+          run_date: "2024-07-01"
+          lead_day: 1
+          variable: max
+          source: baseline
+          forecast_f: 107.5
+          observed_f: 108.0
+          error_f: -0.5

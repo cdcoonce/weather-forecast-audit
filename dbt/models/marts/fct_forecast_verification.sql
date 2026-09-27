@@ -1,59 +1,59 @@
--- Grain: station x run_date x lead_day x variable x source. v1 only
--- populates source = 'raw_nbm' and lead_day 1-3 (lead 0 and non-canonical
--- rows are dropped here; they still exist upstream in raw/staging).
---
--- Each row is tagged with the NBM operational version
--- (dbt/seeds/nbm_versions.csv) covering its runtime_utc and the archived
--- cycle regime (dbt/seeds/nbs_cycle_regimes.csv) covering its run_date
--- (issue #12). Both seeds are non-overlapping, gap-free ranges over the
--- archive's history, so these left joins add columns without changing the
--- grain -- the unique_combination_of_columns test on (station, run_date,
--- lead_day, variable, source) below guards that.
+-- Grain: station x run_date x lead_day x variable x source. raw_nbm rows
+-- come from int_raw_verification_pairs verbatim; every other source's rows
+-- (issue #18: baseline, and later challenger) are a model prediction joined
+-- back to its raw verification pair on (station, run_date, lead_day,
+-- variable), which is where every observation-side column (observed_f, the
+-- windows, scorable, extreme_source, ...) plus nbm_version and
+-- cycle_regime come from. This keeps the lineage int_raw_verification_pairs
+-- -> raw.model_predictions -> fct acyclic: the Python side that produces
+-- predictions reads int_raw_verification_pairs, never this model.
 {{ config(materialized='table') }}
 
-with base as (
+with raw_pairs as (
+    select * from {{ ref('int_raw_verification_pairs') }}
+),
+
+predictions as (
+    select * from {{ ref('stg_model_predictions') }}
+),
+
+prediction_rows as (
     select
-        station,
-        cast(runtime_utc as date) as run_date,
-        lead_day,
-        variable,
-        'raw_nbm' as source,
-        cycle_hour,
-        runtime_utc,
-        target_date,
-        forecast_f,
-        spread_f,
-        observed_f,
-        window_start_utc,
-        window_end_utc,
-        n_obs,
-        hours_covered,
-        scorable,
-        extreme_source,
-        periods_found,
-        hourly_observed_f,
-        cli_f,
-        case when scorable then forecast_f - observed_f end as error_f
-    from {{ ref('int_window_matched_pairs') }}
-    where lead_day between 1 and 3
+        raw_pairs.station,
+        raw_pairs.run_date,
+        raw_pairs.lead_day,
+        raw_pairs.variable,
+        predictions.source,
+        raw_pairs.cycle_hour,
+        raw_pairs.runtime_utc,
+        raw_pairs.target_date,
+        predictions.forecast_f,
+        raw_pairs.spread_f,
+        raw_pairs.observed_f,
+        raw_pairs.window_start_utc,
+        raw_pairs.window_end_utc,
+        raw_pairs.n_obs,
+        raw_pairs.hours_covered,
+        raw_pairs.scorable,
+        raw_pairs.extreme_source,
+        raw_pairs.periods_found,
+        raw_pairs.hourly_observed_f,
+        raw_pairs.cli_f,
+        case
+            when raw_pairs.scorable
+                then predictions.forecast_f - raw_pairs.observed_f
+        end as error_f,
+        raw_pairs.nbm_version,
+        raw_pairs.cycle_regime
+    from predictions
+    inner join raw_pairs
+        on
+            predictions.station = raw_pairs.station
+            and predictions.run_date = raw_pairs.run_date
+            and predictions.lead_day = raw_pairs.lead_day
+            and predictions.variable = raw_pairs.variable
 )
 
-select
-    base.*,
-    nbm_versions.nbm_version,
-    nbs_cycle_regimes.regime_id as cycle_regime
-from base
-left join {{ ref('nbm_versions') }} as nbm_versions
-    on
-        base.runtime_utc >= nbm_versions.valid_from_utc
-        and (
-            nbm_versions.valid_to_utc is null
-            or base.runtime_utc < nbm_versions.valid_to_utc
-        )
-left join {{ ref('nbs_cycle_regimes') }} as nbs_cycle_regimes
-    on
-        base.run_date >= nbs_cycle_regimes.valid_from
-        and (
-            nbs_cycle_regimes.valid_to is null
-            or base.run_date <= nbs_cycle_regimes.valid_to
-        )
+select * from raw_pairs
+union all
+select * from prediction_rows

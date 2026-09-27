@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
+import polars as pl
 import pytest
 
 from weather_forecast_audit import warehouse
@@ -46,6 +47,7 @@ def test_init_db_is_idempotent(conn: duckdb.DuckDBPyConnection) -> None:
         "cli_daily",
         "ingest_gaps",
         "resolved_windows",
+        "model_predictions",
     }
 
 
@@ -424,3 +426,115 @@ def test_init_db_upgrades_resolved_windows_old_schema(tmp_path: Path) -> None:
         "hourly_observed_f from raw.resolved_windows"
     ).fetchone()
     assert row == ("KPHX", 117.0, None, None, None)
+
+
+# -- load_predictions (build spec #18 D3.1) -----------------------------------
+
+
+def _prediction_rows(
+    run_dates: list[date], *, source: str = "baseline", forecast_f: float = 60.0
+) -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "station": ["KPHX"] * len(run_dates),
+            "run_date": run_dates,
+            "runtime_utc": [_utc("2024-01-01 13:00:00")] * len(run_dates),
+            "lead_day": [1] * len(run_dates),
+            "variable": ["max"] * len(run_dates),
+            "target_date": [
+                d + (date(2024, 1, 2) - date(2024, 1, 1)) for d in run_dates
+            ],
+            "source": [source] * len(run_dates),
+            "forecast_f": [forecast_f] * len(run_dates),
+            "raw_forecast_f": [forecast_f + 2.0] * len(run_dates),
+            "retrained_on": run_dates,
+            "trained_through": [_utc("2024-01-01 06:00:00")] * len(run_dates),
+            "fallback": [False] * len(run_dates),
+            "params": ['{"window_days": 30, "min_pairs": 15}'] * len(run_dates),
+        }
+    )
+
+
+def test_load_predictions_is_idempotent(conn: duckdb.DuckDBPyConnection) -> None:
+    rows = _prediction_rows([date(2024, 1, 1), date(2024, 1, 2)])
+    now = _naive_now("2024-06-01 00:00:00")
+
+    warehouse.load_predictions(
+        conn, "baseline", date(2024, 1, 1), date(2024, 1, 2), rows, now=now
+    )
+    warehouse.load_predictions(
+        conn, "baseline", date(2024, 1, 1), date(2024, 1, 2), rows, now=now
+    )
+
+    count = conn.execute(
+        "select count(*) from raw.model_predictions where source = 'baseline'"
+    ).fetchone()
+    assert count == (2,)
+
+
+def test_load_predictions_replaces_only_its_own_run_date_range_for_source(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    now = _naive_now("2024-06-01 00:00:00")
+    all_days = [date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 3)]
+    warehouse.load_predictions(
+        conn,
+        "baseline",
+        date(2024, 1, 1),
+        date(2024, 1, 3),
+        _prediction_rows(all_days, forecast_f=60.0),
+        now=now,
+    )
+
+    # A narrower re-load of just 01-02 must replace only that date, and
+    # leave the other source untouched.
+    warehouse.load_predictions(
+        conn,
+        "challenger",
+        date(2024, 1, 1),
+        date(2024, 1, 3),
+        _prediction_rows(all_days, source="challenger", forecast_f=70.0),
+        now=now,
+    )
+    warehouse.load_predictions(
+        conn,
+        "baseline",
+        date(2024, 1, 2),
+        date(2024, 1, 2),
+        _prediction_rows([date(2024, 1, 2)], forecast_f=99.0),
+        now=now,
+    )
+
+    baseline_rows = conn.execute(
+        "select run_date, forecast_f from raw.model_predictions "
+        "where source = 'baseline' order by run_date"
+    ).fetchall()
+    assert baseline_rows == [
+        (date(2024, 1, 1), 60.0),
+        (date(2024, 1, 2), 99.0),
+        (date(2024, 1, 3), 60.0),
+    ]
+
+    challenger_count = conn.execute(
+        "select count(*) from raw.model_predictions where source = 'challenger'"
+    ).fetchone()
+    assert challenger_count == (3,)
+
+
+def test_load_predictions_stamps_generated_at(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    now = _naive_now("2024-06-01 12:00:00")
+    warehouse.load_predictions(
+        conn,
+        "baseline",
+        date(2024, 1, 1),
+        date(2024, 1, 1),
+        _prediction_rows([date(2024, 1, 1)]),
+        now=now,
+    )
+
+    generated_at = conn.execute(
+        "select generated_at from raw.model_predictions"
+    ).fetchone()
+    assert generated_at == (now,)

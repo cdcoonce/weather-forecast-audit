@@ -416,6 +416,83 @@ history). `trained_through < runtime_utc` holds for every non-null
 prediction by construction of the cutoff, not as a separately-imposed
 constraint.
 
+## Baseline correction (rolling bias)
+
+`weather_forecast_audit.baseline.BaselineModel` (issue #18) is the
+transparent floor an ML challenger must beat (PRD module 7): for each
+(`station`, `lead_day`, `variable`) group it estimates a rolling mean of
+signed error (`forecast_f - observed_f`) from the trailing window of
+scorable training pairs the walk-forward evaluator's leakage guard (#17)
+allows it to see at each retrain, and subtracts that estimate from the raw
+forecast. It is driven only through `walk_forward`, never called directly
+in production, so the same lead-aware cutoff applies to it as to any other
+model.
+
+### The rule, and W and k
+
+`fit` computes `anchor = max(window_end_utc)` over the whole training set
+it is given, then keeps the pairs with `window_end_utc > anchor -
+window_days` (strictly greater, `window_days` as a timedelta in days). For
+each (`station`, `lead_day`, `variable`) group among those kept pairs,
+`bias = mean(forecast_f - observed_f)` and `n_pairs = count()`. Training
+pairs are sorted ascending by `window_end_utc` (the evaluator's own
+contract), so the window's start is a single `searchsorted`, not a scan of
+the full training set. `predict_detail` then reports, per row, `forecast_f
+= raw - bias` when the row's group has `n_pairs >= min_pairs`, else the raw
+forecast unchanged and `fallback = true`.
+
+`WINDOW_DAYS = 30` and `MIN_PAIRS = 15` are named, pre-registered
+constants, fixed **before** any scoring and never tuned on backfill skill
+-- doing so would fit the evaluation itself:
+
+- **W = 30** is about one month: short enough to follow the seasonal drift
+  the audit exists to show (biases differ by season at the same station),
+  and long enough that the standard error of the mean error is about
+  2.5°F/√30 ≈ 0.45°F under independence -- below the 0.5-1.5°F biases being
+  corrected.
+- **k = 15** is half the window: a station with patchy data is corrected
+  only when its estimate has SE ≲ 0.65°F; otherwise it falls back to raw.
+
+Sensitivity at W = 60 is reported in the PR as exploratory only and does not
+change these defaults. W = 14 was also planned, but with k = 15 it is not a
+valid configuration. A group gains at most one pair per day, so a window
+shorter than k can never reach k, and every group would silently fall back to
+raw. `BaselineModel` now rejects `window_days < min_pairs` outright.
+
+### Fallback
+
+A group falls back to the raw forecast -- flagged via `fallback = true` in
+`predict_detail`'s output and in `raw.model_predictions` -- whenever it has
+no training-time estimate at all (absent from the fitted window, or the
+training set was empty), or its `n_pairs` is below `min_pairs`. This is a
+per-group decision made independently at every retrain: a group can move
+between corrected and fallback across the backfill as its trailing history
+grows or thins.
+
+### Storage: `int -> predictions -> fct`, no lineage cycle
+
+Predictions are written by `wfa predict baseline` to a new
+`raw.model_predictions` table (`weather_forecast_audit.warehouse.
+load_predictions`, idempotent by `(source, run_date range)`) and read back
+into `fct_forecast_verification` through a new intermediate model,
+`int_raw_verification_pairs` -- the `raw_nbm`-only body
+`fct_forecast_verification.sql` used to be, split out unchanged -- and a
+new staging model, `stg_model_predictions`, over
+`raw.model_predictions`. `fct_forecast_verification` now selects
+`int_raw_verification_pairs` verbatim, `union all` each prediction row
+joined back to its raw pair on (`station`, `run_date`, `lead_day`,
+`variable`) to inherit every observation-side column (`observed_f`, the
+verification windows, `scorable`, `extreme_source`, `nbm_version`,
+`cycle_regime`, ...); its own values are `source`, the corrected
+`forecast_f`, and `error_f = forecast_f - observed_f` when scorable.
+
+The Python side (`wfa predict baseline`) reads `int_raw_verification_pairs`
+only, never `fct_forecast_verification` itself: that keeps the lineage
+`int_raw_verification_pairs -> raw.model_predictions ->
+fct_forecast_verification` acyclic, which matters once a later slice (#20)
+wires this into a Dagster asset graph. No Dagster asset exists for
+predictions in this slice.
+
 ## Regime boundaries
 
 Every `fct_forecast_verification` row is tagged with two independent

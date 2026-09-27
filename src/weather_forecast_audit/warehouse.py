@@ -59,6 +59,23 @@ create table if not exists raw.ingest_gaps (
     first_seen timestamp
 );
 
+create table if not exists raw.model_predictions (
+    station varchar not null,
+    run_date date not null,
+    runtime_utc timestamp not null,
+    lead_day integer not null,
+    variable varchar not null,
+    target_date date not null,
+    source varchar not null,
+    forecast_f double not null,
+    raw_forecast_f double not null,
+    retrained_on date,
+    trained_through timestamp,
+    fallback boolean not null,
+    params varchar,
+    generated_at timestamp not null
+);
+
 create table if not exists raw.resolved_windows (
     station varchar not null,
     runtime_utc timestamp not null,
@@ -359,3 +376,59 @@ def load_resolved_windows(
         end,
         records,
     )
+
+
+_MODEL_PREDICTION_COLUMNS = [
+    "station",
+    "run_date",
+    "runtime_utc",
+    "lead_day",
+    "variable",
+    "target_date",
+    "source",
+    "forecast_f",
+    "raw_forecast_f",
+    "retrained_on",
+    "trained_through",
+    "fallback",
+    "params",
+    "generated_at",
+]
+
+
+def load_predictions(
+    conn: duckdb.DuckDBPyConnection,
+    source: str,
+    start: date,
+    end: date,
+    rows_frame: pl.DataFrame,
+    *,
+    now: datetime,
+) -> None:
+    """Idempotently replace `source`'s prediction rows for `run_date` in `[start, end]`.
+
+    One transaction: delete this `source`'s existing `raw.model_predictions`
+    rows in the `run_date` range, then insert `rows_frame` (every other
+    source's rows, and rows for other date ranges, are left untouched).
+    `rows_frame` must carry every column but `generated_at`, which is
+    stamped here from `now` (a naive-UTC datetime, the caller's clock) so a
+    re-load is reproducible rather than depending on wall-clock time read
+    inside this function.
+    """
+    frame = rows_frame.with_columns(pl.lit(now).alias("generated_at"))  # noqa: F841
+    conn.execute("begin transaction")
+    try:
+        conn.execute(
+            "delete from raw.model_predictions where source = ? "
+            "and run_date between ? and ?",
+            [source, start, end],
+        )
+        column_list = ", ".join(_MODEL_PREDICTION_COLUMNS)
+        conn.execute(
+            f"insert into raw.model_predictions ({column_list}) "
+            f"select {column_list} from frame"
+        )
+        conn.execute("commit")
+    except Exception:
+        conn.execute("rollback")
+        raise

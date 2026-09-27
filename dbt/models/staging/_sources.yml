@@ -21,3 +21,9 @@ sources:
           Verification windows and observed extremes computed by
           weather_forecast_audit.resolver, one row per (station, runtime,
           ftime) txn guidance row.
+      - name: model_predictions
+        description: >
+          Corrected forecasts written by `wfa predict` (issue #18), one row
+          per (station, run_date, lead_day, variable, source). Joined to its
+          raw verification pair in fct_forecast_verification via
+          stg_model_predictions, never read directly by any mart.
