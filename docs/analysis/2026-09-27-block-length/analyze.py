@@ -527,9 +527,15 @@ def _write_results_md(
     else:
         lines.append(f"## BLOCK_DAYS\n\n`BLOCK_DAYS = {chosen_block_days}`.")
     lines.append("")
+    # The interpretation is written by hand in INTERPRETATION.md beside this
+    # script and included verbatim, so regenerating RESULTS.md keeps it.
+    interpretation = Path(__file__).resolve().parent / "INTERPRETATION.md"
     lines.append("## Interpretation")
     lines.append("")
-    lines.append("(to be written by the conductor)")
+    if interpretation.exists():
+        lines.append(interpretation.read_text().rstrip())
+    else:
+        lines.append("(not yet written: add INTERPRETATION.md and re-run)")
     lines.append("")
 
     (out_dir / "RESULTS.md").write_text("\n".join(lines))
