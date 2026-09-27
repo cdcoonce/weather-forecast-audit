@@ -71,9 +71,17 @@ describe("CityCard", () => {
 
     expect(screen.getByText(/No detectable bias in day-ahead forecasts\./)).toBeInTheDocument();
 
-    const cells = screen.getAllByText(/no detectable bias/i);
-    expect(cells.length).toBeGreaterThan(0);
-    for (const cell of cells) {
+    // Scoped to table cells (<td>), not screen-wide text: the summary <p>
+    // above also says "No detectable bias..." (it's a fixed prop in this
+    // test), and a text-wide query would match that paragraph and never
+    // actually check a single table cell's rendered content.
+    const tableCells = Array.from(document.querySelectorAll("td"));
+    expect(tableCells.length).toBeGreaterThan(0);
+    const noBiasCells = tableCells.filter((cell) =>
+      /no detectable bias/i.test(cell.textContent ?? "")
+    );
+    expect(noBiasCells.length).toBeGreaterThan(0);
+    for (const cell of tableCells) {
       expect(cell.textContent).not.toMatch(/[+−]\d/);
     }
   });
