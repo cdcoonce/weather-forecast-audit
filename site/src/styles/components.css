@@ -132,9 +132,13 @@
   overflow-wrap: break-word;
 }
 
+/* Wide enough for the longest season word ("summer") in the semibold row
+   header, which must never break mid-word; ~94px per lead column remains at
+   400px, enough for an interval like "−1.8 to −0.7". */
 .city-card__table th:first-child,
 .city-card__table td:first-child {
-  width: 4.5rem;
+  width: 5.25rem;
+  white-space: nowrap;
 }
 
 .city-card__table thead th {
