@@ -27,6 +27,11 @@ from typing import Literal
 MIN_HOUR_COVERAGE = 0.75
 WINDOW_HOURS = 18
 
+# PREREG matching rule: "US synoptic reports are issued at about H-9 min", so a
+# 60-minute lookback before H comfortably covers the issuance report without
+# reaching back far enough to catch the *previous* synoptic report.
+SYNOPTIC_REPORT_LOOKBACK = timedelta(minutes=60)
+
 Variable = Literal["max", "min"]
 
 
@@ -47,6 +52,21 @@ class Extreme:
     hours_covered: int
     hours_expected: int
     scorable: bool
+
+
+@dataclass(frozen=True)
+class SixHourExtreme:
+    """The METAR 6-hour-group max/min over a window's three synoptic periods.
+
+    `tiled` is True only when all three periods (see `six_hour_periods`)
+    found a qualifying report; `value_f` is None whenever `tiled` is False,
+    per PREREG's matching rules (mixing tiled and untiled periods would
+    reintroduce exactly the sampling bias the source is meant to avoid).
+    """
+
+    value_f: float | None
+    periods_found: int
+    tiled: bool
 
 
 def _require_aware(value: datetime, name: str) -> None:
@@ -133,3 +153,74 @@ def observed_extreme(
         hours_expected=WINDOW_HOURS,
         scorable=scorable,
     )
+
+
+def six_hour_periods(window: Window) -> tuple[datetime, datetime, datetime]:
+    """The three synoptic end-hours (H) that tile `window`, per PREREG.
+
+    A max window starts at `D 12Z` and is tiled by the periods ending
+    `18Z D`, `00Z D+1`, `06Z D+1`. A min window starts at `D 00Z` and is
+    tiled by the periods ending `06Z`, `12Z`, `18Z` of `D`. Both reduce to
+    the same offsets from `window.start_utc` (+6h, +12h, +18h); the start
+    hour is still validated (0 or 12, matching `resolve_window`'s only two
+    outputs) so a caller passing an unexpected window fails loudly rather
+    than silently tiling the wrong hours.
+    """
+    _require_aware(window.start_utc, "window.start_utc")
+    if window.start_utc.hour not in (0, 12):
+        msg = (
+            "window.start_utc hour must be 0 (min window) or 12 (max window), "
+            f"got {window.start_utc.hour} ({window.start_utc.isoformat()})"
+        )
+        raise ValueError(msg)
+    start = window.start_utc
+    return (
+        start + timedelta(hours=6),
+        start + timedelta(hours=12),
+        start + timedelta(hours=18),
+    )
+
+
+def six_hour_extreme(
+    window: Window,
+    variable: Variable,
+    reports: Iterable[tuple[datetime, float | None, float | None]],
+) -> SixHourExtreme:
+    """The METAR 6-hour-group max/min over `window`'s three synoptic periods.
+
+    Each report is `(valid_utc, max_6h_f, min_6h_f)`. For every synoptic
+    end-hour `H` from `six_hour_periods`, the group value comes from the
+    latest report valid in `[H - SYNOPTIC_REPORT_LOOKBACK, H)` that carries
+    the group needed for `variable` (a report with that group `None` does
+    not qualify for that period). `tiled` is True only when all three
+    periods found a qualifying report, per PREREG's matching rules;
+    `value_f` is the max/min across the three found values when tiled, else
+    `None`.
+    """
+    periods = six_hour_periods(window)
+    report_rows = list(reports)
+    found_values: list[float] = []
+    for hour in periods:
+        lower = hour - SYNOPTIC_REPORT_LOOKBACK
+        latest_valid: datetime | None = None
+        latest_value: float | None = None
+        for valid, max_6h_f, min_6h_f in report_rows:
+            _require_aware(valid, "report valid time")
+            if not (lower <= valid < hour):
+                continue
+            candidate = max_6h_f if variable == "max" else min_6h_f
+            if candidate is None:
+                continue
+            if latest_valid is None or valid > latest_valid:
+                latest_valid = valid
+                latest_value = candidate
+        if latest_value is not None:
+            found_values.append(latest_value)
+
+    periods_found = len(found_values)
+    tiled = periods_found == len(periods)
+    value_f: float | None = None
+    if tiled:
+        value_f = max(found_values) if variable == "max" else min(found_values)
+
+    return SixHourExtreme(value_f=value_f, periods_found=periods_found, tiled=tiled)
