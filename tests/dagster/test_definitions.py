@@ -127,3 +127,20 @@ def test_platform_smoke_materializes_with_report_metadata() -> None:
     assert metadata["duckdb_rows"] == 6
     assert metadata["polars_duckdb_insert_rows"] == 2
     assert metadata["version_pyarrow"]
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    ["platform_smoke_job", "ingest_job", "transform_job", "freshness_check_job"],
+)
+def test_every_job_runs_steps_in_one_process(job_name: str) -> None:
+    """DuckDB allows one writer process per database file. Under Dagster's
+    default multiprocess executor, one run's independent raw assets execute
+    in parallel subprocesses that each open the file for writing, so all but
+    the first fail on the lock (rammingspeed run 8e53a237, 2026-09-27). The
+    single run slot serializes runs, not steps. `execute_in_process` in the
+    other tests always runs steps sequentially, so only this assertion can
+    see the production executor.
+    """
+    job = defs.resolve_job_def(job_name)
+    assert job.executor_def.name == "in_process"

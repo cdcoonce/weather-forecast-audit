@@ -531,3 +531,9 @@ changed) is deleted outright, not soft-closed with an end date. This makes
 `first_seen` a simple "how long has this specific gap been open" signal --
 `dbt/models/marts/gap_ledger.sql` exposes it directly -- without needing a
 second table to track gap history.
+
+### One writer: runs are serialized by the slot, steps by the executor
+
+DuckDB allows one writer process per database file. rammingspeed's single run slot serializes *runs*, but it does not serialize the *steps inside* a run. Under Dagster's default multiprocess executor, `ingest_job`'s independent raw assets (guidance, ASOS and CLI) start in parallel subprocesses. Each opens the warehouse for writing, and all but the first fail on the file lock. That is what happened in the first host run (8e53a237, 2026-09-27), where only `asos_hourly` materialized. Every job therefore runs on `in_process_executor`, set once on `Definitions` so future jobs inherit it, and a test asserts it for each job.
+
+The tests could not see this failure. `execute_in_process` always runs steps sequentially in one process, so only a structural assertion on the configured executor catches it.
