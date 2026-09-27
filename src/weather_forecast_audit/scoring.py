@@ -6,10 +6,10 @@ each verification row as an independent bootstrap unit understates
 uncertainty: row-level resampling shuffles that shared-day noise away and
 reports intervals that are falsely narrow. This module always resamples
 calendar blocks of issuance dates (`BLOCK_DAYS` consecutive `run_date`s per
-block; `BLOCK_DAYS = 1` is one issuance date per block), never individual
+block; the default of 14 was measured in #31), never individual
 rows. See docs/methodology.md ("Scoring and uncertainty") for the measured
-effect and for two documented limitations of the current default block
-length.
+effect, for the block-length measurement, and for the documented
+limitations.
 
 No I/O, no DuckDB, no dbt: `score` takes a `polars.DataFrame` matching
 `fct_forecast_verification`'s schema (dbt/models/marts) and returns a pure
@@ -26,7 +26,11 @@ N_BOOT = 2000
 SEED = 20260927
 CI_LEVEL = 0.95
 MIN_SAMPLE_DATES = 30
-BLOCK_DAYS = 1
+# Measured, not chosen (#31): the pre-registered Politis-White rule on 12
+# stations over 2025 gave ceil(13.18) = 14, and the fitted-AR coverage
+# replay passed at 14 (worst 0.9075) against 0.6475 at 1. Evidence:
+# docs/analysis/2026-09-27-block-length/. Re-measure before changing it.
+BLOCK_DAYS = 14
 
 _REQUIRED_COLUMNS = (
     "station",

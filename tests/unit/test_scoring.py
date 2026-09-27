@@ -390,7 +390,10 @@ def test_date_block_coverage_beats_row_level() -> None:
             sim_seed=[master_seed, i], mu=mu, d_dates=60, s_stations=40
         )
 
-        result = score(frame, n_boot=n_boot, ci_level=ci_level)
+        # One issuance date per block: the day effects here are iid, so this
+        # isolates "resample dates, not rows" from the block-length choice
+        # (#31), which a 60-date slice cannot carry at the default of 14.
+        result = score(frame, n_boot=n_boot, ci_level=ci_level, block_days=1)
         row = result.row(0, named=True)
         if row["bias_lo"] is not None and row["bias_lo"] <= mu <= row["bias_hi"]:
             date_block_hits += 1
@@ -660,7 +663,9 @@ def test_intervals_match_golden_values_across_processes() -> None:
                 }
             )
 
-    out = score(pl.DataFrame(rows), by=("station",), n_boot=200)
+    # Pinned to one-date blocks: these literals test cross-process seeding,
+    # not the block-length default, which #31 moved to 14.
+    out = score(pl.DataFrame(rows), by=("station",), n_boot=200, block_days=1)
 
     got = out.select("station", "bias_lo", "bias_hi", "mae_lo", "mae_hi").rows()
     expected = [
@@ -670,3 +675,18 @@ def test_intervals_match_golden_values_across_processes() -> None:
     for got_row, expected_row in zip(got, expected, strict=True):
         assert got_row[0] == expected_row[0]
         assert got_row[1:] == pytest.approx(expected_row[1:], abs=1e-12)
+
+
+def test_block_days_default_is_the_measured_value_from_issue_31() -> None:
+    """`BLOCK_DAYS` is a measured quantity, not a guess. Issue #31's
+    pre-registered rule (docs/analysis/2026-09-27-block-length/PREREG.md)
+    gave ceil(13.18) = 14 on 12 stations over 2025 -- the NBM max lead-2
+    cross-station mean error -- and the fitted-AR coverage replay passed at
+    14 (worst series 0.9075 >= 0.90) against 0.6475 at the old default of 1
+    (RESULTS.md). Change it only by re-running that measurement."""
+    import inspect
+
+    from weather_forecast_audit import scoring
+
+    assert scoring.BLOCK_DAYS == 14
+    assert inspect.signature(score).parameters["block_days"].default == 14

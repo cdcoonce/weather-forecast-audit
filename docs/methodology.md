@@ -280,9 +280,10 @@ ids to get the row-level comparison, so the two paths differ only in what
 "block" means.)
 
 Concretely: `block_id = (run_date - 1970-01-01).days // block_days`, so
-`BLOCK_DAYS = 1` (the current default) resamples one issuance date at a
-time; larger values group consecutive calendar dates into one resampling
-unit. The bootstrap itself operates on per-block sums (`Σ error`, `Σ
+`block_days = 1` resamples one issuance date at a time and larger values
+group consecutive calendar dates into one resampling unit. The default,
+`BLOCK_DAYS = 14`, is measured (limitation 2).
+The bootstrap itself operates on per-block sums (`Σ error`, `Σ
 |error|`, and for skill, the matched-pair sums of `|error_source|` and
 `|error_raw|`), not on materialized resampled rows, so it stays cheap even
 at `N_BOOT = 2000` replicates. The CI is the ordinary bootstrap percentile
@@ -327,22 +328,83 @@ unit, so pooled-lead intervals are somewhat too narrow. The site's headline
 numbers are always reported per lead day, so this only affects pooled
 summaries and is not fixed here.
 
-### Limitation 2: `BLOCK_DAYS = 1` is not a measured default
+### Limitation 2 (resolved by #31): the block length is now measured
 
-`BLOCK_DAYS = 1` treats consecutive issuance dates as independent of each
+`BLOCK_DAYS = 1` treated consecutive issuance dates as independent of each
 other. Forecast errors persist across multi-day weather regimes, since a
 stuck upper-level pattern can bias guidance the same way for a week, so
-per-date intervals are too narrow whenever that persistence is real. How
-much it matters is not small:
-`test_block_days_seven_beats_block_days_one_on_ar1_data` gives the shared
-day effect AR(1) persistence with ρ = 0.8, and nominal 95% intervals then
-cover the true bias in 48% of simulations with 1-day blocks and 82% with
-7-day blocks. That test proves the knob works, not that 7 is the right
-number for real data. The default block length used for any published
-bias claim must come from a **pre-registered measurement on real
-verification rows**: the persistence of the daily cross-station mean
-error, by variable and lead. That measurement is a follow-up issue and
-blocks the public launch.
+per-date intervals are too narrow whenever that persistence is real.
+`test_block_days_seven_beats_block_days_one_on_ar1_data` shows the knob
+works: with an AR(1) day effect at ρ = 0.8, nominal 95% intervals cover the
+true bias in 48% of simulations with 1-day blocks and 82% with 7-day blocks.
+That proves the mechanism, not the number.
+
+**The number: `BLOCK_DAYS = 14`**, chosen by a rule committed before any
+data was fetched (`docs/analysis/2026-09-27-block-length/`, `PREREG.md`
+then `RESULTS.md`). On #6's 12 stations over 2025 issuance dates, the
+Politis-White (2004) circular-block estimator with the Patton, Politis and
+White (2009) correction was run on the daily cross-station mean error for
+each (variable, lead), and on each station's own series. The rule takes
+the larger of the pooled estimate and the upper-median station estimate per
+(variable, lead), then the ceiling of the maximum. The binding series was
+max lead 2's pooled mean: 13.18, so 14.
+
+| (variable, lead) | pooled | upper-median station | pooled, deseasonalized |
+| --- | --- | --- | --- |
+| max, 1 | 12.80 | 6.80 (KORD) | 8.32 |
+| max, 2 | **13.18** | 7.12 (KORD) | 8.66 |
+| min, 1 | 6.27 | 6.01 (KMIA) | 4.42 |
+| min, 2 | 9.47 | 6.58 (KSEA) | 5.70 |
+| min, 3 | 6.99 | 8.47 (KSLC) | 5.41 |
+
+A coverage replay was the acceptance check. An AR(p) model (Yule-Walker,
+p ≤ 7 by AIC) was fitted to each pooled series and to each upper-median
+station's series, 400 years of each were simulated, and each was scored
+through `scoring.score`. At 14 every one of the ten series covered at least
+0.90 (worst 0.9075, pooled min lead 2). At the old default of 1, coverage
+fell as low as 0.6475 (pooled max lead 2), so the intervals published
+before #31 would have been far too narrow.
+
+What the number does and does not rest on:
+
+- **It lands exactly on the pre-registered cap of 14.** The cap fires only
+  above 14, so 14 stands. A slightly more persistent year would have sent
+  the choice back for review rather than raising the default.
+- **About 4.5 of the 14 days are the seasonal cycle.** Removing a centered
+  31-day mean lowers the largest estimate to 8.66. A slow seasonal swing in
+  the mean error reads as persistence to a full-year estimator. That errs
+  toward wider intervals, which is the safe side for a bias claim, but it
+  means 14 is conservative for per-season slices, whose own window already
+  holds the season roughly fixed.
+- **The replay cannot represent the seasonal swing.** A low-order AR model
+  captures day-to-day persistence only, so the 0.90 pass certifies the
+  short-memory part. The seasonal part is covered by the estimator's
+  conservatism above, not by the replay.
+- **Single stations can persist longer than the median.** KSFO's own max
+  estimates are 14.4 and 14.3 (marine-layer regimes). The upper median keeps
+  one station from setting a national default, so a KSFO interval is
+  somewhat narrower than its own persistence warrants.
+- **Short slices are a separate problem** -- see limitation 3.
+
+### Limitation 3: short slices under-cover at any block length (open, #37)
+
+The #31 replay scored full-year series. Replayed with the same ten fitted
+models at the lengths the export actually publishes -- post hoc, not
+pre-registered, `posthoc_short_slices.py` -- nominal 95% intervals cover
+0.905–0.95 at 365 dates with 14-day blocks, but only 0.83–0.89 at 90 dates
+(one season) and 0.73–0.80 at 30 dates (`MIN_SAMPLE_DATES`). No block
+length fixes it: at 90 dates 7-day blocks do slightly better than 14, and
+both fall short of 0.90.
+
+The cause is the block count, not persistence. A percentile bootstrap over
+a handful of resampled units is too narrow on its own: a 30-date slice at
+14-day blocks holds three blocks. `test_date_block_coverage_beats_row_level`
+shows it with no persistence at all, falling from at least 0.90 at 1-day
+blocks to 0.870 at 14-day blocks on its 60-date iid series, which is why
+that test now pins `block_days=1`. The fix is a block-aware
+publishability floor, seasons pooled across years, or a different interval
+for few-block slices. That choice is issue #37, and it blocks the public
+launch.
 
 ## Walk-forward evaluation
 
@@ -623,8 +685,7 @@ comes from a **lead-1** slice: the site's plain-language summary and its
 "day-ahead forecasts" wording never draw from lead 2 or lead 3, even when a
 longer lead's bias is larger, so the one number a visitor reads without
 statistics training is the least confounded by limitation 1 above (pooled
-cross-lead correlation) and by the still-unmeasured block length in
-limitation 2.
+cross-lead correlation).
 
 A city's summary claims a direction and a number only for a slice whose
 bias interval **excludes 0** (`no_detectable_bias = false`) with **enough
@@ -634,10 +695,13 @@ sentence. Every other slice reads as "no detectable bias" or "too few
 days," never as a number that happens to round toward zero.
 
 Both rules -- lead-1 only, and significance gated on both flags -- describe
-what the site is allowed to say **today**, on `BLOCK_DAYS = 1`. That
-default is not the pre-registered measurement limitation 2 calls for: the
-persistence of the daily cross-station mean error is still unmeasured, and
-until that measurement lands (issue #31), no bias claim from this export is
-a validated public finding, only a conservative reading of an
-under-characterized interval. Publishing the site (PRD milestone M4) is not
-a substitute for that measurement.
+what the site is allowed to say **today**. The block length behind every
+interval is now measured (`BLOCK_DAYS = 14`, limitation 2), but that
+measurement certifies full-year slices only. The per-season cells this
+export publishes are about 90 issuance dates, and `min_sample_flag` admits a
+slice at 30. Limitation 3 shows that intervals over that few blocks are too
+narrow at any block length. Until issue #37 settles a block-aware floor or a
+different interval for short slices, a season-level bias claim from this
+export is a conservative reading of an interval known to under-cover, not a
+validated public finding. Publishing the site (PRD milestone M4, #16) waits
+on #37.
