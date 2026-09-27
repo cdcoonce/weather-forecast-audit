@@ -230,6 +230,148 @@ def test_schema_matches_lock_for_current_version() -> None:
         )
 
 
+# -- typical miss (lead-1 MAE pooled over seasons) -------------------------
+
+
+def test_typical_miss_pools_mae_weighted_by_row_count_not_a_simple_average() -> None:
+    """The pooled MAE must be the row-count-weighted mean, not the unweighted
+    mean of the season MAEs -- these differ whenever season `n` differs."""
+    stats = [
+        _stat(variable="max", lead_day=1, season="DJF", n=100, mae_f=2.0),
+        _stat(variable="max", lead_day=1, season="JJA", n=300, mae_f=4.0),
+    ]
+    typical_miss = export.build_typical_miss(stats)
+    weighted = (100 * 2.0 + 300 * 4.0) / 400  # 3.5
+    unweighted = (2.0 + 4.0) / 2  # 3.0 -- the wrong answer a mutation would give
+    assert typical_miss["max"] == pytest.approx(weighted)
+    assert typical_miss["max"] != pytest.approx(unweighted)
+
+
+def test_typical_miss_is_null_when_variable_has_no_lead1_slice() -> None:
+    stats = [_stat(variable="min", lead_day=2, season="DJF", n=50, mae_f=2.0)]
+    typical_miss = export.build_typical_miss(stats)
+    assert typical_miss["max"] is None
+    assert typical_miss["min"] is None
+
+
+def test_typical_miss_is_null_when_every_lead1_slice_is_min_sample_flagged() -> None:
+    stats = [
+        _stat(
+            variable="max", lead_day=1, season="DJF", n=5, mae_f=1.0,
+            min_sample_flag=True,
+        ),
+    ]
+    typical_miss = export.build_typical_miss(stats)
+    assert typical_miss["max"] is None
+
+
+def test_typical_miss_pools_across_all_lead1_seasons_including_flagged_ones() -> None:
+    """Once at least one season has enough sample, the pooled value still
+    sums over every lead-1 season slice for that variable (not only the
+    unflagged ones) -- pooling only needs one season to unlock it."""
+    stats = [
+        _stat(
+            variable="min", lead_day=1, season="DJF", n=50, mae_f=2.0,
+            min_sample_flag=False,
+        ),
+        _stat(
+            variable="min", lead_day=1, season="JJA", n=10, mae_f=5.0,
+            min_sample_flag=True,
+        ),
+    ]
+    typical_miss = export.build_typical_miss(stats)
+    assert typical_miss["min"] == pytest.approx((50 * 2.0 + 10 * 5.0) / 60)
+
+
+def test_typical_miss_exact_against_a_hand_computed_pooled_mae() -> None:
+    stats = [
+        _stat(variable="max", lead_day=1, season="DJF", n=137, mae_f=1.2345678),
+        _stat(variable="max", lead_day=1, season="MAM", n=263, mae_f=2.9988776),
+        # lead 2, excluded from the pool:
+        _stat(variable="max", lead_day=2, season="DJF", n=999, mae_f=99.0),
+        _stat(variable="min", lead_day=1, season="DJF", n=10, mae_f=0.5),
+    ]
+    typical_miss = export.build_typical_miss(stats)
+    expected_max = (137 * 1.2345678 + 263 * 2.9988776) / (137 + 263)
+    assert typical_miss["max"] == pytest.approx(expected_max, abs=1e-9)
+    assert typical_miss["min"] == pytest.approx(0.5)
+
+
+def test_typical_miss_ignores_lead_2_and_lead_3_slices() -> None:
+    stats = [
+        _stat(variable="max", lead_day=2, season="DJF", n=500, mae_f=9.0),
+        _stat(variable="max", lead_day=3, season="DJF", n=500, mae_f=9.0),
+    ]
+    typical_miss = export.build_typical_miss(stats)
+    assert typical_miss["max"] is None
+
+
+# -- title-cased station labels ---------------------------------------------
+
+
+def test_title_case_label_basic() -> None:
+    assert export.title_case_label("MINNEAPOLIS, MN") == "Minneapolis, MN"
+
+
+def test_title_case_label_slash_and_space_separated_words() -> None:
+    assert (
+        export.title_case_label("PHOENIX/SKY HARBOR, AZ") == "Phoenix/Sky Harbor, AZ"
+    )
+
+
+def test_title_case_label_keeps_trailing_state_code_upper_case() -> None:
+    label = export.title_case_label("BOSTON LOGAN INTL, MA")
+    assert label == "Boston Logan Intl, MA"
+    state_code = label.rsplit(",", 1)[1].strip()
+    assert state_code == state_code.upper()
+    assert state_code == "MA"
+
+
+def test_title_case_label_period_separator_real_registry_example() -> None:
+    # dbt/seeds/station_registry.csv: "ST. JOHNSBURY(AMOS), VT"
+    assert (
+        export.title_case_label("ST. JOHNSBURY(AMOS), VT")
+        == "St. Johnsbury(Amos), VT"
+    )
+
+
+def test_title_case_label_hyphen_separator_real_registry_example() -> None:
+    # dbt/seeds/station_registry.csv: "DESERT ROCK-MERCURY NV, NV"
+    assert (
+        export.title_case_label("DESERT ROCK-MERCURY NV, NV")
+        == "Desert Rock-Mercury Nv, NV"
+    )
+
+
+def test_title_case_label_apostrophe_separator_synthetic() -> None:
+    # No apostrophe'd label exists in the current 573-station registry; this
+    # locks in the separator rule generally.
+    assert export.title_case_label("O'FALLON, MO") == "O'Fallon, MO"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("ISLIP/MACARTHUR, NY", "Islip/MacArthur, NY"),
+        ("LAS VEGAS/MCCARRAN, NV", "Las Vegas/McCarran, NV"),
+        ("MCCOMB, MS", "McComb, MS"),
+        ("MERCED/MACREADY FLD, CA", "Merced/MacReady Fld, CA"),
+        ("MCCOOK, NE", "McCook, NE"),
+        ("MACON/LEWIS WILSON, GA", "Macon/Lewis Wilson, GA"),
+        ("MCALLEN/MILLER INTL, TX", "McAllen/Miller Intl, TX"),
+        ("JACKSON/MCKELLAR, TN", "Jackson/McKellar, TN"),
+        ("MCMINNVILLE MUNICIPAL AIRPORT, OR", "McMinnville Municipal Airport, OR"),
+        ("YUMA MCAS, AZ", "Yuma MCAS, AZ"),
+        ("SALEM/MCNARY, OR", "Salem/McNary, OR"),
+        ("ATLANTA/DEKALB, GA", "Atlanta/DeKalb, GA"),
+    ],
+)
+def test_title_case_label_known_exceptions_from_the_real_registry(
+    raw: str, expected: str
+) -> None:
+    assert export.title_case_label(raw) == expected
+
+
 def test_lock_entries_are_append_only() -> None:
     lock = export.load_lock()
     # 1.0.0 is the first published version; it must never be removed, and

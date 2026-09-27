@@ -5,7 +5,7 @@
   "description": "One station's full stat table: n, bias, CI, and flags per variable x lead_day x season.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "icao", "label", "stats"],
+  "required": ["schema_version", "icao", "label", "stats", "typical_miss"],
   "properties": {
     "schema_version": {
       "type": "string",
@@ -16,9 +16,20 @@
     "stats": {
       "type": "array",
       "items": { "$ref": "#/$defs/stat" }
-    }
+    },
+    "typical_miss": { "$ref": "#/$defs/typical_miss" }
   },
   "$defs": {
+    "typical_miss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max", "min"],
+      "description": "Lead-1 MAE (degrees F) pooled over seasons, per variable. Null when no lead-1 slice for that variable has min_sample_flag false.",
+      "properties": {
+        "max": { "type": ["number", "null"] },
+        "min": { "type": ["number", "null"] }
+      }
+    },
     "stat": {
       "type": "object",
       "additionalProperties": false,

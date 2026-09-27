@@ -14,6 +14,7 @@ No Dagster asset here by design -- another builder is editing
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -136,6 +137,112 @@ def build_summary(stats: Sequence[Mapping[str, object]]) -> dict[str, object]:
     }
 
 
+# -- typical miss: lead-1 MAE pooled over seasons, per variable -------------
+
+
+def build_typical_miss(
+    stats: Sequence[Mapping[str, object]],
+) -> dict[str, float | None]:
+    """Lead-1 MAE pooled over seasons, per variable, from unrounded stats.
+
+    Pooled MAE = sum(n * mae) / sum(n) over that variable's lead-1 season
+    slices -- the row-count-weighted mean, which is mathematically the same
+    as the mean of `|error|` over every row in those slices (never the
+    unweighted mean of the season MAEs, which is wrong whenever season `n`
+    differs). All lead-1 season slices for the variable are pooled once
+    pooling is unlocked; a variable's value is null only when *no* lead-1
+    slice for it has `min_sample_flag` false (i.e. there is no sample-backed
+    season to unlock pooling at all).
+    """
+    result: dict[str, float | None] = {}
+    for variable in ("max", "min"):
+        season_slices = [
+            s for s in stats if s["variable"] == variable and s["lead_day"] == 1
+        ]
+        if not any(not s["min_sample_flag"] for s in season_slices):
+            result[variable] = None
+            continue
+        total_n = sum(int(s["n"]) for s in season_slices)  # type: ignore[arg-type]
+        if total_n == 0:
+            result[variable] = None
+            continue
+        weighted_sum = sum(
+            float(s["n"]) * float(s["mae_f"])  # type: ignore[arg-type]
+            for s in season_slices
+        )
+        result[variable] = weighted_sum / total_n
+    return result
+
+
+# -- title-cased station labels -----------------------------------------------
+
+# Known multi-cap names a naive "capitalize first letter, lowercase the rest"
+# pass would mangle: Mc-/Mac- surnames (McAllen, MacArthur, ...) and the
+# MCAS acronym (Marine Corps Air Station), which is not a name at all and
+# reads as broken ("Mcas") if title-cased like one. Found by grepping
+# dbt/seeds/station_registry.csv for labels containing "MC", "MAC", "DE ",
+# "LA ", "O'" -- see the build report for the full list considered and why
+# entries like MACON and DENVER needed no exception (naive casing is already
+# correct for them).
+_TITLE_EXCEPTIONS = {
+    "MACARTHUR": "MacArthur",
+    "MACREADY": "MacReady",
+    "MCALLEN": "McAllen",
+    "MCAS": "MCAS",
+    "MCCARRAN": "McCarran",
+    "MCCOMB": "McComb",
+    "MCCOOK": "McCook",
+    "MCGRATH": "McGrath",
+    "MCKELLAR": "McKellar",
+    "MCMINNVILLE": "McMinnville",
+    "MCNARY": "McNary",
+    "DEKALB": "DeKalb",
+}
+
+_LABEL_WORD_SPLIT_RE = re.compile(r"([ /\-'.])")
+_LABEL_DELIMITERS = frozenset(" /-'.")
+
+
+def _title_case_token(token: str) -> str:
+    """Title-case one delimiter-split token, capitalizing the first letter
+    of every maximal run of letters within it (so a parenthesized suffix
+    like "(AMOS)" in "JOHNSBURY(AMOS)" -- glued to its neighbor with no
+    space/slash/hyphen/apostrophe/period between them -- still reads
+    "Johnsbury(Amos)" rather than lowercasing it outright)."""
+    exception = _TITLE_EXCEPTIONS.get(token.upper())
+    if exception is not None:
+        return exception
+    chars: list[str] = []
+    prev_was_letter = False
+    for ch in token:
+        if ch.isalpha():
+            chars.append(ch.upper() if not prev_was_letter else ch.lower())
+            prev_was_letter = True
+        else:
+            chars.append(ch)
+            prev_was_letter = False
+    return "".join(chars)
+
+
+def title_case_label(label: str) -> str:
+    """Title-case a station label, keeping its trailing state code upper-case.
+
+    Splits on spaces, slashes, hyphens, apostrophes and periods, capitalizing
+    each token's first letter and lowercasing the rest, except for
+    `_TITLE_EXCEPTIONS`. The two-letter state code after the label's last
+    comma is left untouched (it is already upper-case in the source seed).
+    """
+    head, sep, tail = label.rpartition(",")
+    if not sep:
+        head, tail = tail, ""
+    parts = _LABEL_WORD_SPLIT_RE.split(head)
+    cased_head = "".join(
+        part if part in _LABEL_DELIMITERS else _title_case_token(part)
+        for part in parts
+    )
+    return f"{cased_head},{tail}" if sep else cased_head
+
+
 # -- per-stat rounding at export ---------------------------------------------
 
 
@@ -239,21 +346,27 @@ def export(
         raw_stats = by_station.get(icao, [])
         summary = build_summary(raw_stats)
         rounded_stats = [round_stat(stat) for stat in raw_stats]
+        typical_miss = build_typical_miss(raw_stats)
+        rounded_typical_miss = {
+            variable: _round2(value) for variable, value in typical_miss.items()
+        }
+        label = title_case_label(station.label)
 
         _write_json(
             cities_dir / f"{icao}.json",
             {
                 "schema_version": SCHEMA_VERSION,
                 "icao": station.icao,
-                "label": station.label,
+                "label": label,
                 "stats": rounded_stats,
+                "typical_miss": rounded_typical_miss,
             },
         )
 
         city_index_entries.append(
             {
                 "icao": station.icao,
-                "label": station.label,
+                "label": label,
                 "lat": station.lat,
                 "lon": station.lon,
                 "climate_region": station.climate_region,
