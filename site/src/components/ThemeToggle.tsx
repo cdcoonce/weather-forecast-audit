@@ -73,7 +73,7 @@ export function ThemeToggle(): JSX.Element {
       aria-pressed={isDark}
       onClick={toggle}
     >
-      {isDark ? "Light" : "Dark"}
+      Dark mode
     </button>
   );
 }

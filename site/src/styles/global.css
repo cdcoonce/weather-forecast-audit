@@ -58,6 +58,23 @@ a:visited {
   top: var(--space-4);
 }
 
+/* Visually hidden but still present for assistive tech: the standard
+   clip-based technique (never display:none/visibility:hidden, which would
+   also remove it from the accessibility tree). Used for a table cell's full
+   accessible name (e.g. "no detectable bias") when the sighted glyph alone
+   ("–") would read as just "dash". */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -122,6 +139,13 @@ main {
 
 .theme-toggle:hover {
   background: var(--accent-surface);
+}
+
+/* Pressed (dark) state: visually filled, using only semantic tokens, so the
+   fixed "Dark mode" label doesn't have to carry the whole distinction. */
+.theme-toggle[aria-pressed="true"] {
+  background: var(--accent-surface-strong);
+  border-color: var(--focus);
 }
 
 /* -- home ---------------------------------------------------------------- */
