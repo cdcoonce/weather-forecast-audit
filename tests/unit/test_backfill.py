@@ -127,6 +127,22 @@ def test_in_blackout_true_when_interval_crosses_midnight_into_next_window() -> N
     assert in_blackout(now_utc, horizon_s=6 * 3600) is True
 
 
+def test_in_blackout_true_when_now_is_exactly_at_the_window_end_boundary() -> None:
+    """07:15 local is the window's closed upper bound (`<=`, not `<`): a
+    zero-length interval landing exactly there is still in blackout."""
+    now_utc = _naive_utc(2026, 9, 27, 14, 15)  # 07:15 local exactly
+
+    assert in_blackout(now_utc, horizon_s=0) is True
+
+
+def test_in_blackout_true_when_horizon_reaches_exactly_window_start_boundary() -> None:
+    """05:45 local is the window's closed lower bound: a horizon that reaches
+    that instant exactly (not past it) must still count as in blackout."""
+    now_utc = _naive_utc(2026, 9, 27, 12, 0)  # 05:00 local
+
+    assert in_blackout(now_utc, horizon_s=45 * 60) is True  # end = 05:45 local
+
+
 # -- CursorState JSON round-trip -------------------------------------------
 
 
@@ -343,6 +359,29 @@ def test_decide_halts_after_max_attempts_exceeded() -> None:
     assert isinstance(decision, Halt)
     assert "2" in decision.reason
     assert "2020-11-c00-a3" in decision.reason
+
+
+def test_decide_still_retries_on_the_attempt_that_reaches_max_attempts() -> None:
+    """`max_attempts` is a count of attempts allowed, not a 0-indexed cap:
+    failing attempt 2 of 3 must still retry (as attempt 3) rather than halt
+    one attempt early."""
+    state = _state(next_index=2, attempt=2, last_run_id="2020-11-c00-a2")
+
+    decision = decide(
+        state,
+        n_units=5,
+        last_run_status="FAILURE",
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
+        max_attempts=3,
+    )
+
+    assert decision == Submit(
+        2,
+        3,
+        _state(next_index=2, attempt=3, last_run_id=None, submitted_at=NOW.isoformat()),
+    )
 
 
 def test_decide_stays_halted_on_repeated_evaluation_with_the_same_cursor() -> None:
