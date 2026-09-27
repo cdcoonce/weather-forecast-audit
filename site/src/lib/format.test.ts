@@ -4,6 +4,7 @@ import {
   biasCellContent,
   formatBiasEndpoints,
   formatGeneratedAt,
+  formatSignedEndpoint,
   formatSignedF,
   formatTypicalMissLine,
   medianCellN,
@@ -52,6 +53,22 @@ describe("formatSignedF", () => {
   });
 });
 
+describe("formatSignedEndpoint", () => {
+  it("uses two decimals when one decimal would hide the sign behind '0.0'", () => {
+    expect(formatSignedEndpoint(0.03)).toBe("+0.03");
+    expect(formatSignedEndpoint(-0.01)).toBe("−0.01");
+  });
+
+  it("uses one decimal when it already keeps the value visibly non-zero", () => {
+    expect(formatSignedEndpoint(-0.36)).toBe("−0.4");
+    expect(formatSignedEndpoint(0.53)).toBe("+0.5");
+  });
+
+  it("has no sign for exactly zero", () => {
+    expect(formatSignedEndpoint(0)).toBe("0.0");
+  });
+});
+
 describe("formatBiasEndpoints", () => {
   it("renders both endpoints with true minus signs and 'to', never '±'", () => {
     const text = formatBiasEndpoints(
@@ -64,6 +81,11 @@ describe("formatBiasEndpoints", () => {
   it("returns null when either endpoint is missing", () => {
     expect(formatBiasEndpoints(stat({ bias_lo_f: null }))).toBeNull();
     expect(formatBiasEndpoints(stat({ bias_hi_f: null }))).toBeNull();
+  });
+
+  it("never renders a small-magnitude endpoint as a sign-contradicting '+0.0'/'−0.0'", () => {
+    const text = formatBiasEndpoints(stat({ bias_lo_f: 0.03, bias_hi_f: 0.53 }));
+    expect(text).toBe("+0.03 to +0.5");
   });
 });
 

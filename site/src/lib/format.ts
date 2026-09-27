@@ -20,6 +20,23 @@ export function formatSignedF(value: number): string {
   return `${sign}${Math.abs(value).toFixed(1)}`;
 }
 
+/**
+ * A signed number for one interval endpoint, using the fewest decimals (1,
+ * then 2) that keep it visibly non-zero with its sign, e.g. "+0.5", but
+ * "+0.03" (which would round to "+0.0" at one decimal -- indistinguishable
+ * from "no bias" despite the sign) instead shows "+0.03". Exactly zero
+ * stays "0.0"; that can only happen for a not-significant interval, which
+ * is never rendered as a number in the first place (see `biasCellContent`).
+ */
+export function formatSignedEndpoint(value: number): string {
+  if (value === 0) return "0.0";
+  const sign = value > 0 ? "+" : MINUS;
+  const abs = Math.abs(value);
+  const oneDecimal = abs.toFixed(1);
+  if (oneDecimal !== "0.0") return `${sign}${oneDecimal}`;
+  return `${sign}${abs.toFixed(2)}`;
+}
+
 /** The bold primary line for a significant cell, e.g. "−1.1°F". Assumes
  * `stat.bias_f` is non-null -- callers only reach this for significant cells. */
 export function formatBiasPrimary(stat: CityStat): string {
@@ -29,11 +46,13 @@ export function formatBiasPrimary(stat: CityStat): string {
 /**
  * The CI as endpoints, e.g. "−1.6 to −0.6" -- never "±", because the
  * bootstrap percentile interval need not be symmetric. Null when either
- * endpoint is missing.
+ * endpoint is missing. Each endpoint uses `formatSignedEndpoint`, not
+ * `formatSignedF`, so a small-magnitude endpoint never displays as a
+ * sign-contradicting "+0.0"/"−0.0".
  */
 export function formatBiasEndpoints(stat: CityStat): string | null {
   if (stat.bias_lo_f == null || stat.bias_hi_f == null) return null;
-  return `${formatSignedF(stat.bias_lo_f)} to ${formatSignedF(stat.bias_hi_f)}`;
+  return `${formatSignedEndpoint(stat.bias_lo_f)} to ${formatSignedEndpoint(stat.bias_hi_f)}`;
 }
 
 export type BiasCellKind = "significant" | "no-detectable-bias" | "few-days";
