@@ -27,6 +27,9 @@ matched as (
         resolved.hours_covered,
         resolved.hours_expected,
         resolved.scorable,
+        resolved.extreme_source,
+        resolved.periods_found,
+        resolved.hourly_observed_f,
         guidance.cycle_hour,
         guidance.forecast_f,
         guidance.spread_f
