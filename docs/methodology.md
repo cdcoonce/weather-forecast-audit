@@ -66,10 +66,21 @@ IEM archives four NBS cycles a day, and which four changed in spring 2026.
 The audit grades one run per day: the archived cycle nearest 12Z. Probed
 evidence (KPHX and KORD identical):
 
-- **2020-02-25 through 2026-04-29**: cycles `{1, 7, 13, 19}` UTC, so the
-  canonical run is **13Z**. The 2020-02-25 start comes from IEM's own help
-  text ("archived at 1, 7, 13, 19 UTC only after 25 Feb 2020") and was not
-  independently probed.
+- **2020-09-29 through 2026-04-29**: cycles `{1, 7, 13, 19}` UTC, so the
+  canonical run is **13Z**. IEM's own help text says this cycle schedule
+  applies "only after 25 Feb 2020", and it was archiving at `{1, 7, 13, 19}`
+  UTC from then on, but this regime's `valid_from` is the pinned NBS
+  archive start (issue #7 decision 6), 2020-09-29, not that earlier
+  cycle-schedule date: before the NBM v4.0 rollout on 2020-09-29, the
+  archive's daily max/min lived in a column named `n_x`, not `txn`, which
+  this project does not read (NBM v3.x's N/X period definition is
+  unverified and may be local-time like MOS, which our fixed-UTC
+  verification windows cannot grade -- a documented follow-up, not built
+  here). Earlier still, `{0, 7, 12, 19}` UTC cycles ran through 2020-02-25,
+  entirely before the archive's usable (`txn`) start. See
+  `dbt/seeds/nbs_archive.csv` and
+  `docs/spikes/2026-09-26-station-registry/README.md` for the search that
+  pinned 2020-09-29.
 - **2026-04-30 onward**: the canonical run is **12Z**. 2026-04-30 is the
   first day a 12Z run is archived. The transition days hold extra cycles
   (2026-04-30 has `{0, 1, 7, 8-23}`, 2026-05-01 through 2026-05-04 have all
@@ -77,8 +88,12 @@ evidence (KPHX and KORD identical):
   `{0, 6, 12, 18}` from 2026-05-06.
 
 When the canonical run for a date is missing, the day gets a `missing_run`
-gap record. The pipeline never falls back to a neighboring cycle, which
-would mix issuance times within one lead bucket.
+gap record; when the canonical run exists but none of its rows carry a
+non-null `txn` (as with any pre-2020-09-29 date, if ever queried), the day
+gets a `no_txn` gap record instead, so guidance that is present but
+unusable is never mistaken for guidance that is simply absent. The pipeline
+never falls back to a neighboring cycle, which would mix issuance times
+within one lead bucket.
 
 These dates and hours live only in `dbt/seeds/nbs_cycle_regimes.csv`, read
 by `weather_forecast_audit.regimes`; nothing in the Python resolver hard-codes

@@ -1,0 +1,2 @@
+archive_start_date,criterion,evidence
+2020-09-29,"Earliest date D such that the canonical archived NBS run (nearest 12Z) has a non-null txn for >= 95% of registry stations at D, and at every later monthly check date through the confirmation dates below (build spec #7 decision 6).",full_registry_share_at_pinned_date=1.0000 (573 stations); coarse_sample_crossing_month=2020-10-01; confirmation_spot_checks: 2021-06-01=1.0000; 2022-06-01=1.0000; 2023-06-01=1.0000; 2024-06-01=1.0000; 2025-06-01=1.0000; 2026-06-01=1.0000
