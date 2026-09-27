@@ -35,6 +35,7 @@ deploy = [
 
 [dependency-groups]
 dev = [
+    "arch>=8.0.0",
     "pytest>=9.0",
     "pyyaml>=6.0",
     "ruff>=0.16",
