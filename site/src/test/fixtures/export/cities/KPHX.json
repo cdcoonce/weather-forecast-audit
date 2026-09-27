@@ -1,6 +1,6 @@
 {
   "icao": "KPHX",
-  "label": "PHOENIX/SKY HARBOR, AZ",
+  "label": "Phoenix/Sky Harbor, AZ",
   "schema_version": "1.0.0",
   "stats": [
     {
@@ -55,5 +55,9 @@
       "season": "JJA",
       "variable": "min"
     }
-  ]
+  ],
+  "typical_miss": {
+    "max": null,
+    "min": null
+  }
 }

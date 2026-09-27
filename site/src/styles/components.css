@@ -50,7 +50,9 @@
 }
 
 .city-search__option--active {
-  background: var(--accent-surface);
+  background: var(--accent-surface-strong);
+  border-left: 3px solid var(--focus);
+  padding-left: calc(var(--space-4) - 3px);
 }
 
 .city-search__option-icao {
@@ -85,6 +87,12 @@
   color: var(--text);
 }
 
+.city-card__typical-miss {
+  color: var(--text);
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-3);
+}
+
 .city-card__explainer {
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -92,18 +100,20 @@
   max-width: var(--container-narrow);
 }
 
+/* A safety net, not the primary fix for the 400px-width requirement: the
+   table itself uses table-layout: fixed and compact padding so every lead
+   column fits without scrolling (design-review decision 1). */
 .city-card__table-scroll {
   overflow-x: auto;
-  margin-bottom: var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
 }
 
 .city-card__table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--text-sm);
-  min-width: 26rem;
 }
 
 .city-card__table caption {
@@ -116,15 +126,43 @@
 
 .city-card__table th,
 .city-card__table td {
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-1) var(--space-2);
   border-top: 1px solid var(--border);
   text-align: left;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+}
+
+.city-card__table th:first-child,
+.city-card__table td:first-child {
+  width: 4.5rem;
 }
 
 .city-card__table thead th {
   color: var(--text-muted);
   font-weight: var(--weight-medium);
+  font-size: var(--text-xs);
+}
+
+.city-card__cell-primary {
+  display: block;
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+
+.city-card__cell-secondary {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.city-card__cell--muted {
+  color: var(--text-muted);
+}
+
+.city-card__table-caption {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin: var(--space-2) 0 var(--space-8);
 }
 
 .city-card__footnote {

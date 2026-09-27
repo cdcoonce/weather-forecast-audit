@@ -54,11 +54,17 @@ export interface CityStat {
   no_detectable_bias: boolean;
 }
 
+export interface TypicalMiss {
+  max: number | null;
+  min: number | null;
+}
+
 export interface City {
   schema_version: string;
   icao: string;
   label: string;
   stats: CityStat[];
+  typical_miss: TypicalMiss;
 }
 
 export interface Completeness {

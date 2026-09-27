@@ -63,11 +63,11 @@ describe("App (committed fixture export)", () => {
     render(<App />);
 
     await waitFor(() =>
-      expect(screen.getByText(/PHOENIX\/SKY HARBOR, AZ/)).toBeInTheDocument()
+      expect(screen.getByText(/Phoenix\/Sky Harbor, AZ/)).toBeInTheDocument()
     );
     // The tracer fixture only ingests one issuance date per run, so every
-    // stat is min_sample_flag -- exercising the "too few days" cell wording
-    // against real exported data, not a hand-built fixture.
+    // stat is min_sample_flag -- exercising the "too few days" accessible
+    // name against real exported data, not a hand-built fixture.
     expect(screen.getAllByText(/too few days/i).length).toBeGreaterThan(0);
   });
 

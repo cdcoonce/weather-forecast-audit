@@ -1,4 +1,4 @@
-import type { CityStat, Season } from "../types/export";
+import type { CityStat, Season, TypicalMiss } from "../types/export";
 
 const SEASON_WORDS: Record<Season, string> = {
   DJF: "winter",
@@ -11,39 +11,98 @@ export function seasonWord(season: Season): string {
   return SEASON_WORDS[season];
 }
 
-const MINUS = "−"; // proper minus sign, not a hyphen
+const MINUS = "−"; // U+2212, proper minus sign -- never a hyphen (U+002D)
+const NO_BIAS_DASH = "–"; // U+2013, en dash -- visually distinct from MINUS
 
-function formatSignedF(value: number): string {
+/** A signed one-decimal number using a true minus sign, e.g. "+1.4", "−1.4". */
+export function formatSignedF(value: number): string {
   const sign = value > 0 ? "+" : value < 0 ? MINUS : "";
   return `${sign}${Math.abs(value).toFixed(1)}`;
 }
 
-function halfCi(stat: CityStat): number | null {
-  if (stat.bias_lo_f == null || stat.bias_hi_f == null) return null;
-  return (stat.bias_hi_f - stat.bias_lo_f) / 2;
+/** The bold primary line for a significant cell, e.g. "−1.1°F". Assumes
+ * `stat.bias_f` is non-null -- callers only reach this for significant cells. */
+export function formatBiasPrimary(stat: CityStat): string {
+  return `${formatSignedF(stat.bias_f as number)}°F`;
 }
 
 /**
- * One table cell's text for a variable x lead x season stat.
+ * The CI as endpoints, e.g. "−1.6 to −0.6" -- never "±", because the
+ * bootstrap percentile interval need not be symmetric. Null when either
+ * endpoint is missing.
+ */
+export function formatBiasEndpoints(stat: CityStat): string | null {
+  if (stat.bias_lo_f == null || stat.bias_hi_f == null) return null;
+  return `${formatSignedF(stat.bias_lo_f)} to ${formatSignedF(stat.bias_hi_f)}`;
+}
+
+export type BiasCellKind = "significant" | "no-detectable-bias" | "few-days";
+
+export interface BiasCellContent {
+  kind: BiasCellKind;
+  /** Bold primary line text (significant cells only). */
+  primary?: string;
+  /** Smaller/muted secondary line with the interval endpoints (significant, when available). */
+  secondary?: string;
+  /** The muted glyph/word shown to sighted users for non-significant cells. */
+  visible: string;
+  /** The full accessible name for non-significant cells, e.g. "no detectable bias". */
+  accessibleName?: string;
+}
+
+/**
+ * One table cell's content for a variable x lead x season stat.
  *
  * A bias number or direction is claimed only when both `min_sample_flag`
- * and `no_detectable_bias` are false (the build spec's acceptance rule) --
- * the other two branches never contain a signed number.
+ * and `no_detectable_bias` are false (the build spec's acceptance rule).
+ * `min_sample_flag` takes precedence: a too-few-days cell reads "few days"
+ * (accessible name "too few days") even if it also happens to be
+ * `no_detectable_bias`. A non-significant cell shows a muted en dash with
+ * the accessible name "no detectable bias" -- never a bare "–" with no
+ * accessible name, so screen readers don't just hear "dash".
  */
-export function formatBiasCell(stat: CityStat): string {
+export function biasCellContent(stat: CityStat): BiasCellContent {
   if (stat.min_sample_flag) {
-    return `too few days (n=${stat.n})`;
+    return { kind: "few-days", visible: "few days", accessibleName: "too few days" };
   }
-  if (stat.no_detectable_bias) {
-    return `no detectable bias (n=${stat.n})`;
+  if (stat.no_detectable_bias || stat.bias_f == null) {
+    return {
+      kind: "no-detectable-bias",
+      visible: NO_BIAS_DASH,
+      accessibleName: "no detectable bias",
+    };
   }
-  if (stat.bias_f == null) {
-    return `– (n=${stat.n})`;
-  }
-  const signed = formatSignedF(stat.bias_f);
-  const half = halfCi(stat);
-  const withCi = half == null ? signed : `${signed} ± ${half.toFixed(1)}`;
-  return `${withCi}°F (n=${stat.n})`;
+  const endpoints = formatBiasEndpoints(stat);
+  return {
+    kind: "significant",
+    primary: formatBiasPrimary(stat),
+    secondary: endpoints ?? undefined,
+    visible: formatBiasPrimary(stat),
+  };
+}
+
+/** The median of `values`, rounded to the nearest 10 (for a table caption's
+ * "each cell ≈ N days"). Returns 0 for an empty list. */
+export function medianCellN(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return Math.round(median / 10) * 10;
+}
+
+/**
+ * "Typical miss, day-ahead: highs 2.9°F · lows 2.2°F" -- omits a variable
+ * that is null, and returns null (the line should be omitted entirely) when
+ * both are null.
+ */
+export function formatTypicalMissLine(typicalMiss: TypicalMiss): string | null {
+  const parts: string[] = [];
+  if (typicalMiss.max != null) parts.push(`highs ${typicalMiss.max.toFixed(1)}°F`);
+  if (typicalMiss.min != null) parts.push(`lows ${typicalMiss.min.toFixed(1)}°F`);
+  if (parts.length === 0) return null;
+  return `Typical miss, day-ahead: ${parts.join(" · ")}`;
 }
 
 /** `"2026-09-27T14:03:00Z"` -> `"2026-09-27 14:03 UTC"`. */
