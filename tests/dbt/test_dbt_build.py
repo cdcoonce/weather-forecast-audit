@@ -1,3 +1,4 @@
+import csv
 import os
 from pathlib import Path
 
@@ -50,6 +51,8 @@ def test_dbt_build_writes_to_env_configured_duckdb(
     built = {node.node.resource_type for node in result.result}
     assert {"model", "seed", "test"} <= built
     assert get_flags().SEND_ANONYMOUS_USAGE_STATS is False
+    with (DBT_DIR / "seeds" / "station_registry.csv").open(newline="") as handle:
+        expected_row_count = sum(1 for _ in csv.DictReader(handle))
     with duckdb.connect(str(database)) as connection:
         rows = connection.execute("select count(*) from station_registry").fetchone()
-    assert rows == (1,)
+    assert rows == (expected_row_count,)

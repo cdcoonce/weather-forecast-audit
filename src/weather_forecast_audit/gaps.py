@@ -9,7 +9,9 @@ reason to abort the whole ingest.
 from dataclasses import dataclass
 from typing import Literal
 
-Reason = Literal["missing_run", "missing_observations", "missing_report"]
+Reason = Literal[
+    "missing_run", "no_txn", "missing_observations", "missing_report"
+]
 
 
 @dataclass(frozen=True)

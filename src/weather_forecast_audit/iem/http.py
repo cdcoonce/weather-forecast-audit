@@ -74,6 +74,26 @@ class UrllibFetcher:
                 self._sleep(wait)
         self._last_request_at = self._clock()
 
+    def _read_body(self, response: object) -> bytes:
+        """Read the whole response body under a total wall-clock deadline.
+
+        `urlopen(..., timeout=self.timeout_s)` only bounds each individual
+        socket operation: a server that keeps trickling small chunks never
+        triggers that per-call timeout but can still hang the read forever.
+        Reading in chunks and checking the injected clock after each one
+        catches that case too, and is unit-testable without real sockets.
+        """
+        chunks: list[bytes] = []
+        deadline_start = self._clock()
+        while True:
+            chunk = response.read(65536)
+            if not chunk:
+                return b"".join(chunks)
+            chunks.append(chunk)
+            if self._clock() - deadline_start > self.timeout_s:
+                msg = f"body read exceeded the {self.timeout_s}s total deadline"
+                raise TimeoutError(msg)
+
     def get(self, url: str) -> HttpResponse:
         for attempt in range(self.max_retries + 1):
             self._throttle()
@@ -84,7 +104,8 @@ class UrllibFetcher:
                 with urllib.request.urlopen(
                     request, timeout=self.timeout_s
                 ) as response:
-                    return HttpResponse(status=response.status, body=response.read())
+                    body = self._read_body(response)
+                    return HttpResponse(status=response.status, body=body)
             except urllib.error.HTTPError as exc:
                 status = exc.code
                 error = FetchError(status=status, reason=f"http_error:{status}")

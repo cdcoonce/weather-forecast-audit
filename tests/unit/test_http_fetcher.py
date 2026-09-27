@@ -41,11 +41,51 @@ class _FakeHttpResponse:
     def __init__(self, status: int, body: bytes) -> None:
         self.status = status
         self._body = body
+        self._sent = False
 
-    def read(self) -> bytes:
+    def read(self, size: int | None = None) -> bytes:
+        # Real sockets return the whole available chunk then b"" at EOF;
+        # these test bodies are small enough to fit in one chunk.
+        if self._sent:
+            return b""
+        self._sent = True
         return self._body
 
     def __enter__(self) -> "_FakeHttpResponse":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
+class _FakeTricklingResponse:
+    """A response whose body arrives as slow chunks, advancing a fake clock.
+
+    Models a server that never blocks on a single `read()` past the socket
+    timeout, but takes far longer than `timeout_s` in total -- the hang
+    `UrllibFetcher` must catch via a wall-clock deadline across the whole
+    read, not a per-`read()`-call timeout.
+    """
+
+    def __init__(
+        self,
+        status: int,
+        chunks: list[bytes],
+        clock: FakeClock,
+        seconds_per_chunk: float,
+    ) -> None:
+        self.status = status
+        self._chunks = list(chunks)
+        self._clock = clock
+        self._seconds_per_chunk = seconds_per_chunk
+
+    def read(self, size: int | None = None) -> bytes:
+        if not self._chunks:
+            return b""
+        self._clock.now += self._seconds_per_chunk
+        return self._chunks.pop(0)
+
+    def __enter__(self) -> "_FakeTricklingResponse":
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -155,6 +195,48 @@ def test_404_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
         fetcher.get("https://example.test/data")
     assert excinfo.value.status == 404
     assert len(calls) == 1
+
+
+def test_get_raises_on_body_that_trickles_past_the_total_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Each read() call advances the clock by 20s but returns promptly (no
+    # per-call timeout is ever hit); 4 chunks blow well past a 60s deadline.
+    clock = FakeClock()
+    chunks = [b"x" * 10, b"x" * 10, b"x" * 10, b"x" * 10]
+    response = _FakeTricklingResponse(200, chunks, clock, seconds_per_chunk=20.0)
+    monkeypatch.setattr(
+        "urllib.request.urlopen", lambda request, timeout: response
+    )
+    fetcher = UrllibFetcher(
+        sleep=lambda _s: None, clock=clock, timeout_s=60, max_retries=0
+    )
+
+    with pytest.raises(FetchError) as excinfo:
+        fetcher.get("https://example.test/slow")
+    assert "deadline" in excinfo.value.reason
+
+
+def test_get_retries_after_a_stalled_body_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    slow = _FakeTricklingResponse(
+        200, [b"x" * 10, b"x" * 10, b"x" * 10, b"x" * 10], clock, seconds_per_chunk=20.0
+    )
+    fast = _FakeHttpResponse(200, b"ok")
+    responses = iter([slow, fast])
+    monkeypatch.setattr(
+        "urllib.request.urlopen", lambda request, timeout: next(responses)
+    )
+    sleep = FakeSleep(clock)
+    fetcher = UrllibFetcher(
+        sleep=sleep, clock=clock, timeout_s=60, max_retries=1, backoff_s=0.0
+    )
+
+    response = fetcher.get("https://example.test/slow")
+
+    assert response.body == b"ok"
 
 
 def test_default_user_agent_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:

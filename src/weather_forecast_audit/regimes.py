@@ -1,9 +1,13 @@
 """NBS archive cycle regimes: which archived cycle is "nearest 12Z" and when.
 
-The archived NBS cycle nearest 12Z changed on 2026-04-30 (build spec fact 2).
-The changeover date and canonical hours are probed facts, not derived here;
+The archived NBS cycle nearest 12Z changed on 2026-04-30 (build spec fact 2)
+and, earlier, on 2020-02-25/26 (build spec #7 decision 5). The changeover
+dates and canonical hours are probed facts, not derived here;
 `dbt/seeds/nbs_cycle_regimes.csv` is their single source of truth so no date
-is duplicated in Python.
+is duplicated in Python. The first regime's `valid_from` is the pinned NBS
+archive start date (`dbt/seeds/nbs_archive.csv`, `load_archive_start`),
+found by `scripts/registry/probe_archive_start.py` (build spec #7
+decision 6).
 """
 
 import csv
@@ -13,6 +17,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED_PATH = REPO_ROOT / "dbt" / "seeds" / "nbs_cycle_regimes.csv"
+DEFAULT_ARCHIVE_SEED_PATH = REPO_ROOT / "dbt" / "seeds" / "nbs_archive.csv"
 
 
 @dataclass(frozen=True)
@@ -52,3 +57,18 @@ def canonical_cycle_hour(run_date: date, regimes: list[CycleRegime]) -> int:
             return regime.canonical_cycle_hour
     msg = f"no regime covers run_date {run_date.isoformat()}"
     raise ValueError(msg)
+
+
+def load_archive_start(path: Path = DEFAULT_ARCHIVE_SEED_PATH) -> date:
+    """Load the pinned NBS archive start date from its seed CSV.
+
+    See `scripts/registry/probe_archive_start.py` for the search that pinned
+    this date and `docs/spikes/2026-09-26-station-registry/README.md` for
+    the evidence.
+    """
+    with path.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    if len(rows) != 1:
+        msg = f"expected exactly one row in {path}, found {len(rows)}"
+        raise ValueError(msg)
+    return date.fromisoformat(rows[0]["archive_start_date"])

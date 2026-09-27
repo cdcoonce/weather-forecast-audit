@@ -1,0 +1,28 @@
+version: 2
+
+seeds:
+  - name: nbs_archive
+    description: >
+      The pinned NBS archive start date (issue #7, decision 6): the earliest
+      date the canonical archived run has non-null txn for at least 95% of
+      registry stations, sustained at every later monthly check. Found by
+      `scripts/registry/probe_archive_start.py`; see
+      docs/spikes/2026-09-26-station-registry/README.md,
+      coarse_coverage_curve.csv, and fine_search_log.csv for the evidence.
+      Read by `weather_forecast_audit.regimes.load_archive_start`; it is
+      also the first `nbs_cycle_regimes` row's `valid_from`.
+    config:
+      column_types:
+        archive_start_date: date
+        criterion: varchar
+        evidence: varchar
+    columns:
+      - name: archive_start_date
+        data_tests:
+          - not_null
+      - name: criterion
+        data_tests:
+          - not_null
+      - name: evidence
+        data_tests:
+          - not_null

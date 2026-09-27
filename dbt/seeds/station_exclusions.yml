@@ -1,0 +1,41 @@
+version: 2
+
+seeds:
+  - name: station_exclusions
+    description: >
+      CONUS CLI stations (issue #7) that failed an inclusion probe, with the
+      first failing reason (checked in order: no_nbs_guidance,
+      no_asos_observations, no_six_hour_groups) and its probe evidence.
+      Built by `scripts/registry/build_registry.py`; see
+      docs/spikes/2026-09-26-station-registry/README.md and
+      probe_results.csv for full counts and per-station evidence.
+    config:
+      column_types:
+        cli_station: varchar
+        icao: varchar
+        label: varchar
+        reason: varchar
+        evidence: varchar
+    columns:
+      - name: icao
+        data_tests:
+          - unique
+          - not_null
+      - name: cli_station
+        data_tests:
+          - not_null
+      - name: label
+        data_tests:
+          - not_null
+      - name: reason
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - no_nbs_guidance
+                  - no_asos_observations
+                  - no_six_hour_groups
+      - name: evidence
+        data_tests:
+          - not_null

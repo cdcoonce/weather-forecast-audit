@@ -3,8 +3,13 @@ version: 2
 seeds:
   - name: station_registry
     description: >
-      Stations audited by this project, one row each. lat/lon/elevation are
-      verified against IEM station metadata (site.php), not hand-typed.
+      Stations audited by this project, one row per included CONUS CLI
+      station (issue #7). Built by `scripts/registry/build_registry.py`
+      from IEM's NWSCLI GeoJSON network file, NOAA NCEI's climate regions,
+      and the Natural Earth coastline; see
+      docs/spikes/2026-09-26-station-registry/README.md for sources, counts,
+      and judgment calls. Stations failing an inclusion probe go to
+      `station_exclusions` instead.
     config:
       column_types:
         cli_station: varchar
@@ -18,7 +23,47 @@ seeds:
         climate_region: varchar
         coastal_flag: boolean
     columns:
+      - name: cli_station
+        data_tests:
+          - unique
+          - not_null
       - name: icao
         data_tests:
           - unique
+          - not_null
+      - name: nbm_station_id
+        data_tests:
+          - not_null
+      - name: iana_tz
+        data_tests:
+          - not_null
+      - name: lat
+        data_tests:
+          - not_null
+      - name: lon
+        data_tests:
+          - not_null
+      - name: elevation_m
+        data_tests:
+          - not_null
+      - name: label
+        data_tests:
+          - not_null
+      - name: climate_region
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Northwest
+                  - West
+                  - Southwest
+                  - Northern Rockies and Plains
+                  - Upper Midwest
+                  - Ohio Valley
+                  - South
+                  - Southeast
+                  - Northeast
+      - name: coastal_flag
+        data_tests:
           - not_null

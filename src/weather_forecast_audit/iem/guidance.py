@@ -71,9 +71,12 @@ def fetch_guidance(
     """Fetch canonical-cycle NBS guidance for `station` over [start, end].
 
     One request per calendar-month chunk. A `missing_run` gap is emitted for
-    every run date in range with zero canonical-cycle rows; a fetch failure
-    for a chunk emits `http_error:*` gaps for every run date in that chunk
-    only, so other chunks still complete.
+    every run date in range with zero canonical-cycle rows; a `no_txn` gap
+    is emitted when the canonical run has rows but none carry a non-null
+    `txn` (e.g. pre-NBM-v4.0 archives, which use `n_x` for the daily
+    max/min instead -- issue #7); a fetch failure for a chunk emits
+    `http_error:*` gaps for every run date in that chunk only, so other
+    chunks still complete.
     """
     rows: list[GuidanceRow] = []
     gaps: list[GapRecord] = []
@@ -97,35 +100,53 @@ def fetch_guidance(
             continue
 
         canonical_dates_seen: set[date] = set()
+        canonical_dates_with_txn: set[date] = set()
         for raw in parse_nbs_csv(response.body):
             runtime = _parse_naive_utc(raw["runtime"])
             run_date = runtime.date()
             hour = canonical_cycle_hour(run_date, regimes)
             if runtime.hour != hour:
                 continue
+            txn = _parse_optional_float(raw["txn"])
             rows.append(
                 GuidanceRow(
                     station=raw["station"],
                     runtime=runtime,
                     ftime=_parse_naive_utc(raw["ftime"]),
                     cycle_hour=hour,
-                    txn=_parse_optional_float(raw["txn"]),
+                    txn=txn,
                     xnd=_parse_optional_float(raw["xnd"]),
                     tmp=_parse_optional_float(raw["tmp"]),
                 )
             )
             canonical_dates_seen.add(run_date)
+            if txn is not None:
+                canonical_dates_with_txn.add(run_date)
 
         for run_date in chunk_dates:
+            hour = canonical_cycle_hour(run_date, regimes)
+            expected = f"{run_date.isoformat()}T{hour:02d}:00Z"
             if run_date not in canonical_dates_seen:
-                hour = canonical_cycle_hour(run_date, regimes)
-                expected = f"{run_date.isoformat()}T{hour:02d}:00Z"
                 gaps.append(
                     GapRecord(
                         station=station,
                         source="nbs",
                         expected=expected,
                         reason="missing_run",
+                    )
+                )
+            elif run_date not in canonical_dates_with_txn:
+                # The canonical run exists (rows were returned) but none of
+                # them carry a non-null txn -- e.g. pre-NBM-v4.0 archives,
+                # which named the daily max/min column `n_x` instead.
+                # Treating this as "no gap" would silently hide guidance
+                # that is present but unusable.
+                gaps.append(
+                    GapRecord(
+                        station=station,
+                        source="nbs",
+                        expected=expected,
+                        reason="no_txn",
                     )
                 )
 
