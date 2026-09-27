@@ -68,7 +68,7 @@ export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 | `dbt/` | dbt project on `dbt-duckdb`; the database file is `$WFA_DUCKDB_PATH` |
 | `dbt/profiles.yml` | Checked-in profile, env vars only; also carries an unused `snowflake` target |
 | `dbt/.sqlfluff` | Snowflake-dialect lint config (the portability guard) |
-| `dbt/seeds/` | `station_registry.csv`, `nbs_cycle_regimes.csv` — the only source of station metadata and cycle-changeover dates |
+| `dbt/seeds/` | `station_registry.csv`/`station_exclusions.csv` (built by `scripts/registry/build_registry.py`), `nbs_cycle_regimes.csv`/`nbs_archive.csv` (built by `scripts/registry/probe_archive_start.py`) — the only source of station metadata, cycle-changeover dates, and the pinned archive start |
 | `dbt/models/marts/fct_forecast_verification.sql` | The verification fact table |
 | `docs/methodology.md` | Verification windows, scope, completeness threshold, and known caveats |
 | `tests/` | pytest suite |
