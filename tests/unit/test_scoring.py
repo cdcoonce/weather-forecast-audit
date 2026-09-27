@@ -634,3 +634,39 @@ def test_missing_required_column_raises() -> None:
 def test_bad_parameters_raise(kwargs: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         score(_known_answer_frame(), **kwargs)
+
+
+def test_intervals_match_golden_values_across_processes() -> None:
+    # A rebuild must reproduce published intervals exactly (PRD user story 32).
+    # Pinned literals catch any seeding that is only stable within one process:
+    # Python's hash() is salted per process (pytest randomizes PYTHONHASHSEED),
+    # so a hash()-seeded slice RNG breaks these on almost every run. Values were
+    # identical under PYTHONHASHSEED=1 and =2; they change only if numpy's
+    # Generator stream changes (numpy is pinned in uv.lock).
+    rows = []
+    for d in range(10):
+        run_date = date(2025, 7, 1) + timedelta(days=d)
+        for station, offset in (("KPHX", 0.5), ("KORD", -0.25)):
+            rows.append(
+                {
+                    "station": station,
+                    "run_date": run_date,
+                    "lead_day": 1,
+                    "variable": "max",
+                    "source": "raw_nbm",
+                    "target_date": run_date + timedelta(days=1),
+                    "scorable": True,
+                    "error_f": offset + ((d * 7) % 5 - 2) * 0.5,
+                }
+            )
+
+    out = score(pl.DataFrame(rows), by=("station",), n_boot=200)
+
+    got = out.select("station", "bias_lo", "bias_hi", "mae_lo", "mae_hi").rows()
+    expected = [
+        ("KORD", -0.7, 0.15, 0.45, 0.9),
+        ("KPHX", 0.09875, 0.9, 0.4, 1.0),
+    ]
+    for got_row, expected_row in zip(got, expected, strict=True):
+        assert got_row[0] == expected_row[0]
+        assert got_row[1:] == pytest.approx(expected_row[1:], abs=1e-12)
