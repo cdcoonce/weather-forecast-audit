@@ -698,6 +698,95 @@ DuckDB allows one writer process per database file. rammingspeed's single run sl
 
 The tests could not see this failure. `execute_in_process` always runs steps sequentially in one process, so only a structural assertion on the configured executor catches it.
 
+## National backfill (issue #11)
+
+`national_backfill_sensor` (`sensors.py`) drives `ingest_job` and
+`transform_job` through the whole archive -- `ARCHIVE_START` through
+yesterday -- one run at a time, on rammingspeed's single shared run slot,
+without a human launching each run by hand.
+
+### The run unit
+
+The archive is planned (`backfill.plan_units`) into calendar-month x
+station-chunk units: each unit is one `ingest_job` run over a whole
+calendar month (clipped to the archive/end bounds) for 30 stations
+(`BACKFILL_CHUNK_SIZE`) sorted from the registry. A month matches D2's
+existing ingest batching (a run already receives up to a month and fetches
+each station once over the whole range); the 30-station chunk exists
+because the archive has ~573 stations and ingest costs ~12s/station-month
+(IEM's rate limit is 1 req/s) -- a national month in one run would take
+over 6800s, and `MAX_RUNTIME_SECONDS` (600) caps every run at 600s. 30
+stations keeps a unit's ingest under ~360s, leaving headroom under the cap.
+Units are submitted in month-major, chunk-minor order, so every station
+gets a given month before the backfill moves on to the next.
+
+### The blackout window, and why the 600s cap is what makes it safe
+
+rammingspeed's other tenants (oura, waga) have schedules firing every 15
+minutes from 06:00 through 07:00 America/Phoenix (no DST there, so this is
+a fixed UTC offset). `backfill.BLACKOUT_WINDOWS` blocks a new unit's
+submission from 05:45 to 07:15 local -- 15 minutes of padding either side
+of that window.
+
+The padding's size is not arbitrary: `in_blackout` is checked against
+`[now, now + horizon_s]`, where `horizon_s = MAX_RUNTIME_SECONDS + 300`.
+`MAX_RUNTIME_SECONDS` is the run's own hard cap (run monitoring kills
+anything longer), so a run launched right before the blackout starts is
+*guaranteed* to have finished (or been killed) within 600s, plus a 300s
+margin for the time between "the sensor's `RunRequest` is picked up" and
+"the run actually starts occupying the slot" (container/process start).
+That is the sense in which the 600s cap is a safety property here, not
+just a runtime budget: without it, a run could still be holding the slot
+when oura/waga need it, and the backfill would be blocking production
+schedules instead of yielding to them.
+
+### Retry and halt
+
+Each unit gets up to 3 attempts (`MAX_BACKFILL_ATTEMPTS`). A `FAILURE` or
+`CANCELED` run retries the same unit with the attempt incremented; a third
+failure halts the whole backfill rather than silently skipping a unit or
+retrying forever. A halted sensor keeps returning the identical `Halt`
+decision, and keeps writing back the identical (unchanged) cursor, on
+every subsequent tick -- it will never resubmit on its own. Unhalting
+requires a human to look at the failed run, fix whatever broke, and reset
+the cursor (see below); there is no automatic recovery, by design, because
+a `FAILURE` that recurs three times against the same station/month is
+worth a look, not a fourth blind retry.
+
+The transform job (`dbt build`, run once after every ingest unit succeeds)
+follows the same shape: its `FAILURE` halts, its `SUCCESS` completes the
+backfill.
+
+### The frozen plan end
+
+`plan_units`'s `end` argument -- "yesterday" at the sensor's first
+evaluation -- is computed once and stored in the cursor from then on, not
+recomputed on every tick. Without freezing it, a national backfill running
+for weeks would see its own plan grow by one day (and therefore its unit
+count and every unit's index) every time the clock ticks past midnight
+UTC, which would either resubmit units whose indices shifted or leave a
+"complete" backfill perpetually one day short. Freezing the end date at
+evaluation time means the plan is a fixed, finite list from the first tick
+onward: N units, then the transform, then done.
+
+### Starting, stopping, and resetting the sensor
+
+The sensor's `default_status` is `STOPPED`: nothing runs until a human
+starts `national_backfill_sensor` from the Dagster UI (Automation ->
+Sensors) or `dagster sensor start national_backfill_sensor`. Stopping it
+(`dagster sensor stop national_backfill_sensor`) simply pauses evaluation;
+the cursor is untouched, so starting it again resumes exactly where it
+left off, including replaying an unresolved `Wait` or a `Halt`.
+
+To reset a halted (or otherwise stuck) backfill, delete the sensor's
+cursor from the Dagster UI (the sensor's page has a "Reset cursor" action)
+or via `dagster instance` tooling. The next evaluation then starts over
+from a fresh cursor: a newly frozen plan end, unit 0, attempt 1. A partial
+reset -- editing the cursor JSON by hand to skip past a specific bad unit
+-- is possible (the envelope is `{"plan_end": ..., "state": {"next_index",
+"attempt", "last_run_id", "transform_requested"}}`) but is a deliberate,
+manual override; the sensor itself never does this on its own.
+
 ## Published numbers
 
 `weather_forecast_audit.export` (issue #9) turns `scoring.score` output into
