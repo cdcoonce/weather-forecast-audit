@@ -25,7 +25,7 @@ from weather_forecast_audit.registry import Station
 from weather_forecast_audit.resolver import (
     classify_txn,
     lead_day,
-    observed_extreme,
+    resolve_observed,
     resolve_window,
 )
 from weather_forecast_audit.warehouse import ResolvedWindowRow
@@ -113,10 +113,11 @@ def resolve_station(
         [icao, start, end],
     ).fetchall()
 
-    observations = [
-        (valid.replace(tzinfo=UTC), tmpf)
-        for valid, tmpf in conn.execute(
-            "select valid_utc, tmpf from raw.asos_hourly where station = ?",
+    reports = [
+        (valid.replace(tzinfo=UTC), tmpf, max_6h_f, min_6h_f)
+        for valid, tmpf, max_6h_f, min_6h_f in conn.execute(
+            "select valid_utc, tmpf, max_6h_f, min_6h_f from raw.asos_hourly "
+            "where station = ?",
             [icao],
         ).fetchall()
     ]
@@ -127,7 +128,7 @@ def resolve_station(
         ftime = ftime_naive.replace(tzinfo=UTC)
         variable, target_date = classify_txn(ftime)
         window = resolve_window(target_date, variable)
-        extreme = observed_extreme(window, variable, observations)
+        observed = resolve_observed(window, variable, reports)
         resolved.append(
             ResolvedWindowRow(
                 station=icao,
@@ -138,11 +139,14 @@ def resolve_station(
                 lead_day=lead_day(runtime, target_date),
                 window_start_utc=window.start_utc,
                 window_end_utc=window.end_utc,
-                observed_f=extreme.value_f,
-                n_obs=extreme.n_obs,
-                hours_covered=extreme.hours_covered,
-                hours_expected=extreme.hours_expected,
-                scorable=extreme.scorable,
+                observed_f=observed.value_f,
+                n_obs=observed.n_obs,
+                hours_covered=observed.hours_covered,
+                hours_expected=observed.hours_expected,
+                scorable=observed.scorable,
+                extreme_source=observed.extreme_source,
+                periods_found=observed.periods_found,
+                hourly_observed_f=observed.hourly_value_f,
             )
         )
 
