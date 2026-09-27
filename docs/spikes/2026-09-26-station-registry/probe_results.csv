@@ -1,0 +1,611 @@
+icao,state,climate_region,coastal_flag,coastal_distance_km,reason,evidence
+K1V4,VT,Northeast,False,162.620,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+K20V,CO,Southwest,False,1154.298,no_six_hour_groups,days_with_2plus_groups=0/3
+K2WX,SD,Northern Rockies and Plains,False,1440.434,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+K33V,CO,Southwest,False,1221.891,no_six_hour_groups,days_with_2plus_groups=0/3
+K55N,NJ,Northeast,True,0.789,no_asos_observations,days_with_tmpf=0/3
+K8D3,SD,Northern Rockies and Plains,False,1316.811,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAAF,FL,Southeast,True,1.041,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KAAT,CA,West,False,291.503,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KABE,PA,Northeast,False,79.097,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KABI,TX,South,False,501.729,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KABQ,NM,Southwest,False,738.462,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KABR,SD,Northern Rockies and Plains,False,1419.153,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KABY,GA,Southeast,False,158.839,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KACT,TX,South,False,294.019,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KACY,NJ,Northeast,True,10.477,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAEX,LA,South,False,175.901,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAGS,GA,Southeast,False,138.718,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAHN,GA,Southeast,False,278.148,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAIA,NE,Northern Rockies and Plains,False,1513.953,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAKO,CO,Southwest,False,1336.158,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KALB,NY,Northeast,False,161.281,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KALO,IA,Upper Midwest,False,1278.126,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KALS,CO,Southwest,False,959.482,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KALW,WA,Northwest,False,338.481,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAMA,TX,South,False,864.592,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAMG,GA,Southeast,False,98.009,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAMW,IA,Upper Midwest,False,1325.367,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KANB,AL,Southeast,False,344.425,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KANJ,MI,Upper Midwest,False,562.336,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAOO,PA,Northeast,False,185.234,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAPA,CO,Southwest,False,1192.128,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAPC,CA,West,True,10.917,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAPF,FL,Southeast,True,1.864,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAPN,MI,Upper Midwest,False,687.981,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAPX,MI,Upper Midwest,False,733.841,no_asos_observations,days_with_tmpf=0/3
+KARA,LA,South,True,22.279,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KARR,IL,Ohio Valley,False,1015.065,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KART,NY,Northeast,False,153.209,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KASE,CO,Southwest,False,1054.044,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAST,OR,Northwest,True,0.775,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KASX,WI,Upper Midwest,False,879.459,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KATL,GA,Southeast,False,355.469,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KATT,TX,South,False,206.924,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KATY,SD,Northern Rockies and Plains,False,1376.768,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAUG,ME,Northeast,False,28.985,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAUO,AL,Southeast,False,245.813,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAUS,TX,South,False,190.423,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAUW,WI,Upper Midwest,False,932.891,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAVL,NC,Southeast,False,357.061,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAVP,PA,Northeast,False,145.332,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KAZO,MI,Upper Midwest,False,806.205,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBBW,NE,Northern Rockies and Plains,False,1363.515,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBDE,MN,Upper Midwest,False,978.306,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBDL,CT,Northeast,False,68.015,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBDR,CT,Northeast,True,1.195,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBDU,CO,Southwest,False,1211.106,no_six_hour_groups,days_with_2plus_groups=0/3
+KBFD,PA,Northeast,False,327.952,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBFF,NE,Northern Rockies and Plains,False,1455.977,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBFL,CA,West,False,122.503,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBGD,TX,South,False,888.247,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBGM,NY,Northeast,False,194.966,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBGR,ME,Northeast,False,27.406,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBHK,MT,Northern Rockies and Plains,False,1364.749,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBHM,AL,Southeast,False,330.026,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBIH,CA,West,False,279.884,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBIL,MT,Northern Rockies and Plains,False,1064.138,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBIS,ND,Northern Rockies and Plains,False,1484.393,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBIV,MI,Upper Midwest,False,870.986,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBKE,OR,Northwest,False,444.226,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBKV,FL,Southeast,True,20.354,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBKW,WV,Ohio Valley,False,336.815,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBLF,WV,Ohio Valley,False,347.535,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBLI,WA,Northwest,True,2.100,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBLU,CA,West,False,150.812,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBMG,IN,Ohio Valley,False,806.014,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBNA,TN,Ohio Valley,False,611.136,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBNO,OR,Northwest,False,411.561,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBOI,ID,Northwest,False,618.892,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBOS,MA,Northeast,True,0.121,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBPI,WY,Northern Rockies and Plains,False,1086.612,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBPT,TX,South,True,12.686,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBRD,MN,Upper Midwest,False,1089.262,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBRL,IA,Upper Midwest,False,1150.068,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBRO,TX,South,True,19.191,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBTL,MI,Upper Midwest,False,787.300,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBTM,MT,Northern Rockies and Plains,False,765.673,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBTR,LA,South,False,79.062,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBTV,VT,Northeast,False,109.384,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBUF,NY,Northeast,False,394.932,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBUR,CA,West,True,24.469,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBWG,KY,Ohio Valley,False,707.242,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBWI,MD,Northeast,True,9.889,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBYG,WY,Northern Rockies and Plains,False,1250.534,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBYI,ID,Northwest,False,822.813,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KBZN,MT,Northern Rockies and Plains,False,870.343,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCAE,SC,Southeast,False,157.849,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCAG,CO,Southwest,False,1139.857,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCAK,OH,Ohio Valley,False,435.045,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCAO,NM,Southwest,False,1051.906,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCAR,ME,Northeast,False,153.396,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCCR,CA,West,True,6.716,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCCU,CO,Southwest,False,1113.058,no_six_hour_groups,days_with_2plus_groups=0/3
+KCDC,UT,Southwest,False,627.330,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCDR,NE,Northern Rockies and Plains,False,1565.316,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCDS,TX,South,False,717.097,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCEC,CA,West,True,1.399,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCEZ,CO,Southwest,False,791.109,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCGI,MO,Ohio Valley,False,735.208,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCHA,TN,Ohio Valley,False,488.319,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCHO,VA,Southeast,False,99.697,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCHS,SC,Southeast,True,10.445,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCID,IA,Upper Midwest,False,1278.036,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCKB,WV,Ohio Valley,False,266.484,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCKV,TN,Ohio Valley,False,656.760,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCLE,OH,Ohio Valley,False,492.634,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCLL,TX,South,False,156.806,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCLT,NC,Southeast,False,255.068,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCMA,CA,West,True,11.921,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCMH,OH,Ohio Valley,False,506.375,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCMI,IL,Ohio Valley,False,956.668,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCNK,KS,South,False,1115.195,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCNO,CA,West,False,48.139,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCNU,KS,South,False,867.515,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCNY,UT,Southwest,False,876.683,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCON,NH,Northeast,False,62.456,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCOS,CO,Southwest,False,1138.629,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCOU,MO,Ohio Valley,False,954.855,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCPR,WY,Northern Rockies and Plains,False,1336.149,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCQT,CA,West,True,16.372,no_asos_observations,days_with_tmpf=0/3
+KCRE,SC,Southeast,True,1.279,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCRG,FL,Southeast,True,11.384,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCRP,TX,South,True,7.363,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCRQ,CA,West,True,4.596,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCRW,WV,Ohio Valley,False,368.713,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCSG,GA,Southeast,False,251.077,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCSV,TN,Ohio Valley,False,543.115,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCTB,MT,Northern Rockies and Plains,False,728.182,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCTY,FL,Southeast,False,25.844,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KCUB,SC,Southeast,False,158.186,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCUT,SD,Northern Rockies and Plains,False,1508.006,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCVG,KY,Ohio Valley,False,637.785,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCXM,SC,Southeast,True,9.957,no_nbs_guidance,non_null_txn_runtimes=0/2
+KCYS,WY,Northern Rockies and Plains,False,1330.670,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KCZZ,CA,West,False,59.380,no_asos_observations,days_with_tmpf=0/3
+KD07,SD,Northern Rockies and Plains,False,1573.864,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDAB,FL,Southeast,True,7.136,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDAG,CA,West,False,172.504,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDAN,VA,Southeast,False,201.007,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDAY,OH,Ohio Valley,False,613.582,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDBQ,IA,Upper Midwest,False,1209.778,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDCA,VA,Southeast,True,0.151,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDCP,CO,Southwest,False,1207.692,no_nbs_guidance,non_null_txn_runtimes=0/2
+KDDC,KS,South,False,999.666,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDDH,VT,Northeast,False,178.531,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDEC,IL,Ohio Valley,False,1004.012,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDEN,CO,Southwest,False,1224.971,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDEQ,AR,South,False,454.416,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDEW,WA,Northwest,False,354.971,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDFW,TX,South,False,397.509,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDGW,WY,Northern Rockies and Plains,False,1420.104,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDHN,AL,Southeast,False,111.284,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDHT,TX,South,False,981.448,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDIK,ND,Northern Rockies and Plains,False,1461.538,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDJT,FL,Southeast,True,6.495,no_nbs_guidance,non_null_txn_runtimes=0/2
+KDLH,MN,Upper Midwest,False,938.973,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDLN,MT,Northern Rockies and Plains,False,785.829,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDLS,WA,Northwest,False,167.810,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDMH,MD,Northeast,True,2.111,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDMN,NM,Southwest,False,518.732,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDMO,MO,Ohio Valley,False,963.692,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDNL,GA,Southeast,False,151.024,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDPA,IL,Ohio Valley,False,1001.230,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDRA,NV,West,False,366.483,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDRO,CO,Southwest,False,823.495,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDRT,TX,South,False,371.975,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDSM,IA,Upper Midwest,False,1277.000,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDTW,MI,Upper Midwest,False,645.243,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDUG,AZ,Southwest,False,329.096,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDUJ,PA,Northeast,False,288.011,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDVF,CA,West,False,309.531,no_nbs_guidance,non_null_txn_runtimes=0/2
+KDVL,ND,Northern Rockies and Plains,False,1287.737,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KDVN,IA,Upper Midwest,False,1179.979,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEAR,NE,Northern Rockies and Plains,False,1271.962,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEAT,WA,Northwest,False,159.372,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEAU,WI,Upper Midwest,False,1036.899,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KECG,NC,Southeast,True,1.031,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KECP,FL,Southeast,True,5.842,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEED,CA,West,False,309.340,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEEO,CO,Southwest,False,1081.386,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEET,AL,Southeast,False,287.037,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEKA,CA,West,True,0.283,no_asos_observations,days_with_tmpf=1/3
+KEKN,WV,Ohio Valley,False,222.415,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEKO,NV,West,False,578.270,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KELD,AR,South,False,371.486,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KELN,WA,Northwest,False,140.583,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KELP,TX,South,False,592.322,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KELY,NV,West,False,590.712,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEMP,KS,South,False,952.277,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEPH,WA,Northwest,False,211.762,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KERI,PA,Northeast,False,433.891,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEST,IA,Upper Midwest,False,1336.707,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEUG,OR,Northwest,False,71.579,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEVV,IN,Ohio Valley,False,813.776,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEVW,WY,Northern Rockies and Plains,False,962.251,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEWN,NC,Southeast,True,2.608,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEWR,NJ,Northeast,True,2.363,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEYE,IN,Ohio Valley,False,786.013,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KEYW,FL,Southeast,True,0.034,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFAR,ND,Northern Rockies and Plains,False,1222.520,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFAT,CA,West,False,181.635,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFAY,NC,Southeast,False,122.358,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFFC,GA,Southeast,False,350.330,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFFT,KY,Ohio Valley,False,658.679,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KFGF,ND,Northern Rockies and Plains,False,1182.156,no_asos_observations,days_with_tmpf=0/3
+KFHM,CA,West,True,22.860,no_nbs_guidance,non_null_txn_runtimes=0/2
+KFLG,AZ,Southwest,False,441.891,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFLL,FL,Southeast,True,3.058,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFLO,SC,Southeast,False,94.390,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFMY,FL,Southeast,True,3.150,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFNL,CO,Southwest,False,1258.482,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFNT,MI,Upper Midwest,False,720.199,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFPR,FL,Southeast,True,3.556,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFSD,SD,Northern Rockies and Plains,False,1443.140,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFSM,AR,South,False,596.833,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFTY,GA,Southeast,False,367.966,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFUL,CA,West,True,18.528,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KFVE,ME,Northeast,False,111.441,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFWA,IN,Ohio Valley,False,726.553,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KFYV,AR,South,False,669.880,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGCC,WY,Northern Rockies and Plains,False,1339.560,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGCK,KS,South,False,1048.882,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGED,DE,Northeast,True,17.133,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGEG,WA,Northwest,False,351.023,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGEY,WY,Northern Rockies and Plains,False,1144.099,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGEZ,IN,Ohio Valley,False,740.701,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGFK,ND,Northern Rockies and Plains,False,1186.166,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGFL,NY,Northeast,False,203.161,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGGG,TX,South,False,278.779,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGGW,MT,Northern Rockies and Plains,False,1154.005,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGIF,FL,Southeast,False,67.604,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGJT,CO,Southwest,False,965.476,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGLD,KS,South,False,1229.328,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGLH,MS,South,False,351.632,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGLR,MI,Upper Midwest,False,733.841,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KGLS,TX,South,True,1.800,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KGNV,FL,Southeast,False,76.731,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGPI,MT,Northern Rockies and Plains,False,588.541,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KGPT,MS,South,True,4.448,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGRB,WI,Upper Midwest,False,901.889,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGRI,NE,Northern Rockies and Plains,False,1281.581,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGRR,MI,Upper Midwest,False,836.261,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGSO,NC,Southeast,False,268.133,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGSP,SC,Southeast,False,289.881,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGTF,MT,Northern Rockies and Plains,False,809.831,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGUY,OK,South,False,976.412,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KGVL,GA,Southeast,False,336.701,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGWO,MS,South,False,345.234,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGXY,CO,Southwest,False,1277.469,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KGYX,ME,Northeast,True,14.944,no_asos_observations,days_with_tmpf=0/3
+KHBG,MS,South,False,96.521,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHEI,ND,Northern Rockies and Plains,False,1493.562,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHGR,MD,Northeast,False,106.149,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHIB,MN,Upper Midwest,False,948.619,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHIO,OR,Northwest,False,69.865,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHJO,CA,West,False,150.123,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHKS,MS,South,False,216.184,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHLC,KS,South,False,1155.808,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHLG,WV,Ohio Valley,False,337.868,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KHLN,MT,Northern Rockies and Plains,False,786.436,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHON,SD,Northern Rockies and Plains,False,1480.066,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHOU,TX,South,True,22.697,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHQM,WA,Northwest,True,0.288,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHRI,OR,Northwest,False,289.462,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHRL,TX,South,False,29.629,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHRO,AR,South,False,700.397,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHSE,NC,Southeast,True,1.302,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHSI,NE,Northern Rockies and Plains,False,1245.167,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KHSV,AL,Southeast,False,449.425,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHTL,MI,Upper Midwest,False,789.706,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHTS,WV,Ohio Valley,False,452.833,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHUF,IN,Ohio Valley,False,867.473,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KHUL,ME,Northeast,False,109.443,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KHVR,MT,Northern Rockies and Plains,False,920.385,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KHWD,CA,West,True,3.450,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIAD,VA,Southeast,False,29.994,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIAH,TX,South,False,38.184,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KICR,SD,Northern Rockies and Plains,False,1575.185,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KICT,KS,South,False,905.489,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIDA,ID,Northwest,False,906.308,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIEN,SD,Northern Rockies and Plains,False,1611.164,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIGM,AZ,Southwest,False,379.305,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KILG,DE,Northeast,True,2.223,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KILM,NC,Southeast,True,9.265,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KILX,IL,Ohio Valley,False,1047.010,no_asos_observations,days_with_tmpf=0/3
+KIML,NE,Northern Rockies and Plains,False,1336.292,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIND,IN,Ohio Valley,False,784.956,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KINL,MN,Upper Midwest,False,909.604,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KINW,AZ,Southwest,False,476.392,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIOW,IA,Upper Midwest,False,1252.255,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIPL,CA,West,False,108.964,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KIPT,PA,Northeast,False,200.244,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KIRK,MO,Ohio Valley,False,1099.919,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KISN,ND,Northern Rockies and Plains,False,1374.643,no_nbs_guidance,non_null_txn_runtimes=0/2
+KISP,NY,Northeast,True,7.399,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KITR,CO,Southwest,False,1245.371,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJAN,MS,South,False,214.767,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJAX,FL,Southeast,True,19.059,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJBR,AR,South,False,606.492,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJDN,MT,Northern Rockies and Plains,False,1142.117,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJER,ID,Northwest,False,786.215,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJFK,NY,Northeast,True,1.818,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJKL,KY,Ohio Valley,False,529.933,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJLN,MO,Ohio Valley,False,798.989,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJMS,ND,Northern Rockies and Plains,False,1341.216,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJST,PA,Northeast,False,218.172,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KJXN,MI,Upper Midwest,False,726.934,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLAA,CO,Southwest,False,1161.977,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLAF,IN,Ohio Valley,False,851.054,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLAN,MI,Upper Midwest,False,764.531,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLAR,WY,Northern Rockies and Plains,False,1302.454,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLAS,NV,West,False,371.255,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLAW,OK,South,False,621.269,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLAX,CA,West,True,4.592,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLBB,TX,South,False,736.631,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLBF,NE,Northern Rockies and Plains,False,1362.101,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLBT,NC,Southeast,False,91.931,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLCH,LA,South,False,38.810,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLEE,FL,Southeast,False,80.009,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLEX,KY,Ohio Valley,False,634.277,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLFK,TX,South,False,161.433,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KLFT,LA,South,False,41.399,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLGA,NY,Northeast,True,0.164,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLGB,CA,West,True,5.834,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLHX,CO,Southwest,False,1159.829,no_asos_observations,days_with_tmpf=1/3
+KLIC,CO,Southwest,False,1238.949,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLIT,AR,South,False,518.095,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLLJ,ID,Northwest,False,701.615,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLMT,OR,Northwest,False,205.594,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLND,WY,Northern Rockies and Plains,False,1178.886,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLNK,NE,Northern Rockies and Plains,False,1235.968,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLOT,IL,Ohio Valley,False,979.378,no_six_hour_groups,days_with_2plus_groups=0/3
+KLOU,KY,Ohio Valley,False,724.534,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLOZ,KY,Ohio Valley,False,584.891,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLRD,TX,South,False,166.612,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLSE,WI,Upper Midwest,False,1105.025,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLVK,CA,West,False,30.469,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLVM,MT,Northern Rockies and Plains,False,926.087,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLWB,WV,Ohio Valley,False,272.923,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KLWC,KS,South,False,1010.821,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLWD,IA,Upper Midwest,False,1183.566,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLWS,ID,Northwest,False,418.349,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLWT,MT,Northern Rockies and Plains,False,960.288,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLWV,IL,Ohio Valley,False,890.811,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLXV,CO,Southwest,False,1082.676,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLYH,VA,Southeast,False,170.547,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KLZK,AR,South,False,530.019,no_asos_observations,days_with_tmpf=0/3
+KMAE,CA,West,False,149.719,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMAF,TX,South,False,637.965,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMAI,FL,Southeast,False,68.467,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMBG,SD,Northern Rockies and Plains,False,1537.178,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMBS,MI,Upper Midwest,False,763.102,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMCB,MS,South,False,91.230,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMCE,CA,West,False,113.952,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMCI,MO,Ohio Valley,False,1038.310,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMCK,NE,Northern Rockies and Plains,False,1266.828,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMCN,GA,Southeast,False,246.112,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMCO,FL,Southeast,False,52.392,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMCW,IA,Upper Midwest,False,1276.280,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMDH,IL,Ohio Valley,False,791.030,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMDT,PA,Northeast,False,91.478,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMDW,IL,Ohio Valley,False,957.956,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMEG,TN,Ohio Valley,False,515.547,no_asos_observations,days_with_tmpf=0/3
+KMEI,MS,South,False,190.279,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMEM,TN,Ohio Valley,False,514.184,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMFD,OH,Ohio Valley,False,511.742,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMFE,TX,South,False,83.271,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMFR,OR,Northwest,False,118.368,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMGM,AL,Southeast,False,197.700,no_six_hour_groups,days_with_2plus_groups=1/3
+KMGW,WV,Ohio Valley,False,256.284,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMHE,SD,Northern Rockies and Plains,False,1509.000,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMHK,KS,South,False,1049.476,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMHS,CA,West,False,146.225,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMHT,NH,Northeast,False,48.094,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMIA,FL,Southeast,True,9.943,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMIE,IN,Ohio Valley,False,719.718,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMIW,IA,Upper Midwest,False,1325.532,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMKE,WI,Upper Midwest,False,1013.809,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMKG,MI,Upper Midwest,False,902.909,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMKL,TN,Ohio Valley,False,546.158,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMLB,FL,Southeast,True,3.816,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMLI,IL,Ohio Valley,False,1168.852,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMLS,MT,Northern Rockies and Plains,False,1241.620,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMLT,ME,Northeast,False,120.991,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMLU,LA,South,False,292.190,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMMV,OR,Northwest,False,65.275,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMOB,AL,Southeast,True,18.824,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMOD,CA,West,False,59.642,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMOT,ND,Northern Rockies and Plains,False,1432.507,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMPO,PA,Northeast,False,113.218,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMPV,VT,Northeast,False,155.378,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KMPX,MN,Upper Midwest,False,1158.890,no_asos_observations,days_with_tmpf=0/3
+KMQT,MI,Upper Midwest,False,692.086,no_asos_observations,days_with_tmpf=0/3
+KMRB,WV,Ohio Valley,False,96.614,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMRY,CA,West,True,3.297,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMSL,AL,Southeast,False,447.274,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KMSN,WI,Upper Midwest,False,1079.555,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMSO,MT,Northern Rockies and Plains,False,620.714,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMSP,MN,Upper Midwest,False,1135.763,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMSS,NY,Northeast,True,12.596,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMSY,LA,South,True,5.514,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMTH,FL,Southeast,True,0.482,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KMTJ,CO,Southwest,False,938.050,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMTO,IL,Ohio Valley,False,950.882,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMUO,ID,Northwest,False,666.431,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KMVL,VT,Northeast,False,122.031,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMWH,WA,Northwest,False,227.321,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMYF,CA,West,True,10.421,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMYL,ID,Northwest,False,552.596,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KMYV,CA,West,False,106.629,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KN60,ND,Northern Rockies and Plains,False,1476.546,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KNAK,MD,Northeast,True,0.213,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KNEW,LA,South,True,0.033,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KNUQ,CA,West,True,4.698,no_six_hour_groups,days_with_2plus_groups=0/3
+KNYC,NY,Northeast,True,1.336,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KNYL,AZ,Southwest,False,86.003,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOAK,CA,West,True,1.580,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOAX,NE,Northern Rockies and Plains,False,1280.233,no_asos_observations,days_with_tmpf=0/3
+KODX,NE,Northern Rockies and Plains,False,1366.055,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOFK,NE,Northern Rockies and Plains,False,1372.214,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOGB,SC,Southeast,False,101.955,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOJC,KS,South,False,988.894,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOKB,CA,West,True,4.425,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOKC,OK,South,False,670.900,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOLF,MT,Northern Rockies and Plains,False,1232.523,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOLM,WA,Northwest,True,8.260,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOLS,AZ,Southwest,False,211.374,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KOMA,NE,Northern Rockies and Plains,False,1272.521,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOMK,WA,Northwest,False,203.871,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KONO,OR,Northwest,False,540.097,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KONT,CA,West,False,57.561,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KORD,IL,Ohio Valley,False,978.849,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KORF,VA,Southeast,True,3.376,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KORH,MA,Northeast,False,63.929,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOTH,OR,Northwest,True,0.264,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOTM,IA,Upper Midwest,False,1207.894,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KOTX,WA,Northwest,False,343.236,no_asos_observations,days_with_tmpf=0/3
+KOVE,CA,West,False,149.395,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KP28,KS,South,False,898.217,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KP60,WY,Northern Rockies and Plains,False,971.074,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KP68,NV,West,False,503.638,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPAH,KY,Ohio Valley,False,705.939,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPBF,AR,South,False,450.832,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPBG,NY,Northeast,False,78.409,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPDK,GA,Southeast,False,353.412,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPDT,OR,Northwest,False,324.487,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPDX,OR,Northwest,False,78.059,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPGD,FL,Southeast,True,4.311,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPHD,OH,Ohio Valley,False,411.474,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPHL,PA,Northeast,True,0.653,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPHP,SD,Northern Rockies and Plains,False,1644.218,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPHX,AZ,Southwest,False,264.785,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPIA,IL,Ohio Valley,False,1084.681,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPIH,ID,Northwest,False,908.589,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPIR,SD,Northern Rockies and Plains,False,1608.014,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPIT,PA,Northeast,False,323.305,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPKB,WV,Ohio Valley,False,367.526,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPKD,MN,Upper Midwest,False,1116.260,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPLN,MI,Upper Midwest,False,667.962,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPMD,CA,West,False,78.047,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPNS,FL,Southeast,True,2.736,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPOF,MO,Ohio Valley,False,703.855,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPOU,NY,Northeast,False,35.474,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPRB,CA,West,False,35.581,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPRC,AZ,Southwest,False,362.391,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPSC,WA,Northwest,False,272.759,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPSF,MA,Northeast,False,128.660,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPSP,CA,West,False,107.468,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPSX,TX,South,True,4.538,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPUB,CO,Southwest,False,1111.456,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPUW,WA,Northwest,False,401.029,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPVD,RI,Northeast,True,3.242,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPWK,IL,Ohio Valley,False,981.816,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KPWM,ME,Northeast,True,1.414,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRAL,CA,West,False,55.799,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRAP,SD,Northern Rockies and Plains,False,1536.680,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRBG,OR,Northwest,False,65.240,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRBL,CA,West,False,140.847,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRDD,CA,West,False,152.392,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRDG,PA,Northeast,False,77.263,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRDM,OR,Northwest,False,228.753,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRDU,NC,Southeast,False,161.282,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KREO,OR,Northwest,False,517.767,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRFD,IL,Ohio Valley,False,1077.248,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRHI,WI,Upper Midwest,False,865.997,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRIC,VA,Southeast,True,19.091,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRIL,CO,Southwest,False,1040.234,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRIW,WY,Northern Rockies and Plains,False,1184.509,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRKS,WY,Northern Rockies and Plains,False,1129.194,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRMG,GA,Southeast,False,438.440,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRNK,VA,Southeast,False,277.529,no_asos_observations,days_with_tmpf=0/3
+KRNM,CA,West,False,33.907,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRNO,NV,West,False,218.450,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KROA,VA,Southeast,False,238.414,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KROC,NY,Northeast,False,316.041,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KROW,NM,Southwest,False,831.617,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRST,MN,Upper Midwest,False,1169.408,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRUT,VT,Northeast,False,184.991,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRWL,WY,Northern Rockies and Plains,False,1278.295,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KRXE,ID,Northwest,False,906.663,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSAC,CA,West,False,43.216,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSAD,AZ,Southwest,False,373.121,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KSAN,CA,West,True,0.841,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSAT,TX,South,False,197.998,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSAV,GA,Southeast,False,25.104,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSBA,CA,West,True,1.405,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSBN,IN,Ohio Valley,False,842.595,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSBY,MD,Northeast,False,26.554,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSCK,CA,West,True,21.411,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSDB,CA,West,False,73.351,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSDF,KY,Ohio Valley,False,731.308,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSDM,CA,West,True,19.489,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSEA,WA,Northwest,True,3.799,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSEW,WA,Northwest,True,9.980,no_asos_observations,days_with_tmpf=0/3
+KSFB,FL,Southeast,False,38.559,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSFD,CA,West,True,0.834,no_nbs_guidance,non_null_txn_runtimes=0/2
+KSFF,WA,Northwest,False,365.243,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSFO,CA,West,True,0.749,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSGF,MO,Ohio Valley,False,807.466,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSHR,WY,Northern Rockies and Plains,False,1217.054,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSHV,LA,South,False,273.590,no_six_hour_groups,days_with_2plus_groups=0/3
+KSIY,CA,West,False,135.452,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSJC,CA,West,True,14.370,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSJT,TX,South,False,471.023,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSLC,UT,Southwest,False,870.232,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KSLE,OR,Northwest,False,79.946,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSLK,NY,Northeast,False,77.678,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSLN,KS,South,False,1033.201,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSMF,CA,West,False,61.480,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSMX,CA,West,True,15.809,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSNA,CA,West,True,9.040,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSNS,CA,West,True,15.325,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSNT,ID,Northwest,False,674.080,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KSNY,NE,Northern Rockies and Plains,False,1424.448,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSPB,OR,Northwest,False,49.996,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSPD,CO,Southwest,False,1091.461,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KSPG,FL,Southeast,True,0.257,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KSPI,IL,Ohio Valley,False,1023.659,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSPS,TX,South,False,571.465,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSRQ,FL,Southeast,True,1.642,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSSI,GA,Southeast,True,1.124,no_six_hour_groups,days_with_2plus_groups=0/3
+KSTC,MN,Upper Midwest,False,1139.257,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSTJ,MO,Ohio Valley,False,1092.309,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSTL,MO,Ohio Valley,False,916.451,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSTO,CA,West,False,50.897,no_asos_observations,days_with_tmpf=0/3
+KSTS,CA,West,False,27.226,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSUX,IA,Upper Midwest,False,1397.697,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KSYR,NY,Northeast,False,237.632,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTAD,CO,Southwest,False,1048.359,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTBW,FL,Southeast,True,6.422,no_asos_observations,days_with_tmpf=0/3
+KTCL,AL,Southeast,False,277.876,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTCS,NM,Southwest,False,590.944,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTLH,FL,Southeast,False,33.828,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTOI,AL,Southeast,False,151.866,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTOL,OH,Ohio Valley,False,644.569,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTOP,KS,South,False,1022.842,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTOR,WY,Northern Rockies and Plains,False,1444.310,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTPA,FL,Southeast,True,1.686,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTPH,NV,West,False,381.455,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KTRI,TN,Ohio Valley,False,445.634,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTRM,CA,West,False,122.367,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTTD,OR,Northwest,False,91.238,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTTN,NJ,Northeast,False,33.921,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=2/3
+KTUL,OK,South,False,716.189,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTUP,MS,South,False,397.863,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KTUS,AZ,Southwest,False,226.727,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTVC,MI,Upper Midwest,False,777.343,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTVL,CA,West,False,160.208,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTVR,MS,South,False,231.286,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTWF,ID,Northwest,False,771.444,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTXK,AR,South,False,385.746,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTYR,TX,South,False,291.505,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KTYS,TN,Ohio Valley,False,464.537,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KUAO,OR,Northwest,False,91.063,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KUGN,IL,Ohio Valley,False,990.521,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KUIL,WA,Northwest,True,6.253,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KUIN,IL,Ohio Valley,False,1062.834,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KUKI,CA,West,False,43.303,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KUNO,MO,Ohio Valley,False,738.279,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KUNR,SD,Northern Rockies and Plains,False,1525.179,no_asos_observations,days_with_tmpf=0/3
+KVCB,CA,West,False,26.948,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVCT,TX,South,False,30.916,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVEL,UT,Southwest,False,1055.061,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVGT,NV,West,False,379.990,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVIH,MO,Ohio Valley,False,872.544,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KVLD,GA,Southeast,False,100.867,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVPC,GA,Southeast,False,410.659,no_six_hour_groups,days_with_2plus_groups=0/3
+KVPZ,IN,Ohio Valley,False,887.706,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVRB,FL,Southeast,True,3.796,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVSF,VT,Northeast,False,146.085,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVTN,NE,Northern Rockies and Plains,False,1537.488,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KVUO,WA,Northwest,False,72.769,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KWAL,VA,Southeast,True,2.545,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KWJF,CA,West,False,83.599,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KWMC,NV,West,False,447.835,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KWRL,WY,Northern Rockies and Plains,False,1177.203,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KWVI,CA,West,True,6.169,,non_null_txn_runtimes=2/2; days_with_tmpf=2/3; days_with_2plus_groups=2/3
+KXWA,ND,Northern Rockies and Plains,False,1365.393,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KYKM,WA,Northwest,False,161.339,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KYNG,OH,Ohio Valley,False,403.088,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3
+KZZV,OH,Ohio Valley,False,425.422,,non_null_txn_runtimes=2/2; days_with_tmpf=3/3; days_with_2plus_groups=3/3

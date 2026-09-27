@@ -1,2 +1,574 @@
 cli_station,icao,nbm_station_id,iana_tz,lat,lon,elevation_m,label,climate_region,coastal_flag
-KPHX,KPHX,KPHX,America/Phoenix,33.43428,-112.01158,337,"Phoenix, AZ",Southwest,false
+K1V4,K1V4,K1V4,America/New_York,44.42,-72.02,217,"ST. JOHNSBURY(AMOS), VT",Northeast,false
+K2WX,K2WX,K2WX,America/Denver,45.6044,-103.5464,91,"BUFFALO, SD",Northern Rockies and Plains,false
+K8D3,K8D3,K8D3,America/Chicago,45.6689,-96.9914,354,"SISSETON, SD",Northern Rockies and Plains,false
+KAAF,KAAF,KAAF,America/New_York,29.7276,-85.0274,6,"APALACHICOLA MUNI (ASOS), FL",Southeast,true
+KAAT,KAAT,KAAT,America/Los_Angeles,41.4914,-120.5644,1333,"ALTURAS (WAS O00), CA",West,false
+KABE,KABE,KABE,America/New_York,40.6508,-75.4492,117,"ALLENTOWN-BETHLEHEM, PA",Northeast,false
+KABI,KABI,KABI,America/Chicago,32.4113,-99.6819,546,"ABILENE MUNICIPAL, TX",South,false
+KABQ,KABQ,KABQ,America/Denver,35.0419,-106.6155,1620,"ALBUQUERQUE INTL, NM",Southwest,false
+KABR,KABR,KABR,America/Chicago,45.45,-98.42,397,"ABERDEEN, SD",Northern Rockies and Plains,false
+KABY,KABY,KABY,America/New_York,31.5355,-84.1945,59,"ALBANY MUNICIPAL, GA",Southeast,false
+KACT,KACT,KACT,America/Chicago,31.618,-97.2283,155,"Waco, TX",South,false
+KACY,KACY,KACY,America/New_York,39.4576,-74.5772,20,"ATLANTIC CITY INTL, NJ",Northeast,true
+KAEX,KAEX,KAEX,America/Chicago,31.3347,-92.5586,27,"ALEXANDRIA INTL/ENGLAND AFB, LA",South,false
+KAGS,KAGS,KAGS,America/New_York,33.3699,-81.9645,45,"AUGUSTA/BUSH FIELD, GA",Southeast,false
+KAHN,KAHN,KAHN,America/New_York,33.9486,-83.3264,247,"ATHENS MUNICIPAL, GA",Southeast,false
+KAIA,KAIA,KAIA,America/Denver,42.0572,-102.8,119,"ALLIANCE, NE",Northern Rockies and Plains,false
+KAKO,KAKO,KAKO,America/Denver,40.1756,-103.222,1431,"AKRON/WASHINGTON CO, CO",Southwest,false
+KALB,KALB,KALB,America/New_York,42.7576,-73.8036,89,"ALBANY COUNTY ARPT, NY",Northeast,false
+KALO,KALO,KALO,America/Chicago,42.5544,-92.4013,268,"Waterloo, IA",Upper Midwest,false
+KALS,KALS,KALS,America/Denver,37.4389,-105.8614,2299,"ALAMOSA MUNI(AWOS), CO",Southwest,false
+KALW,KALW,KALW,America/Los_Angeles,46.0947,-118.2869,352,"WALLA WALLA WA, WA",Northwest,false
+KAMA,KAMA,KAMA,America/Chicago,35.2194,-101.7059,1099,"AMARILLO ARPT(AWOS), TX",South,false
+KAMG,KAMG,KAMG,America/New_York,31.5361,-82.5066,61,"ALMA/BACON CO., GA",Southeast,false
+KAMW,KAMW,KAMW,America/Chicago,41.9904,-93.6185,280,"Ames, IA",Upper Midwest,false
+KANB,KANB,KANB,America/Chicago,33.5882,-85.8581,186,"ANNISTON/CALHOUN CO, AL",Southeast,false
+KANJ,KANJ,KANJ,America/Detroit,46.4792,-84.3684,218,"SAULT STE MARIE, MI",Upper Midwest,false
+KAOO,KAOO,KAOO,America/New_York,40.2964,-78.32,458,"ALTOONA/BLAIR CO., PA",Northeast,false
+KAPA,KAPA,KAPA,America/Denver,39.57,-104.85,1793,"DENVER/CENTENNIAL, CO",Southwest,false
+KAPC,KAPC,KAPC,America/Los_Angeles,38.2132,-122.2807,10,"NAPA CO. AIRPORT, CA",West,true
+KAPF,KAPF,KAPF,America/New_York,26.1525,-81.7753,3,"NAPLES MUNICIPAL, FL",Southeast,true
+KAPN,KAPN,KAPN,America/Detroit,45.0717,-83.5644,210,"ALPENA, MI",Upper Midwest,false
+KARA,KARA,KARA,America/Chicago,30.0378,-91.8839,7,"NEW IBERIA/ACADIANA, LA",South,true
+KARR,KARR,KARR,America/Chicago,41.77,-88.48,215,"CHICAGO/AURORA, IL",Ohio Valley,false
+KART,KART,KART,America/New_York,43.9888,-76.0262,99,"WATERTOWN INTL ARPT, NY",Northeast,false
+KASE,KASE,KASE,America/Denver,39.2232,-106.8689,2382,"ASPEN/SARDY FIELD, CO",Southwest,false
+KAST,KAST,KAST,America/Los_Angeles,46.1569,-123.8825,7,"ASTORIA/CLATSOP, OR",Northwest,true
+KASX,KASX,KASX,America/Chicago,46.5487,-90.9189,249,"ASHLAND, WI",Upper Midwest,false
+KATL,KATL,KATL,America/New_York,33.6301,-84.4418,315,"ATLANTA INTL ARPT, GA",Southeast,false
+KATT,KATT,KATT,America/Chicago,30.3208,-97.7601,189,"Austin, TX",South,false
+KATY,KATY,KATY,America/Chicago,44.914,-97.1547,532,"WATERTOWN, SD",Northern Rockies and Plains,false
+KAUG,KAUG,KAUG,America/New_York,44.32,-69.8,107,"AUGUSTA STATE ARPT, ME",Northeast,false
+KAUO,KAUO,KAUO,America/Chicago,32.6151,-85.434,236,"AUBURN-OPELIKA APT, AL",Southeast,false
+KAUS,KAUS,KAUS,America/Chicago,30.1945,-97.6699,189,"Austin Bergstrom, TX",South,false
+KAUW,KAUW,KAUW,America/Chicago,44.9262,-89.6266,362,"WAUSAU, WI",Upper Midwest,false
+KAVL,KAVL,KAVL,America/New_York,35.4319,-82.5375,661,"ASHEVILLE_MUNICIPAL_(ASOS), NC",Southeast,false
+KAVP,KAVP,KAVP,America/New_York,41.3335,-75.7227,289,"WILKES-BARRE/SCRANT, PA",Northeast,false
+KAZO,KAZO,KAZO,America/Detroit,42.2347,-85.5519,272,"KALAMAZOO, MI",Upper Midwest,false
+KBBW,KBBW,KBBW,America/Chicago,41.4366,-99.6385,776,"BROKEN BOW MUNI, NE",Northern Rockies and Plains,false
+KBDE,KBDE,KBDE,America/Chicago,48.7284,-94.6122,328,"BAUDETTE MN, MN",Upper Midwest,false
+KBDL,KBDL,KBDL,America/New_York,41.9381,-72.6825,55,"HARTFORD/BRADLEY, CT",Northeast,false
+KBDR,KBDR,KBDR,America/New_York,41.1583,-73.1289,5,"Bridgeport/Sikorsky, CT",Northeast,true
+KBFD,KBFD,KBFD,America/New_York,41.8031,-78.6401,653,"BRADFORD REGIONAL, PA",Northeast,false
+KBFF,KBFF,KBFF,America/Denver,41.874,-103.5956,120,"SCOTTSBLUFF, NE",Northern Rockies and Plains,false
+KBFL,KBFL,KBFL,America/Los_Angeles,35.4344,-119.0542,150,"BAKERSFIELD/MEADOWS, CA",West,false
+KBGD,KBGD,KBGD,America/Chicago,35.7009,-101.3937,931,"BORGER/HUTCHINSON, TX",South,false
+KBGM,KBGM,KBGM,America/New_York,42.2086,-75.9797,497,"BINGHAMTON/BROOME, NY",Northeast,false
+KBGR,KBGR,KBGR,America/New_York,44.8074,-68.8281,59,"BANGOR INTL ARPT, ME",Northeast,false
+KBHK,KBHK,KBHK,America/Denver,46.3476,-104.2594,904,"BAKER MT, MT",Northern Rockies and Plains,false
+KBHM,KBHM,KBHM,America/Chicago,33.5655,-86.7449,192,"BIRMINGHAM MUNI, AL",Southeast,false
+KBIH,KBIH,KBIH,America/Los_Angeles,37.3731,-118.3636,1263,"BISHOP AIRPORT, CA",West,false
+KBIL,KBIL,KBIL,America/Denver,45.8069,-108.5422,1088,"BILLINGS/LOGAN INTL, MT",Northern Rockies and Plains,false
+KBIS,KBIS,KBIS,America/Chicago,46.7727,-100.7458,506,"BISMARCK, ND",Northern Rockies and Plains,false
+KBIV,KBIV,KBIV,America/Detroit,42.7461,-86.0967,208,"HOLLAND, MI",Upper Midwest,false
+KBKE,KBKE,KBKE,America/Los_Angeles,44.8374,-117.8091,1027,"BAKER MUNICIPAL, OR",Northwest,false
+KBKV,KBKV,KBKV,America/New_York,28.4736,-82.4554,19,"BROOKSVILLE, FL",Southeast,true
+KBKW,KBKW,KBKW,America/New_York,37.7873,-81.1242,766,"BECKLEY MEMORIAL, WV",Ohio Valley,false
+KBLF,KBLF,KBLF,America/New_York,37.2958,-81.2077,871,"BLUEFIELD/MERCER CO, WV",Ohio Valley,false
+KBLI,KBLI,KBLI,America/Los_Angeles,48.7927,-122.5375,48,"BELLINGHAM INTL, WA",Northwest,true
+KBLU,KBLU,KBLU,America/Los_Angeles,39.275,-120.7098,1611,"BLUE CANYON, CA",West,false
+KBMG,KBMG,KBMG,America/Indiana/Indianapolis,39.146,-86.6167,257,"Bloomington, IN",Ohio Valley,false
+KBNA,KBNA,KBNA,America/Chicago,36.1189,-86.6892,180,"NASHVILLE METRO, TN",Ohio Valley,false
+KBNO,KBNO,KBNO,America/Los_Angeles,43.595,-118.9564,1271,"BURNS MUNI (AMO, OR",Northwest,false
+KBOI,KBOI,KBOI,America/Boise,43.5667,-116.2406,874,"BOISE MUNICIPAL, ID",Northwest,false
+KBOS,KBOS,KBOS,America/New_York,42.3606,-71.0097,9,"BOSTON/LOGAN INTL, MA",Northeast,true
+KBPI,KBPI,KBPI,America/Denver,42.5851,-110.1112,2124,"BIG PINEY (AMOS), WY",Northern Rockies and Plains,false
+KBPT,KBPT,KBPT,America/Chicago,29.95,-94.02,7,"BEAUMONT/PORT ARTHU, TX",South,true
+KBRD,KBRD,KBRD,America/Chicago,46.4047,-94.1308,369,"BRAINERD, MN",Upper Midwest,false
+KBRL,KBRL,KBRL,America/Chicago,40.7729,-91.1255,213,"BURLINGTON, IA",Upper Midwest,false
+KBRO,KBRO,KBRO,America/Chicago,25.9146,-97.4231,6,"BROWNSVILLE INTL, TX",South,true
+KBTL,KBTL,KBTL,America/Detroit,42.3073,-85.2515,290,"BATTLE CREEK, MI",Upper Midwest,false
+KBTM,KBTM,KBTM,America/Denver,45.9548,-112.4975,1690,"BUTTE/BERT MOONEY, MT",Northern Rockies and Plains,false
+KBTR,KBTR,KBTR,America/Chicago,30.5372,-91.1469,21,"BATON ROUGE/RYAN, LA",South,false
+KBTV,KBTV,KBTV,America/New_York,44.47,-73.15,104,"BURLINGTON INTL, VT",Northeast,false
+KBUF,KBUF,KBUF,America/New_York,42.9408,-78.7358,215,"BUFFALO INTL ARPT, NY",Northeast,false
+KBUR,KBUR,KBUR,America/Los_Angeles,34.2007,-118.3587,236,"BURBANK/GLENDALE, CA",West,true
+KBWG,KBWG,KBWG,America/Chicago,36.9645,-86.4197,167,"BOWLING GREEN, KY",Ohio Valley,false
+KBWI,KBWI,KBWI,America/New_York,39.1754,-76.6683,47,"BALTIMORE/WASH INTL, MD",Northeast,true
+KBYG,KBYG,KBYG,America/Denver,44.38,-106.72,1514,"BUFFALO/JOHNSON COUNTY, WY",Northern Rockies and Plains,false
+KBYI,KBYI,KBYI,America/Boise,42.5426,-113.7715,1265,"BURLEY MUNICIPAL, ID",Northwest,false
+KBZN,KBZN,KBZN,America/Denver,45.7881,-111.1608,1364,"BOZEMAN/GALLATIN, MT",Northern Rockies and Plains,false
+KCAE,KCAE,KCAE,America/New_York,33.9419,-81.1181,69,"COLUMBIA METRO, SC",Southeast,false
+KCAG,KCAG,KCAG,America/Denver,40.4952,-107.5216,1915,"CRAIG-MOFFAT(AMOS), CO",Southwest,false
+KCAK,KCAK,KCAK,America/New_York,40.9161,-81.4422,374,"Akron / Canton, OH",Ohio Valley,false
+KCAO,KCAO,KCAO,America/Denver,36.4486,-103.1539,1515,"CLAYTON MUNI(AMOS), NM",Southwest,false
+KCAR,KCAR,KCAR,America/New_York,46.87,-68.02,190,"CARIBOU MUNICIPAL, ME",Northeast,false
+KCCR,KCCR,KCCR,America/Los_Angeles,37.9897,-122.0569,7,"CONCORD/BUCHANAN, CA",West,true
+KCDC,KCDC,KCDC,America/Denver,37.7,-113.1,1714,"CEDAR CITY MUNI, UT",Southwest,false
+KCDR,KCDR,KCDR,America/Denver,42.8376,-103.0954,101,"CHADRON, NE",Northern Rockies and Plains,false
+KCDS,KCDS,KCDS,America/Chicago,34.4339,-100.2881,595,"CHILDRESS MUNICIPAL, TX",South,false
+KCEC,KCEC,KCEC,America/Los_Angeles,41.7837,-124.238,20,"Crescent City, CA",West,true
+KCEZ,KCEZ,KCEZ,America/Denver,37.303,-108.6281,1803,"CORTEZ/MONTEZUMA CO, CO",Southwest,false
+KCGI,KCGI,KCGI,America/Chicago,37.2253,-89.5708,102,"CAPE GIRARDEAU, MO",Ohio Valley,false
+KCHA,KCHA,KCHA,America/New_York,35.0353,-85.2038,210,"CHATTANOOGA/LOVELL, TN",Ohio Valley,false
+KCHO,KCHO,KCHO,America/New_York,38.1386,-78.4529,195,"CHARLOTTESVILLE, VA",Southeast,false
+KCHS,KCHS,KCHS,America/New_York,32.8986,-80.0405,15,"CHARLESTOWN MUNI, SC",Southeast,true
+KCID,KCID,KCID,America/Chicago,41.8829,-91.7246,265,"CEDAR RAPIDS, IA",Upper Midwest,false
+KCKB,KCKB,KCKB,America/New_York,39.2966,-80.2281,355,"CLARKSBURG WV, WV",Ohio Valley,false
+KCKV,KCKV,KCKV,America/Chicago,36.6219,-87.415,168,"CLARKSVILLE/OUTLAW, TN",Ohio Valley,false
+KCLE,KCLE,KCLE,America/New_York,41.405,-81.8528,233,"CLEVELAND, OH",Ohio Valley,false
+KCLL,KCLL,KCLL,America/Chicago,30.5881,-96.3639,98,"COLLEGE STATION, TX",South,false
+KCLT,KCLT,KCLT,America/New_York,35.2226,-80.9543,228,"CHARLOTTE/DOUGLAS_(ASOS), NC",Southeast,false
+KCMA,KCMA,KCMA,America/Los_Angeles,34.2138,-119.0944,23,"CAMARILLO (AWOS), CA",West,true
+KCMH,KCMH,KCMH,America/New_York,39.9914,-82.8808,247,"COLUMBUS, OH",Ohio Valley,false
+KCMI,KCMI,KCMI,America/Chicago,40.0388,-88.2778,228,"CHAMPAIGN/URBANA, IL",Ohio Valley,false
+KCNK,KCNK,KCNK,America/Chicago,39.55,-97.65,452,"CONCORDIA, KS",South,false
+KCNO,KCNO,KCNO,America/Los_Angeles,33.9753,-117.6361,194,"CHINO AIRPORT CA, CA",West,false
+KCNU,KCNU,KCNU,America/Chicago,37.6703,-95.4842,305,"CHANUTE, KS",South,false
+KCNY,KCNY,KCNY,America/Denver,38.755,-109.7548,1388,"MOAB/CANYONLANDS, UT",Southwest,false
+KCON,KCON,KCON,America/New_York,43.1953,-71.5011,105,"CONCORD MUNICIPAL, NH",Northeast,false
+KCOS,KCOS,KCOS,America/Denver,38.8058,-104.7008,1881,"COLORADO SPRINGS, CO",Southwest,false
+KCOU,KCOU,KCOU,America/Chicago,38.8169,-92.2183,271,"COLUMBIA, MO",Ohio Valley,false
+KCPR,KCPR,KCPR,America/Denver,42.908,-106.4644,1612,"CASPER/NATRONA INTL, WY",Northern Rockies and Plains,false
+KCRE,KCRE,KCRE,America/New_York,33.8118,-78.7239,10,"NORTH MYRTLE BEACH, SC",Southeast,true
+KCRG,KCRG,KCRG,America/New_York,30.3361,-81.5147,13,"CRAIG MUNI ARPT, FL",Southeast,true
+KCRP,KCRP,KCRP,America/Chicago,27.7731,-97.5128,13,"CORPUS CHRISTI, TX",South,true
+KCRQ,KCRQ,KCRQ,America/Los_Angeles,33.13,-117.28,94,"CARLSBAD PALOMAR AIRPORT CA, CA",West,true
+KCRW,KCRW,KCRW,America/New_York,38.3794,-81.59,299,"CHARLESTON/KANAWHA, WV",Ohio Valley,false
+KCSG,KCSG,KCSG,America/New_York,32.5161,-84.9422,121,"COLUMBUS METRO ARPT, GA",Southeast,false
+KCSV,KCSV,KCSV,America/Chicago,35.9513,-85.085,573,"CROSSVILLE MEMORIAL, TN",Ohio Valley,false
+KCTB,KCTB,KCTB,America/Denver,48.6084,-112.3762,1175,"CUT BANK (AWOS), MT",Northern Rockies and Plains,false
+KCTY,KCTY,KCTY,America/New_York,29.6355,-83.1048,13,"CROSS CITY (AMOS), FL",Southeast,false
+KCUB,KCUB,KCUB,America/New_York,33.972,-80.9938,59,"COLUMBIA OWENS DOWNTOWN AIRPORT, SC",Southeast,false
+KCUT,KCUT,KCUT,America/Denver,43.7331,-103.6114,172,"CUSTER, SD",Northern Rockies and Plains,false
+KCVG,KCVG,KCVG,America/New_York,39.0431,-84.6717,267,"CINCINNATI/COVINGTO, KY",Ohio Valley,false
+KCYS,KCYS,KCYS,America/Denver,41.1556,-104.8105,1871,"CHEYENNE/WARREN AFB, WY",Northern Rockies and Plains,false
+KD07,KD07,KD07,America/Denver,45.03,-102.02,78,"FAITH, SD",Northern Rockies and Plains,false
+KDAB,KDAB,KDAB,America/New_York,29.1799,-81.0581,11,"DAYTONA BEACH RGNL, FL",Southeast,true
+KDAG,KDAG,KDAG,America/Los_Angeles,34.8536,-116.7858,584,"BARSTOW-DAGGETT CA, CA",West,false
+KDAN,KDAN,KDAN,America/New_York,36.5729,-79.3361,174,"DANVILLE REGIONAL, VA",Southeast,false
+KDAY,KDAY,KDAY,America/New_York,39.9061,-84.2186,305,"DAYTON, OH",Ohio Valley,false
+KDBQ,KDBQ,KDBQ,America/Chicago,42.3984,-90.7091,329,"DUBUQUE, IA",Upper Midwest,false
+KDCA,KDCA,KDCA,America/New_York,38.8472,-77.0346,20,"WASHINGTON/NATIONAL, VA",Southeast,true
+KDDC,KDDC,KDDC,America/Chicago,37.761,-99.969,796,"DODGE CITY KS, KS",South,false
+KDDH,KDDH,KDDH,America/New_York,42.8912,-73.2461,252,"BENNINGTON STATE (WAS 5B5), VT",Northeast,false
+KDEC,KDEC,KDEC,America/Chicago,39.8346,-88.8657,207,"DECATUR, IL",Ohio Valley,false
+KDEN,KDEN,KDEN,America/Denver,39.8328,-104.6575,1656,"DENVER INTNL ARPT, CO",Southwest,false
+KDEQ,KDEQ,KDEQ,America/Chicago,34.047,-94.3994,108,"J LYNN HELMS/DE QUEEN, AR",South,false
+KDEW,KDEW,KDEW,America/Los_Angeles,47.9689,-117.4211,672,"DEER PARK, WA",Northwest,false
+KDFW,KDFW,KDFW,America/Chicago,32.8968,-97.038,182,"DALLAS/FT WORTH, TX",South,false
+KDGW,KDGW,KDGW,America/Denver,42.7972,-105.3858,1502,"DOUGLAS/CONVERSE COUNTY AIRPORT, WY",Northern Rockies and Plains,false
+KDHN,KDHN,KDHN,America/Chicago,31.32,-85.45,122,"DOTHAN MUNICIPAL, AL",Southeast,false
+KDHT,KDHT,KDHT,America/Chicago,36.0226,-102.5473,1216,"DALHART MUNICIPAL, TX",South,false
+KDIK,KDIK,KDIK,America/Denver,46.7973,-102.8019,789,"DICKINSON, ND",Northern Rockies and Plains,false
+KDLH,KDLH,KDLH,America/Chicago,46.8421,-92.1936,435,"DULUTH, MN",Upper Midwest,false
+KDLN,KDLN,KDLN,America/Denver,45.2554,-112.5525,1597,"DILLON AIRPORT, MT",Northern Rockies and Plains,false
+KDLS,KDLS,KDLS,America/Los_Angeles,45.6194,-121.1661,71,"DALLESPORT WA, WA",Northwest,false
+KDMH,KDMH,KDMH,America/New_York,39.2815,-76.6111,4,"BALTIMORE INNER HARBOR, MD",Northeast,true
+KDMN,KDMN,KDMN,America/Denver,32.2623,-107.7206,1313,"DEMING MUNICIPAL, NM",Southwest,false
+KDMO,KDMO,KDMO,America/Chicago,38.7074,-93.1759,274,"SEDALIA, MO",Ohio Valley,false
+KDNL,KDNL,KDNL,America/New_York,33.4669,-82.0382,130,"AUGUSTA, GA",Southeast,false
+KDPA,KDPA,KDPA,America/Chicago,41.9078,-88.2486,231,"CHICAGO/DUPAGE, IL",Ohio Valley,false
+KDRA,KDRA,KDRA,America/Los_Angeles,36.6207,-116.0287,990,"DESERT ROCK-MERCURY NV, NV",West,false
+KDRO,KDRO,KDRO,America/Denver,37.1515,-107.7538,2038,"DURANGO/LA PLATA CO, CO",Southwest,false
+KDRT,KDRT,KDRT,America/Chicago,29.3742,-100.9272,307,"DEL RIO INTL (AUT), TX",South,false
+KDSM,KDSM,KDSM,America/Chicago,41.534,-93.6531,294,"DES MOINES, IA",Upper Midwest,false
+KDTW,KDTW,KDTW,America/Detroit,42.23,-83.33,195,"DETROIT/WAYNE, MI",Upper Midwest,false
+KDUG,KDUG,KDUG,America/Phoenix,31.469,-109.6037,1265,"DOUGLAS BISBEE INTL, AZ",Southwest,false
+KDUJ,KDUJ,KDUJ,America/New_York,41.18,-78.9,554,"DU BOIS (AWOS), PA",Northeast,false
+KDVL,KDVL,KDVL,America/Chicago,48.1146,-98.9083,436,"DEVILS LAKE ND, ND",Northern Rockies and Plains,false
+KDVN,KDVN,KDVN,America/Chicago,41.6133,-90.5948,229,"QUAD CITIES, IA",Upper Midwest,false
+KEAR,KEAR,KEAR,America/Chicago,40.727,-99.0068,649,"KEARNEY MUNI, NE",Northern Rockies and Plains,false
+KEAT,KEAT,KEAT,America/Los_Angeles,47.399,-120.207,379,"WENATCHEE/PANGBORN, WA",Northwest,false
+KEAU,KEAU,KEAU,America/Chicago,44.8658,-91.4843,276,"EAU CLAIRE, WI",Upper Midwest,false
+KECG,KECG,KECG,America/New_York,36.2606,-76.1746,4,"ELIZABETH_CITY(CGS)_(ASOS), NC",Southeast,true
+KECP,KECP,KECP,America/Chicago,30.3582,-85.7956,69,"Panama City, FL",Southeast,true
+KEED,KEED,KEED,America/Los_Angeles,34.7675,-114.6189,271,"NEEDLES CA, CA",West,false
+KEEO,KEEO,KEEO,America/Denver,40.0488,-107.8859,1957,"MEEKER, CO",Southwest,false
+KEET,KEET,KEET,America/Chicago,33.18,-86.78,178,"ALABASTER, AL",Southeast,false
+KEKN,KEKN,KEKN,America/New_York,38.8853,-79.8528,609,"ELKINS/RANDOLPH FLD, WV",Ohio Valley,false
+KEKO,KEKO,KEKO,America/Los_Angeles,40.8242,-115.786,1367,"ELKO, NV",West,false
+KELD,KELD,KELD,America/Chicago,33.221,-92.8133,77,"EL DORADO/GOODWIN, AR",South,false
+KELN,KELN,KELN,America/Los_Angeles,47.033,-120.53,530,"ELLENSBURG WA, WA",Northwest,false
+KELP,KELP,KELP,America/Denver,31.8111,-106.3758,1194,"EL PASO INTL ARPT, TX",South,false
+KELY,KELY,KELY,America/Los_Angeles,39.295,-114.8453,1909,"ELY/YELLAND FLD, NV",West,false
+KEMP,KEMP,KEMP,America/Chicago,38.3306,-96.1897,368,"EMPORIA, KS",South,false
+KEPH,KEPH,KEPH,America/Los_Angeles,47.3081,-119.5147,388,"EPHRATA MUNICIPAL, WA",Northwest,false
+KERI,KERI,KERI,America/New_York,42.08,-80.18,225,"ERIE INTL AIRPORT, PA",Northeast,false
+KEST,KEST,KEST,America/Chicago,43.4008,-94.7476,401,"ESTHERVILLE, IA",Upper Midwest,false
+KEUG,KEUG,KEUG,America/Los_Angeles,44.1246,-123.212,114,"EUGENE/MAHLON SWEET, OR",Northwest,false
+KEVV,KEVV,KEVV,America/Chicago,38.0441,-87.5205,117,"EVANSVILLE, IN",Ohio Valley,false
+KEVW,KEVW,KEVW,America/Denver,41.2731,-111.0306,2183,"EVANSTON/BURNS FLD, WY",Northern Rockies and Plains,false
+KEWN,KEWN,KEWN,America/New_York,35.0675,-77.0472,6,"NEW_BERN/CRAVEN_CO_(ASOS), NC",Southeast,true
+KEWR,KEWR,KEWR,America/New_York,40.6827,-74.1693,9,"NEWARK INTL AIRPORT, NJ",Northeast,true
+KEYE,KEYE,KEYE,America/Indiana/Indianapolis,39.825,-86.2958,248,"INDIANAPOLIS, IN",Ohio Valley,false
+KEYW,KEYW,KEYW,America/New_York,24.5561,-81.7596,1,"Key West, FL",Southeast,true
+KFAR,KFAR,KFAR,America/Chicago,46.9253,-96.8111,274,"FARGO, ND",Northern Rockies and Plains,false
+KFAT,KFAT,KFAT,America/Los_Angeles,36.78,-119.7194,100,"FRESNO AIR TERMINAL, CA",West,false
+KFAY,KFAY,KFAY,America/New_York,34.9912,-78.8803,57,"FAYETTEVILLE_RGNL_(ASOS), NC",Southeast,false
+KFFC,KFFC,KFFC,America/New_York,33.3553,-84.5669,264,"PEACHTREE CITY, GA",Southeast,false
+KFFT,KFFT,KFFT,America/New_York,38.1847,-84.9033,237,"CAPITAL CITY AIRPORT/FRANKFORT, KY",Ohio Valley,false
+KFLG,KFLG,KFLG,America/Phoenix,35.1403,-111.6722,2137,"FLAGSTAFF (AMOS), AZ",Southwest,false
+KFLL,KFLL,KFLL,America/New_York,26.07,-80.15,7,"FT LAUDERDALE/HOLLY, FL",Southeast,true
+KFLO,KFLO,KFLO,America/New_York,34.1854,-79.7239,45,"FLORENCE REGIONAL, SC",Southeast,false
+KFMY,KFMY,KFMY,America/New_York,26.585,-81.8614,5,"FORT MYERS/PAGE FLD, FL",Southeast,true
+KFNL,KFNL,KFNL,America/Denver,40.4518,-105.0113,1524,"FT COLLINS/LOVELAND CO, CO",Southwest,false
+KFNT,KFNT,KFNT,America/Detroit,42.9667,-83.7494,233,"FLINT, MI",Upper Midwest,false
+KFPR,KFPR,KFPR,America/New_York,27.4981,-80.3767,9,"FORT PIERCE, FL",Southeast,true
+KFSD,KFSD,KFSD,America/Chicago,43.5769,-96.7536,436,"SIOUX FALLS, SD",Northern Rockies and Plains,false
+KFSM,KFSM,KFSM,America/Chicago,35.3366,-94.3674,141,"FORT SMITH ARKANSAS, AR",South,false
+KFTY,KFTY,KFTY,America/New_York,33.78,-84.52,256,"ATLANTA/FULTON CO., GA",Southeast,false
+KFUL,KFUL,KFUL,America/Los_Angeles,33.87,-117.98,29,"FULLERTON MUNICIPAL, CA",West,true
+KFVE,KFVE,KFVE,America/New_York,47.2855,-68.3127,301,"FRENCHVILLE, ME",Northeast,false
+KFWA,KFWA,KFWA,America/Indiana/Indianapolis,40.978,-85.1871,248,"FORT WAYNE, IN",Ohio Valley,false
+KFYV,KFYV,KFYV,America/Chicago,36.0051,-94.1701,381,"FAYETTEVILLE ARKANSAS, AR",South,false
+KGCC,KGCC,KGCC,America/Denver,44.3489,-105.5394,1230,"GILLETTE (AMOS), WY",Northern Rockies and Plains,false
+KGCK,KGCK,KGCK,America/Chicago,37.9275,-100.7244,881,"GARDEN_CITY, KS",South,false
+KGED,KGED,KGED,America/New_York,38.6892,-75.3589,16,"GEORGETOWN/SUSSEX, DE",Northeast,true
+KGEG,KGEG,KGEG,America/Los_Angeles,47.6216,-117.528,721,"SPOKANE INTL ARPT, WA",Northwest,false
+KGEY,KGEY,KGEY,America/Denver,44.5168,-108.0828,1201,"GREYBULL/SOUTH BIG HORN CNTY APT, WY",Northern Rockies and Plains,false
+KGEZ,KGEZ,KGEZ,America/Indiana/Indianapolis,39.5831,-85.8048,245,"SHELBYVILLE, IN",Ohio Valley,false
+KGFK,KGFK,KGFK,America/Chicago,47.9492,-97.1761,257,"GRAND_FORKS, ND",Northern Rockies and Plains,false
+KGFL,KGFL,KGFL,America/New_York,43.3412,-73.6103,100,"GLEN FALLS/WARREN, NY",Northeast,false
+KGGG,KGGG,KGGG,America/Chicago,32.384,-94.7115,124,"LONGVIEW/GREGG CO., TX",South,false
+KGGW,KGGW,KGGW,America/Denver,48.2138,-106.6214,700,"GLASGOW INTL ARPT, MT",Northern Rockies and Plains,false
+KGIF,KGIF,KGIF,America/New_York,28.0629,-81.7533,44,"WINTER HAVEN, FL",Southeast,false
+KGJT,KGJT,KGJT,America/Denver,39.1342,-108.54,1475,"GRAND JUNCTION, CO",Southwest,false
+KGLD,KGLD,KGLD,America/Denver,39.3672,-101.6933,1111,"GOODLAND, KS",South,false
+KGLH,KGLH,KGLH,America/Chicago,33.4829,-90.9856,40,"GREENVILLE MUNI, MS",South,false
+KGLR,KGLR,KGLR,America/Detroit,44.9075,-84.7189,444,"GAYLORD, MI",Upper Midwest,false
+KGLS,KGLS,KGLS,America/Chicago,29.2653,-94.8604,16,"GALVESTON/SCHOLES, TX",South,true
+KGNV,KGNV,KGNV,America/New_York,29.6917,-82.276,46,"GAINESVILLE RGNL, FL",Southeast,false
+KGPI,KGPI,KGPI,America/Denver,48.3042,-114.2636,908,"KALISPELL, MT",Northern Rockies and Plains,false
+KGPT,KGPT,KGPT,America/Chicago,30.4073,-89.0701,8,"GULFPORT, MS",South,true
+KGRB,KGRB,KGRB,America/Chicago,44.4794,-88.1367,208,"GREEN BAY, WI",Upper Midwest,false
+KGRI,KGRI,KGRI,America/Chicago,40.9675,-98.3096,561,"GRAND ISLAND, NE",Northern Rockies and Plains,false
+KGRR,KGRR,KGRR,America/Detroit,42.88,-85.52,237,"GRAND RAPIDS, MI",Upper Midwest,false
+KGSO,KGSO,KGSO,America/New_York,36.0975,-79.9436,270,"GREENSBORO/PIEDMONT_(ASOS), NC",Southeast,false
+KGSP,KGSP,KGSP,America/New_York,34.8847,-82.2239,296,"GREENVILLE/SPARTANB, SC",Southeast,false
+KGTF,KGTF,KGTF,America/Denver,47.4733,-111.3822,1115,"GREAT FALLS INTL, MT",Northern Rockies and Plains,false
+KGUY,KGUY,KGUY,America/Chicago,36.6817,-101.5053,952,"GUYMON, OK",South,false
+KGVL,KGVL,KGVL,America/New_York,34.2719,-83.8303,38,"GAINSVILLE, GA",Southeast,false
+KGWO,KGWO,KGWO,America/Chicago,33.4943,-90.0847,47,"GREENWOOD/LEFLORE, MS",South,false
+KGXY,KGXY,KGXY,America/Denver,40.4374,-104.6332,1420,"GREELEY  CO, CO",Southwest,false
+KHBG,KHBG,KHBG,America/Chicago,31.2649,-89.2529,46,"HATTIESBURG MUNI, MS",South,false
+KHEI,KHEI,KHEI,America/Denver,46.0149,-102.656,828,"HETTINGER, ND",Northern Rockies and Plains,false
+KHGR,KHGR,KHGR,America/New_York,39.7078,-77.7297,215,"HAGERSTOWN REGIONAL, MD",Northeast,false
+KHIB,KHIB,KHIB,America/Chicago,47.3866,-92.839,407,"HIBBING, MN",Upper Midwest,false
+KHIO,KHIO,KHIO,America/Los_Angeles,45.5406,-122.9502,62,"PORTLAND/HILLSBORO, OR",Northwest,false
+KHJO,KHJO,KHJO,America/Los_Angeles,36.3167,-119.6277,74,"HANFORD, CA",West,false
+KHKS,KHKS,KHKS,America/Chicago,32.3348,-90.2225,96,"JACKSON HAWKINS, MS",South,false
+KHLC,KHLC,KHLC,America/Chicago,39.3756,-99.8297,678,"HILL_CITY, KS",South,false
+KHLG,KHLG,KHLG,America/New_York,40.175,-80.6463,365,"WHEELING/OHIO CO., WV",Ohio Valley,false
+KHLN,KHLN,KHLN,America/Denver,46.6056,-111.9636,1188,"HELENA REGIONAL, MT",Northern Rockies and Plains,false
+KHON,KHON,KHON,America/Chicago,44.3852,-98.2286,390,"HURON, SD",Northern Rockies and Plains,false
+KHOU,KHOU,KHOU,America/Chicago,29.6375,-95.2824,14,"HOUSTON/HOBBY AIRPORT, TX",South,true
+KHQM,KHQM,KHQM,America/Los_Angeles,46.9712,-123.9366,4,"HOQUIAM/BOWERMAN, WA",Northwest,true
+KHRI,KHRI,KHRI,America/Los_Angeles,45.8258,-119.2611,192,"HERMISTON OR, OR",Northwest,false
+KHRL,KHRL,KHRL,America/Chicago,26.2285,-97.6544,11,"HARLINGEN INTL ARPT, TX",South,false
+KHRO,KHRO,KHRO,America/Chicago,36.2615,-93.1547,416,"HARRISON/BOONE CO., AR",South,false
+KHSE,KHSE,KHSE,America/New_York,35.2322,-75.6225,3,"HATTERAS_(ASOS), NC",Southeast,true
+KHSI,KHSI,KHSI,America/Chicago,40.6052,-98.4279,591,"HASTINGS, NE",Northern Rockies and Plains,false
+KHSV,KHSV,KHSV,America/Chicago,34.6439,-86.7861,196,"HUNTSVILLE/MADISON, AL",Southeast,false
+KHTL,KHTL,KHTL,America/Detroit,44.3598,-84.6711,351,"HOUGHTON LAKE, MI",Upper Midwest,false
+KHTS,KHTS,KHTS,America/New_York,38.365,-82.555,255,"HUNTINGTON/TRI STAT, WV",Ohio Valley,false
+KHUF,KHUF,KHUF,America/Indiana/Indianapolis,39.4515,-87.3076,179,"TERRE HAUTE, IN",Ohio Valley,false
+KHUL,KHUL,KHUL,America/New_York,46.1231,-67.7921,150,"HOULTON INTL ARPT, ME",Northeast,false
+KHVR,KHVR,KHVR,America/Denver,48.5428,-109.7633,792,"HAVRE (AMOS), MT",Northern Rockies and Plains,false
+KHWD,KHWD,KHWD,America/Los_Angeles,37.6589,-122.1218,14,"HAYWARD AIR TERM, CA",West,true
+KIAD,KIAD,KIAD,America/New_York,38.9505,-77.4094,115,"WASHINGTON/DULLES, VA",Southeast,false
+KIAH,KIAH,KIAH,America/Chicago,29.9844,-95.3414,31,"HOUSTON INTERCONTINENTAL, TX",South,false
+KICR,KICR,KICR,America/Chicago,43.3903,-99.8422,621,"WINNER, SD",Northern Rockies and Plains,false
+KICT,KICT,KICT,America/Chicago,37.65,-97.43,408,"WICHITA, KS",South,false
+KIDA,KIDA,KIDA,America/Boise,43.5137,-112.0708,1445,"IDAHO FALLS/FANNING, ID",Northwest,false
+KIEN,KIEN,KIEN,America/Denver,43.0225,-102.511,99,"PINE RIDGE, SD",Northern Rockies and Plains,false
+KIGM,KIGM,KIGM,America/Phoenix,35.2577,-113.933,1033,"KINGMAN (AMOS), AZ",Southwest,false
+KILG,KILG,KILG,America/New_York,39.6728,-75.6008,24,"WILMINGTON AIRPORT, DE",Northeast,true
+KILM,KILM,KILM,America/New_York,34.27,-77.9,10,"WILMINGTON/NEW_HAN_(ASOS), NC",Southeast,true
+KIML,KIML,KIML,America/Denver,40.5103,-101.6202,99,"IMPERIAL MUNICIP, NE",Northern Rockies and Plains,false
+KIND,KIND,KIND,America/Indiana/Indianapolis,39.7084,-86.3048,241,"INDIANAPOLIS, IN",Ohio Valley,false
+KINL,KINL,KINL,America/Chicago,48.5614,-93.3981,360,"INTERNTNL FALLS, MN",Upper Midwest,false
+KINW,KINW,KINW,America/Phoenix,35.0219,-110.7225,1488,"WINSLOW (AUT), AZ",Southwest,false
+KIOW,KIOW,KIOW,America/Chicago,41.6394,-91.5445,204,"IOWA CITY, IA",Upper Midwest,false
+KIPL,KIPL,KIPL,America/Los_Angeles,32.8342,-115.5787,-15,"IMPERIAL CA, CA",West,false
+KIPT,KIPT,KIPT,America/New_York,41.2433,-76.9217,160,"WILLIAMSPORT, PA",Northeast,false
+KIRK,KIRK,KIRK,America/Chicago,40.0972,-92.5433,293,"KIRKSVILLE, MO",Ohio Valley,false
+KISP,KISP,KISP,America/New_York,40.7939,-73.1017,30,"ISLIP/MACARTHUR, NY",Northeast,true
+KITR,KITR,KITR,America/Denver,39.2425,-102.2854,1285,"BURLINGTON, CO",Southwest,false
+KJAN,KJAN,KJAN,America/Chicago,32.32,-90.08,101,"JACKSON/THOMPSON, MS",South,false
+KJAX,KJAX,KJAX,America/New_York,30.4941,-81.6879,9,"JACKSONVILLE INTL, FL",Southeast,true
+KJBR,KJBR,KJBR,America/Chicago,35.8317,-90.6464,80,"JONESBORO MUNICIPAL, AR",South,false
+KJDN,KJDN,KJDN,America/Denver,47.3258,-106.9475,811,"JORDAN (RAMOS), MT",Northern Rockies and Plains,false
+KJER,KJER,KJER,America/Boise,42.7267,-114.4566,1222,"JEROME COUNTY AIRPORT, ID",Northwest,false
+KJFK,KJFK,KJFK,America/New_York,40.6386,-73.7622,7,"NEW YORK/JF KENNEDY, NY",Northeast,true
+KJKL,KJKL,KJKL,America/New_York,37.5914,-83.3144,421,"JACKSON/J. CARROLL, KY",Ohio Valley,false
+KJLN,KJLN,KJLN,America/Chicago,37.1522,-94.4952,293,"Joplin, MO",Ohio Valley,false
+KJMS,KJMS,KJMS,America/Chicago,46.93,-98.68,457,"JAMESTOWN, ND",Northern Rockies and Plains,false
+KJST,KJST,KJST,America/New_York,40.3161,-78.8339,696,"JOHNSTOWN/CAMBRIA, PA",Northeast,false
+KJXN,KJXN,KJXN,America/Detroit,42.2598,-84.4594,305,"JACKSON/REYNOLDS, MI",Upper Midwest,false
+KLAA,KLAA,KLAA,America/Denver,38.07,-102.6881,1103,"LAMAR, CO",Southwest,false
+KLAF,KLAF,KLAF,America/Indiana/Indianapolis,40.4148,-86.9333,182,"LAFAYETTE, IN",Ohio Valley,false
+KLAN,KLAN,KLAN,America/Detroit,42.78,-84.58,264,"LANSING, MI",Upper Midwest,false
+KLAR,KLAR,KLAR,America/Denver,41.3121,-105.675,2218,"LARAMIE/GEN. BREES, WY",Northern Rockies and Plains,false
+KLAS,KLAS,KLAS,America/Los_Angeles,36.0801,-115.1522,664,"LAS VEGAS/MCCARRAN, NV",West,false
+KLAW,KLAW,KLAW,America/Chicago,34.5575,-98.4167,328,"LAWTON MUNICIPAL, OK",South,false
+KLAX,KLAX,KLAX,America/Los_Angeles,33.9382,-118.3865,32,"LOS ANGELES INTL, CA",West,true
+KLBB,KLBB,KLBB,America/Chicago,33.6636,-101.8228,988,"LUBBOCK INTL ARPT, TX",South,false
+KLBF,KLBF,KLBF,America/Chicago,41.12,-100.67,84,"NORTH PLATTE, NE",Northern Rockies and Plains,false
+KLBT,KLBT,KLBT,America/New_York,34.61,-79.06,38,"LUMBERTON_MUNI_AIRPORT_(ASOS), NC",Southeast,false
+KLCH,KLCH,KLCH,America/Chicago,30.1247,-93.2283,10,"LAKE CHARLES MUNI, LA",South,false
+KLEE,KLEE,KLEE,America/New_York,28.82,-81.81,22,"LEESBURG, FL",Southeast,false
+KLEX,KLEX,KLEX,America/New_York,38.0408,-84.6058,301,"LEXINGTON/BLUEGRASS, KY",Ohio Valley,false
+KLFK,KLFK,KLFK,America/Chicago,31.234,-94.75,88,"LUFKIN/ANGELINA CO., TX",South,false
+KLFT,KLFT,KLFT,America/Chicago,30.2052,-91.9876,13,"LAFAYETTE REGIONAL, LA",South,false
+KLGA,KLGA,KLGA,America/New_York,40.7794,-73.8803,9,"NEW YORK/LA GUARDIA, NY",Northeast,true
+KLGB,KLGB,KLGB,America/Los_Angeles,33.8118,-118.1472,12,"LONG BEACH AIRPORT, CA",West,true
+KLIC,KLIC,KLIC,America/Denver,39.2748,-103.6659,1635,"LIMON MUNICIPAL, CO",Southwest,false
+KLIT,KLIT,KLIT,America/Chicago,34.7273,-92.2357,79,"LITTLE ROCK/ADAMS, AR",South,false
+KLLJ,KLLJ,KLLJ,America/Boise,44.5228,-114.215,1546,"CHALLIS (AMOS), ID",Northwest,false
+KLMT,KLMT,KLMT,America/Los_Angeles,42.1469,-121.7242,1247,"KLAMATH FALLS/KINGS, OR",Northwest,false
+KLND,KLND,KLND,America/Denver,42.8152,-108.7298,1694,"LANDER/HUNT FIELD, WY",Northern Rockies and Plains,false
+KLNK,KLNK,KLNK,America/Chicago,40.8478,-96.7647,364,"LINCOLN, NE",Northern Rockies and Plains,false
+KLOU,KLOU,KLOU,America/New_York,38.228,-85.6637,167,"LOUISVILLE/BOWMAN, KY",Ohio Valley,false
+KLOZ,KLOZ,KLOZ,America/New_York,37.087,-84.077,369,"LONDON-CORBIN ARPT, KY",Ohio Valley,false
+KLRD,KLRD,KLRD,America/Chicago,27.5438,-99.4615,155,"LAREDO INTL AIRPORT, TX",South,false
+KLSE,KLSE,KLSE,America/Chicago,43.88,-91.25,199,"LA CROSSE, WI",Upper Midwest,false
+KLVK,KLVK,KLVK,America/Los_Angeles,37.6927,-121.8144,121,"LIVERMORE MUNICIPAL, CA",West,false
+KLVM,KLVM,KLVM,America/Denver,45.7,-110.45,1419,"LIVINGSTON/MISSION, MT",Northern Rockies and Plains,false
+KLWB,KLWB,KLWB,America/New_York,37.8583,-80.3995,702,"LEWISBURG/GREENBRIE, WV",Ohio Valley,false
+KLWC,KLWC,KLWC,America/Chicago,39.0083,-95.2117,253,"LAWRENCE, KS",South,false
+KLWD,KLWD,KLWD,America/Chicago,40.6306,-93.9005,333,"LAMONI, IA",Upper Midwest,false
+KLWS,KLWS,KLWS,America/Los_Angeles,46.3745,-117.0154,438,"LEWISTON (AMOS), ID",Northwest,false
+KLWT,KLWT,KLWT,America/Denver,47.0492,-109.4667,1270,"LEWISTOWN MUNICIPAL, MT",Northern Rockies and Plains,false
+KLWV,KLWV,KLWV,America/Chicago,38.7643,-87.6055,131,"LAWRENCEVILLE, IL",Ohio Valley,false
+KLXV,KLXV,KLXV,America/Denver,39.2281,-106.3161,3026,"LEADVILLE/LAKE CO., CO",Southwest,false
+KLYH,KLYH,KLYH,America/New_York,37.3208,-79.2067,286,"LYNCHBURG/P. GLENN, VA",Southeast,false
+KMAE,KMAE,KMAE,America/Los_Angeles,36.99,-120.11,77,"MADERA MUNICIPAL AIRPORT, CA",West,false
+KMAF,KMAF,KMAF,America/Chicago,31.9425,-102.1892,872,"MIDLAND REGIONAL, TX",South,false
+KMAI,KMAI,KMAI,America/Chicago,30.8356,-85.1839,34,"MARIANA, FL",Southeast,false
+KMBG,KMBG,KMBG,America/Chicago,45.5464,-100.4078,51,"MOBRIDGE, SD",Northern Rockies and Plains,false
+KMBS,KMBS,KMBS,America/Detroit,43.53,-84.08,202,"SAGINAW, MI",Upper Midwest,false
+KMCB,KMCB,KMCB,America/Chicago,31.18,-90.47,120,"MCCOMB, MS",South,false
+KMCE,KMCE,KMCE,America/Los_Angeles,37.2848,-120.5139,47,"MERCED/MACREADY FLD, CA",West,false
+KMCI,KMCI,KMCI,America/Chicago,39.2976,-94.7139,320,"KANSAS CITY/INTL, MO",Ohio Valley,false
+KMCK,KMCK,KMCK,America/Chicago,40.2063,-100.5921,78,"MCCOOK, NE",Northern Rockies and Plains,false
+KMCN,KMCN,KMCN,America/New_York,32.6928,-83.6492,110,"MACON/LEWIS WILSON, GA",Southeast,false
+KMCO,KMCO,KMCO,America/New_York,28.4294,-81.309,32,"ORLANDO JETPORT, FL",Southeast,false
+KMCW,KMCW,KMCW,America/Chicago,43.1544,-93.3261,370,"MASON CITY, IA",Upper Midwest,false
+KMDH,KMDH,KMDH,America/Chicago,37.78,-89.25,116,"CARBONDALE IL, IL",Ohio Valley,false
+KMDT,KMDT,KMDT,America/New_York,40.1936,-76.7633,94,"HARRISBURG PA, PA",Northeast,false
+KMDW,KMDW,KMDW,America/Chicago,41.786,-87.7524,188,"CHICAGO, IL",Ohio Valley,false
+KMEI,KMEI,KMEI,America/Chicago,32.3348,-88.7511,94,"MERIDIAN/KEY FIELD, MS",South,false
+KMEM,KMEM,KMEM,America/Chicago,35.0611,-89.985,87,"MEMPHIS INTL ARPT, TN",Ohio Valley,false
+KMFD,KMFD,KMFD,America/New_York,40.82,-82.52,395,"MANSFIELD, OH",Ohio Valley,false
+KMFE,KMFE,KMFE,America/Chicago,26.1758,-98.2386,33,"MCALLEN/MILLER INTL, TX",South,false
+KMFR,KMFR,KMFR,America/Los_Angeles,42.3811,-122.8722,405,"MEDFORD/JACKSON CO., OR",Northwest,false
+KMGW,KMGW,KMGW,America/New_York,39.6429,-79.9163,380,"MORGANTOWN/HART FLD, WV",Ohio Valley,false
+KMHE,KMHE,KMHE,America/Chicago,43.7748,-98.0386,397,"MITCHELL, SD",Northern Rockies and Plains,false
+KMHK,KMHK,KMHK,America/Chicago,39.1353,-96.6778,322,"MANHATTAN, KS",South,false
+KMHS,KMHS,KMHS,America/Los_Angeles,41.3149,-122.3171,1081,"MT SHASTA CITY CA, CA",West,false
+KMHT,KMHT,KMHT,America/New_York,42.9328,-71.4358,70,"MANCHESTER, NH",Northeast,false
+KMIA,KMIA,KMIA,America/New_York,25.788,-80.3169,4,"MIAMI INTL AIRPORT, FL",Southeast,true
+KMIE,KMIE,KMIE,America/Indiana/Indianapolis,40.2425,-85.3958,285,"MUNCIE, IN",Ohio Valley,false
+KMIW,KMIW,KMIW,America/Chicago,42.1106,-92.9163,297,"MARSHALLTOWN, IA",Upper Midwest,false
+KMKE,KMKE,KMKE,America/Chicago,42.9472,-87.8967,206,"MILWAUKEE, WI",Upper Midwest,false
+KMKG,KMKG,KMKG,America/Detroit,43.1711,-86.2367,191,"MUSKEGON, MI",Upper Midwest,false
+KMKL,KMKL,KMKL,America/Chicago,35.5931,-88.9167,132,"JACKSON/MCKELLAR, TN",Ohio Valley,false
+KMLB,KMLB,KMLB,America/New_York,28.1028,-80.6453,11,"MELBOURNE REGIONAL, FL",Southeast,true
+KMLI,KMLI,KMLI,America/Chicago,41.4485,-90.5075,181,"Moline, IL",Ohio Valley,false
+KMLS,KMLS,KMLS,America/Denver,46.428,-105.8862,801,"MILES CITY, MT",Northern Rockies and Plains,false
+KMLT,KMLT,KMLT,America/New_York,45.6478,-68.6856,124,"MILLINOCKET MUNI, ME",Northeast,false
+KMLU,KMLU,KMLU,America/Chicago,32.5109,-92.0377,24,"MONROE REGIONAL, LA",South,false
+KMMV,KMMV,KMMV,America/Los_Angeles,45.1946,-123.1361,48,"MCMINNVILLE MUNICIPAL AIRPORT, OR",Northwest,false
+KMOB,KMOB,KMOB,America/Chicago,30.6883,-88.2456,67,"MOBILE/BATES FIELD, AL",Southeast,true
+KMOD,KMOD,KMOD,America/Los_Angeles,37.6258,-120.9544,30,"MODESTO CITY/SHAM, CA",West,false
+KMOT,KMOT,KMOT,America/Chicago,48.2594,-101.2803,523,"MINOT_INTL, ND",Northern Rockies and Plains,false
+KMPO,KMPO,KMPO,America/New_York,41.1389,-75.3794,577,"MT POCONO, PA",Northeast,false
+KMPV,KMPV,KMPV,America/New_York,44.2035,-72.5623,355,"BARRE-MONTPELIER, VT",Northeast,false
+KMRB,KMRB,KMRB,America/New_York,39.4019,-77.9847,170,"MARTINSBURG RGNL, WV",Ohio Valley,false
+KMRY,KMRY,KMRY,America/Los_Angeles,36.587,-121.8429,77,"MONTEREY PENINSULA, CA",West,true
+KMSL,KMSL,KMSL,America/Chicago,34.7438,-87.5996,168,"MUSCLE SHOALS RGNL, AL",Southeast,false
+KMSN,KMSN,KMSN,America/Chicago,43.1406,-89.3453,261,"MADISON, WI",Upper Midwest,false
+KMSO,KMSO,KMSO,America/Denver,46.9208,-114.0925,972,"MISSOULA/BELL FIELD, MT",Northern Rockies and Plains,false
+KMSP,KMSP,KMSP,America/Chicago,44.8854,-93.2313,265,"MINNEAPOLIS, MN",Upper Midwest,false
+KMSS,KMSS,KMSS,America/New_York,44.9358,-74.8456,65,"MASSENA/RICHARDS, NY",Northeast,true
+KMSY,KMSY,KMSY,America/Chicago,29.9933,-90.2511,0,"NEW ORLEANS, LA",South,true
+KMTH,KMTH,KMTH,America/New_York,24.7262,-81.0514,2,"MARATHON AIRPORT, FL",Southeast,true
+KMTJ,KMTJ,KMTJ,America/Denver,38.505,-107.8975,1755,"MONTROSE CO. ARPT, CO",Southwest,false
+KMTO,KMTO,KMTO,America/Chicago,39.4779,-88.2792,214,"MATTOON/CHARLEST, IL",Ohio Valley,false
+KMUO,KMUO,KMUO,America/Boise,43.0436,-115.8724,913,"MOUNTAIN HOME AFB, ID",Northwest,false
+KMVL,KMVL,KMVL,America/New_York,44.5346,-72.614,234,"MORRISVILLE, VT",Northeast,false
+KMWH,KMWH,KMWH,America/Los_Angeles,47.2086,-119.3191,361,"MOSES LAKE/GRANT CO, WA",Northwest,false
+KMYF,KMYF,KMYF,America/Los_Angeles,32.8157,-117.1396,131,"SAN DIEGO/MONTGOMERY FLD, CA",West,true
+KMYL,KMYL,KMYL,America/Boise,44.8889,-116.1017,1531,"MC CALL, ID",Northwest,false
+KMYV,KMYV,KMYV,America/Los_Angeles,39.102,-121.5688,17,"MARYSVILLE, CA",West,false
+KN60,KN60,KN60,America/Chicago,47.6458,-101.4394,587,"GARRISON, ND",Northern Rockies and Plains,false
+KNAK,KNAK,KNAK,America/New_York,38.9913,-76.4891,1,"ANNAPOLIS MD, MD",Northeast,true
+KNEW,KNEW,KNEW,America/Chicago,30.0424,-90.0282,3,"NEW ORLEANS/LAKEFRO, LA",South,true
+KNYC,KNYC,KNYC,America/New_York,40.779,-73.9692,27,"NEW YORK CITY, NY",Northeast,true
+KNYL,KNYL,KNYL,America/Phoenix,32.6566,-114.606,65,"YUMA MCAS, AZ",Southwest,false
+KOAK,KOAK,KOAK,America/Los_Angeles,37.7213,-122.2207,3,"OAKLAND, CA",West,true
+KODX,KODX,KODX,America/Chicago,41.6236,-98.9517,631,"ORD/SHARP FIELD, NE",Northern Rockies and Plains,false
+KOFK,KOFK,KOFK,America/Chicago,41.9855,-97.4351,470,"NORFOLK, NE",Northern Rockies and Plains,false
+KOGB,KOGB,KOGB,America/New_York,33.4568,-80.8595,60,"ORANGEBURG, SC",Southeast,false
+KOJC,KOJC,KOJC,America/Chicago,38.85,-94.7392,334,"OLATHE (OJC), KS",South,false
+KOKB,KOKB,KOKB,America/Los_Angeles,33.22,-117.35,9,"OCEANSIDE MUNICIPAL (WAS L32), CA",West,true
+KOKC,KOKC,KOKC,America/Chicago,35.3889,-97.6006,397,"OKLAHOMA CITY(AWOS), OK",South,false
+KOLF,KOLF,KOLF,America/Denver,48.0945,-105.575,605,"WOLF POINT INTL, MT",Northern Rockies and Plains,false
+KOLM,KOLM,KOLM,America/Los_Angeles,46.9733,-122.9033,61,"OLYMPIA, WA",Northwest,true
+KOLS,KOLS,KOLS,America/Phoenix,31.4208,-110.8458,1194,"NOGALES AZ, AZ",Southwest,false
+KOMA,KOMA,KOMA,America/Chicago,41.3103,-95.8992,312,"OMAHA/EPPLEY, NE",Northern Rockies and Plains,false
+KOMK,KOMK,KOMK,America/Los_Angeles,48.4644,-119.5181,396,"OMAK AIRPORT, WA",Northwest,false
+KONO,KONO,KONO,America/Boise,44.0206,-117.0128,668,"ONTARIO MUNICIPAL, OR",Northwest,false
+KONT,KONT,KONT,America/Los_Angeles,34.056,-117.6012,287,"ONTARIO INTL ARPT, CA",West,false
+KORD,KORD,KORD,America/Chicago,41.9877,-87.9288,200,"CHICAGO O HARE, IL",Ohio Valley,false
+KORF,KORF,KORF,America/New_York,36.9033,-76.1922,9,"NORFOLK INTL ARPT, VA",Southeast,true
+KORH,KORH,KORH,America/New_York,42.2673,-71.8757,308,"WORCESTER (AMOS), MA",Northeast,false
+KOTH,KOTH,KOTH,America/Los_Angeles,43.4171,-124.246,4,"NORTH BEND (AWOS), OR",Northwest,true
+KOTM,KOTM,KOTM,America/Chicago,41.1008,-92.4446,258,"OTTUMWA, IA",Upper Midwest,false
+KOVE,KOVE,KOVE,America/Los_Angeles,39.49,-121.62,54,"OROVILLE, CA",West,false
+KP28,KP28,KP28,America/Chicago,37.2839,-98.5528,468,"MEDICINE_LODGE, KS",South,false
+KP60,KP60,KP60,America/Denver,44.5444,-110.4211,2368,"YELLOWSTONE (RAMOS), WY",Northern Rockies and Plains,false
+KP68,KP68,KP68,America/Los_Angeles,39.6014,-116.0056,1993,"EUREKA (RAMOS), NV",West,false
+KPAH,KPAH,KPAH,America/Chicago,37.0563,-88.7744,120,"PADUCAH/BARKLEY, KY",Ohio Valley,false
+KPBF,KPBF,KPBF,America/Chicago,34.175,-91.9347,63,"PINE BLUFF/GRIDER, AR",South,false
+KPBG,KPBG,KPBG,America/New_York,44.6509,-73.4681,72,"PLATTSBURGH AFB, NY",Northeast,false
+KPDK,KPDK,KPDK,America/New_York,33.8756,-84.302,305,"ATLANTA/DEKALB, GA",Southeast,false
+KPDT,KPDT,KPDT,America/Los_Angeles,45.6951,-118.8414,456,"PENDLETON MUNICIPAL, OR",Northwest,false
+KPDX,KPDX,KPDX,America/Los_Angeles,45.5908,-122.6003,12,"PORTLAND INTL ARPT, OR",Northwest,false
+KPGD,KPGD,KPGD,America/New_York,26.9172,-81.9914,6,"PUNTA GORDA, FL",Southeast,true
+KPHD,KPHD,KPHD,America/New_York,40.4719,-81.4236,272,"NEW PHILADELPHIA, OH",Ohio Valley,false
+KPHL,KPHL,KPHL,America/New_York,39.8683,-75.2311,9,"PHILADELPHIA INTL, PA",Northeast,true
+KPHP,KPHP,KPHP,America/Denver,44.05,-101.6,67,"PHILIP, SD",Northern Rockies and Plains,false
+KPHX,KPHX,KPHX,America/Phoenix,33.4343,-112.0116,337,"PHOENIX/SKY HARBOR, AZ",Southwest,false
+KPIA,KPIA,KPIA,America/Chicago,40.6675,-89.6839,205,"PEORIA, IL",Ohio Valley,false
+KPIH,KPIH,KPIH,America/Boise,42.9098,-112.5959,1365,"POCATELLO MUNICIPAL, ID",Northwest,false
+KPIR,KPIR,KPIR,America/Chicago,44.3827,-100.286,52,"PIERRE, SD",Northern Rockies and Plains,false
+KPIT,KPIT,KPIT,America/New_York,40.4915,-80.2329,373,"PITTSBURGH INTL, PA",Northeast,false
+KPKB,KPKB,KPKB,America/New_York,39.3451,-81.4392,262,"PARKERSBURG/WILSON, WV",Ohio Valley,false
+KPKD,KPKD,KPKD,America/Chicago,46.9,-95.07,434,"PARK RAPIDS MN, MN",Upper Midwest,false
+KPLN,KPLN,KPLN,America/Detroit,45.5709,-84.7967,214,"PELLSTON, MI",Upper Midwest,false
+KPMD,KPMD,KPMD,America/Los_Angeles,34.6294,-118.0846,774,"PALMDALE PRODUCTION, CA",West,false
+KPNS,KPNS,KPNS,America/Chicago,30.4781,-87.1869,37,"PENSACOLA REGIONAL, FL",Southeast,true
+KPOF,KPOF,KPOF,America/Chicago,36.7739,-90.3249,101,"POPLAR BLUFF MO, MO",Ohio Valley,false
+KPOU,KPOU,KPOU,America/New_York,41.6266,-73.8842,51,"POUGHKEEPSIE, NY",Northeast,false
+KPRB,KPRB,KPRB,America/Los_Angeles,35.6729,-120.6271,255,"PASO ROBLES MUNI, CA",West,false
+KPRC,KPRC,KPRC,America/Phoenix,34.65,-112.42,1537,"PRESCOTT/LOVE FLD, AZ",Southwest,false
+KPSC,KPSC,KPSC,America/Los_Angeles,46.2647,-119.119,124,"PASCO/TRI-CITIES, WA",Northwest,false
+KPSF,KPSF,KPSF,America/New_York,42.4272,-73.2892,364,"PITTSFIELD MUNI, MA",Northeast,false
+KPSP,KPSP,KPSP,America/Los_Angeles,33.8297,-116.5067,141,"PALM SPRINGS RGNL, CA",West,false
+KPSX,KPSX,KPSX,America/Chicago,28.73,-96.25,4,"PALACIOS, TX",South,true
+KPUB,KPUB,KPUB,America/Denver,38.29,-104.4983,1439,"PUEBLO MEMORIAL(AW), CO",Southwest,false
+KPUW,KPUW,KPUW,America/Los_Angeles,46.7439,-117.1096,778,"PULLMAN/MOSCOW RGNL, WA",Northwest,false
+KPVD,KPVD,KPVD,America/New_York,41.7219,-71.4325,19,"PROVIDENCE/GREEN, RI",Northeast,true
+KPWK,KPWK,KPWK,America/Chicago,42.1208,-87.9047,203,"PALWAUKEE, IL",Ohio Valley,false
+KPWM,KPWM,KPWM,America/New_York,43.6424,-70.3044,19,"PORTLAND INTL JET, ME",Northeast,true
+KRAL,KRAL,KRAL,America/Los_Angeles,33.9519,-117.4451,249,"RIVERSIDE MUNICIPAL, CA",West,false
+KRAP,KRAP,KRAP,America/Denver,44.0453,-103.0574,96,"RAPID CITY, SD",Northern Rockies and Plains,false
+KRBG,KRBG,KRBG,America/Los_Angeles,43.2388,-123.3559,160,"ROSEBURG MUNICIPAL, OR",Northwest,false
+KRBL,KRBL,KRBL,America/Los_Angeles,40.1519,-122.2536,107,"RED BLUFF, CA",West,false
+KRDD,KRDD,KRDD,America/Los_Angeles,40.509,-122.2934,153,"REDDING MUNICIPAL, CA",West,false
+KRDG,KRDG,KRDG,America/New_York,40.3785,-75.9652,105,"READING/SPAATZ FLD, PA",Northeast,false
+KRDM,KRDM,KRDM,America/Los_Angeles,44.2539,-121.15,938,"REDMOND OR, OR",Northwest,false
+KRDU,KRDU,KRDU,America/New_York,35.8776,-78.7875,134,"RALEIGH-DURHAM_(ASOS), NC",Southeast,false
+KREO,KREO,KREO,America/Boise,42.5906,-117.8644,1235,"ROME, OR",Northwest,false
+KRFD,KRFD,KRFD,America/Chicago,42.1927,-89.093,221,"ROCKFORD, IL",Ohio Valley,false
+KRHI,KRHI,KRHI,America/Chicago,45.6312,-89.4675,485,"RHINELANDER, WI",Upper Midwest,false
+KRIC,KRIC,KRIC,America/New_York,37.5115,-77.3234,54,"RICHMOND/BYRD FIELD, VA",Southeast,true
+KRIL,KRIL,KRIL,America/Denver,39.5263,-107.7269,1691,"RIFLE/GARFIELD RGNL, CO",Southwest,false
+KRIW,KRIW,KRIW,America/Denver,43.0642,-108.4598,1688,"RIVERTON, WY",Northern Rockies and Plains,false
+KRKS,KRKS,KRKS,America/Denver,41.5942,-109.0652,2060,"ROCK SPRINGS, WY",Northern Rockies and Plains,false
+KRMG,KRMG,KRMG,America/New_York,34.3478,-85.1611,196,"ROME/RUSSELL(RAMOS), GA",Southeast,false
+KRNM,KRNM,KRNM,America/Los_Angeles,33.0392,-116.9152,425,"RAMONA AIRPORT, CA",West,false
+KRNO,KRNO,KRNO,America/Los_Angeles,39.4839,-119.7711,1341,"RENO/CANNON INTL, NV",West,false
+KROA,KROA,KROA,America/New_York,37.3169,-79.9742,358,"ROANOKE MUNICIPAL, VA",Southeast,false
+KROC,KROC,KROC,America/New_York,43.1167,-77.6767,169,"ROCHESTER/MONROE CO, NY",Northeast,false
+KROW,KROW,KROW,America/Denver,33.3,-104.53,1118,"ROSWELL/INDUSTRIAL, NM",Southwest,false
+KRST,KRST,KRST,America/Chicago,43.9041,-92.4916,403,"ROCHESTER, MN",Upper Midwest,false
+KRUT,KRUT,KRUT,America/New_York,43.53,-72.95,240,"RUTLAND STATE(AWOS), VT",Northeast,false
+KRWL,KRWL,KRWL,America/Denver,41.8056,-107.1999,2077,"RAWLINS MUNICIPAL, WY",Northern Rockies and Plains,false
+KRXE,KRXE,KRXE,America/Boise,43.8339,-111.8051,1481,"REXBURG-MADISON COUNTY AIRPORT, ID",Northwest,false
+KSAC,KSAC,KSAC,America/Los_Angeles,38.5069,-121.495,8,"SACRAMENTO/EXECUTIV, CA",West,false
+KSAD,KSAD,KSAD,America/Phoenix,32.8547,-109.6353,965,"SAFFORD AZ, AZ",Southwest,false
+KSAN,KSAN,KSAN,America/Los_Angeles,32.7339,-117.1845,9,"SAN DIEGO/LINDBERG, CA",West,true
+KSAT,KSAT,KSAT,America/Chicago,29.5337,-98.4698,242,"SAN ANTONIO INTL, TX",South,false
+KSAV,KSAV,KSAV,America/New_York,32.1276,-81.2021,15,"SAVANNAH MUNICIPAL, GA",Southeast,false
+KSBA,KSBA,KSBA,America/Los_Angeles,34.4261,-119.8436,3,"SANTA BARBARA MUNI, CA",West,true
+KSBN,KSBN,KSBN,America/Indiana/Indianapolis,41.7072,-86.3164,237,"SOUTH BEND, IN",Ohio Valley,false
+KSBY,KSBY,KSBY,America/New_York,38.3405,-75.5103,16,"SALISBURY REGIONAL, MD",Northeast,false
+KSCK,KSCK,KSCK,America/Los_Angeles,37.8942,-121.2383,8,"STOCKTON METRO, CA",West,true
+KSDB,KSDB,KSDB,America/Los_Angeles,34.7434,-118.7253,1379,"SANDBURG (AUT), CA",West,false
+KSDF,KSDF,KSDF,America/New_York,38.1744,-85.736,149,"LOUISVILLE/STANDIFO, KY",Ohio Valley,false
+KSDM,KSDM,KSDM,America/Los_Angeles,32.57,-116.9,274,"SAN DIEGO/BROWN, CA",West,true
+KSEA,KSEA,KSEA,America/Los_Angeles,47.4447,-122.3144,137,"SEATTLE-TACOMA INTL, WA",Northwest,true
+KSFB,KSFB,KSFB,America/New_York,28.7797,-81.2436,16,"SANFORD, FL",Southeast,false
+KSFF,KSFF,KSFF,America/Los_Angeles,47.6828,-117.3226,595,"SPOKANE/FELTS FIELD, WA",Northwest,false
+KSFO,KSFO,KSFO,America/Los_Angeles,37.619,-122.3749,5,"SAN FRANCISCO INTL, CA",West,true
+KSGF,KSGF,KSGF,America/Chicago,37.2397,-93.3897,390,"SPRINGFIELD, MO",Ohio Valley,false
+KSHR,KSHR,KSHR,America/Denver,44.77,-106.97,1209,"SHERIDAN CO. ARPT, WY",Northern Rockies and Plains,false
+KSIY,KSIY,KSIY,America/Los_Angeles,41.78,-122.47,807,"MONTAGUE/SISKIYOU, CA",West,false
+KSJC,KSJC,KSJC,America/Los_Angeles,37.3594,-121.9244,17,"SAN JOSE INTL A, CA",West,true
+KSJT,KSJT,KSJT,America/Chicago,31.3517,-100.495,582,"SAN ANGELO/MATHIS, TX",South,false
+KSLC,KSLC,KSLC,America/Denver,40.78,-111.97,1288,"SALT LAKE CITY INTL, UT",Southwest,false
+KSLE,KSLE,KSLE,America/Los_Angeles,44.9095,-123.0025,61,"SALEM/MCNARY, OR",Northwest,false
+KSLK,KSLK,KSLK,America/New_York,44.3853,-74.2062,507,"SARANAC LAKE/ADIRON, NY",Northeast,false
+KSLN,KSLN,KSLN,America/Chicago,38.791,-97.6522,388,"SALINA, KS",South,false
+KSMF,KSMF,KSMF,America/Los_Angeles,38.6954,-121.5908,8,"SACRAMENTO MET AP, CA",West,false
+KSMX,KSMX,KSMX,America/Los_Angeles,34.9,-120.45,73,"SANTA MARIA PUBLIC, CA",West,true
+KSNA,KSNA,KSNA,America/Los_Angeles,33.6757,-117.8682,16,"SANTA ANA/JON-WAYNE, CA",West,true
+KSNS,KSNS,KSNS,America/Los_Angeles,36.6636,-121.6081,26,"SALINAS MUNICIPAL, CA",West,true
+KSNT,KSNT,KSNT,America/Boise,44.17,-114.93,1980,"STANLEY RANGER STATION, ID",Northwest,false
+KSNY,KSNY,KSNY,America/Denver,41.1014,-102.9847,130,"SIDNEY, NE",Northern Rockies and Plains,false
+KSPB,KSPB,KSPB,America/Los_Angeles,45.77,-122.86,17,"SCAPPOOSE INDUSTRIAL APK (1S4), OR",Northwest,false
+KSPD,KSPD,KSPD,America/Denver,37.2833,-102.6139,1335,"SPRINGFIELD/COMANCHE NATL GRASS, CO",Southwest,false
+KSPG,KSPG,KSPG,America/New_York,27.7651,-82.627,1,"SAINT PETERSBURG, FL",Southeast,true
+KSPI,KSPI,KSPI,America/Chicago,39.8447,-89.6839,181,"SPRINGFIELD, IL",Ohio Valley,false
+KSPS,KSPS,KSPS,America/Chicago,33.9786,-98.4928,314,"WICHITA FALLS/SHEP, TX",South,false
+KSRQ,KSRQ,KSRQ,America/New_York,27.4014,-82.5586,9,"SARASOTA-BRADENTON, FL",Southeast,true
+KSTC,KSTC,KSTC,America/Chicago,45.5433,-94.0513,314,"ST. CLOUD, MN",Upper Midwest,false
+KSTJ,KSTJ,KSTJ,America/Chicago,39.7719,-94.9097,247,"ST. JOSEPH, MO",Ohio Valley,false
+KSTL,KSTL,KSTL,America/Chicago,38.7524,-90.3734,171,"ST. LOUIS, MO",Ohio Valley,false
+KSTS,KSTS,KSTS,America/Los_Angeles,38.509,-122.8129,38,"SANTA ROSA (AWOS), CA",West,false
+KSUX,KSUX,KSUX,America/Chicago,42.3917,-96.3795,336,"SIOUX CITY, IA",Upper Midwest,false
+KSYR,KSYR,KSYR,America/New_York,43.1112,-76.1063,124,"SYRACUSE/HANCOCK, NY",Northeast,false
+KTAD,KTAD,KTAD,America/Denver,37.2594,-104.3407,1756,"TRINIDAD/ANIMAS CO., CO",Southwest,false
+KTCL,KTCL,KTCL,America/Chicago,33.2119,-87.6161,52,"TUSCALOOSA MUNI, AL",Southeast,false
+KTCS,KTCS,KTCS,America/Denver,33.2367,-107.2681,1481,"TRUTH OR CONSEQUENC, NM",Southwest,false
+KTLH,KTLH,KTLH,America/New_York,30.3935,-84.3514,21,"TALLAHASSEE RGNL, FL",Southeast,false
+KTOI,KTOI,KTOI,America/Chicago,31.8604,-86.0121,121,"TROY MUNICIPAL, AL",Southeast,false
+KTOL,KTOL,KTOL,America/New_York,41.5886,-83.8014,210,"TOLEDO, OH",Ohio Valley,false
+KTOP,KTOP,KTOP,America/Chicago,39.07,-95.62,270,"TOPEKA (TOP), KS",South,false
+KTOR,KTOR,KTOR,America/Denver,42.0647,-104.1528,1282,"TORRINGTON MUNICIPAL AIRPORT, WY",Northern Rockies and Plains,false
+KTPA,KTPA,KTPA,America/New_York,27.9619,-82.5403,3,"TAMPA INTL AIRPORT, FL",Southeast,true
+KTPH,KTPH,KTPH,America/Los_Angeles,38.0505,-117.0904,1654,"TONOPAH AIRPORT, NV",West,false
+KTRI,KTRI,KTRI,America/New_York,36.4752,-82.4074,463,"BRISTOL/TRI-CITY, TN",Ohio Valley,false
+KTRM,KTRM,KTRM,America/Los_Angeles,33.6267,-116.1597,-37,"THERMAL AIRPORT, CA",West,false
+KTTD,KTTD,KTTD,America/Los_Angeles,45.5511,-122.4089,11,"PORTLAND/TROUTDALE, OR",Northwest,false
+KTTN,KTTN,KTTN,America/New_York,40.2768,-74.8159,65,"TRENTON/MERCER CO., NJ",Northeast,false
+KTUL,KTUL,KTUL,America/Chicago,36.1984,-95.8881,206,"TULSA OKLAHOMA, OK",South,false
+KTUP,KTUP,KTUP,America/Chicago,34.2608,-88.7711,110,"TUPELO/C.D. LEMONS, MS",South,false
+KTUS,KTUS,KTUS,America/Phoenix,32.1203,-110.938,779,"TUCSON INTL AIRPORT, AZ",Southwest,false
+KTVC,KTVC,KTVC,America/Detroit,44.7416,-85.5824,190,"TRAVERSE CIT, MI",Upper Midwest,false
+KTVL,KTVL,KTVL,America/Los_Angeles,38.8939,-119.9953,1909,"SOUTH LAKE TAHOE, CA",West,false
+KTVR,KTVR,KTVR,America/Chicago,32.35,-91.03,25,"VICKSBURG/TALLULAH RGNL APT, MS",South,false
+KTWF,KTWF,KTWF,America/Boise,42.4818,-114.4878,1265,"TWIN FALLS/JOSLIN, ID",Northwest,false
+KTXK,KTXK,KTXK,America/Chicago,33.4537,-93.991,119,"TEXARKANA RGNL/WEBB, AR",South,false
+KTYR,KTYR,KTYR,America/Chicago,32.3541,-95.4024,166,"TYLER/POUNDS FLD, TX",South,false
+KTYS,KTYS,KTYS,America/New_York,35.8181,-83.9858,299,"KNOXVILLE MUNICIPAL, TN",Ohio Valley,false
+KUAO,KUAO,KUAO,America/Los_Angeles,45.25,-122.77,60,"AURORA STATE, OR",Northwest,false
+KUGN,KUGN,KUGN,America/Chicago,42.4222,-87.8679,222,"WAUKEGAN, IL",Ohio Valley,false
+KUIL,KUIL,KUIL,America/Los_Angeles,47.9366,-124.5626,62,"QUILLAYUTE STATE, WA",Northwest,true
+KUIN,KUIN,KUIN,America/Chicago,39.9428,-91.1946,234,"QUINCY, IL",Ohio Valley,false
+KUKI,KUKI,KUKI,America/Los_Angeles,39.1258,-123.2008,185,"Ukiah, CA",West,false
+KUNO,KUNO,KUNO,America/Chicago,36.8784,-91.9027,372,"WEST PLAINS, MO",Ohio Valley,false
+KVCB,KVCB,KVCB,America/Los_Angeles,38.3775,-121.9575,31,"VACAVILLE, CA",West,false
+KVCT,KVCT,KVCT,America/Chicago,28.8614,-96.9303,36,"VICTORIA REGIONAL, TX",South,false
+KVEL,KVEL,KVEL,America/Denver,40.4409,-109.5099,1608,"VERNAL, UT",Southwest,false
+KVGT,KVGT,KVGT,America/Los_Angeles,36.212,-115.194,664,"NORTH_LAS_VEGAS NV, NV",West,false
+KVIH,KVIH,KVIH,America/Chicago,38.13,-91.77,333,"VICHY/ROLLA, MO",Ohio Valley,false
+KVLD,KVLD,KVLD,America/New_York,30.7825,-83.2767,62,"VALDOSTA REGIONAL, GA",Southeast,false
+KVPZ,KVPZ,KVPZ,America/Chicago,41.454,-87.0071,231,"VALPARAISO, IN",Ohio Valley,false
+KVRB,KVRB,KVRB,America/New_York,27.6556,-80.4179,8,"VERO BEACH MUNI, FL",Southeast,true
+KVSF,KVSF,KVSF,America/New_York,43.3436,-72.5173,176,"SPRINGFIELD/HARTNES, VT",Northeast,false
+KVTN,KVTN,KVTN,America/Chicago,42.8567,-100.5489,78,"VALENTINE, NE",Northern Rockies and Plains,false
+KVUO,KVUO,KVUO,America/Los_Angeles,45.6204,-122.6565,8,"PEARSON AIRPARK  VANCOUVER, WA",Northwest,false
+KWAL,KWAL,KWAL,America/New_York,37.9406,-75.4631,41,"WALLOPS ISLAND STN, VA",Southeast,true
+KWJF,KWJF,KWJF,America/Los_Angeles,34.7411,-118.2186,715,"LANCASTER/FOX FIELD, CA",West,false
+KWMC,KWMC,KWMC,America/Los_Angeles,40.9019,-117.8072,1315,"WINNEMUCCA MUNI, NV",West,false
+KWRL,KWRL,KWRL,America/Denver,43.9657,-107.9508,1294,"WORLAND MUNICIPAL, WY",Northern Rockies and Plains,false
+KWVI,KWVI,KWVI,America/Los_Angeles,36.9394,-121.79,50,"Watsonville, CA",West,true
+KXWA,KXWA,KXWA,America/Chicago,48.25,-103.75,709,"WILLISTON BASIN AIRPORT, ND",Northern Rockies and Plains,false
+KYKM,KYKM,KYKM,America/Los_Angeles,46.5682,-120.5441,325,"YAKIMA WA, WA",Northwest,false
+KYNG,KYNG,KYNG,America/New_York,41.2544,-80.6739,360,"YOUNGSTOWN, OH",Ohio Valley,false
+KZZV,KZZV,KZZV,America/New_York,39.9444,-81.8921,268,"ZANESVILLE, OH",Ohio Valley,false
