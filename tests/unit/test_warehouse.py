@@ -19,6 +19,11 @@ def _utc(text: str) -> datetime:
     return datetime.strptime(text, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
 
 
+def _naive_now(text: str) -> datetime:
+    """A naive-UTC `now` value, as `load_gaps` requires (build spec D3)."""
+    return _utc(text).replace(tzinfo=None)
+
+
 @pytest.fixture
 def conn(tmp_path: Path) -> duckdb.DuckDBPyConnection:
     connection = duckdb.connect(str(tmp_path / "warehouse.duckdb"))
@@ -176,10 +181,112 @@ def test_load_cli_is_idempotent(conn: duckdb.DuckDBPyConnection) -> None:
 
 def test_load_gaps_is_idempotent(conn: duckdb.DuckDBPyConnection) -> None:
     gaps = [GapRecord("KPHX", "nbs", "2023-07-14T13:00Z", "missing_run")]
-    warehouse.load_gaps(conn, "KPHX", "nbs", date(2023, 7, 14), date(2023, 7, 14), gaps)
-    warehouse.load_gaps(conn, "KPHX", "nbs", date(2023, 7, 14), date(2023, 7, 14), gaps)
+    now = _naive_now("2024-01-01 00:00:00")
+    warehouse.load_gaps(
+        conn, "KPHX", "nbs", date(2023, 7, 14), date(2023, 7, 14), gaps, now=now
+    )
+    warehouse.load_gaps(
+        conn, "KPHX", "nbs", date(2023, 7, 14), date(2023, 7, 14), gaps, now=now
+    )
 
     assert conn.execute("select count(*) from raw.ingest_gaps").fetchone() == (1,)
+
+
+def test_load_gaps_keeps_first_seen_for_persisting_gap(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    gaps = [GapRecord("KPHX", "nbs", "2023-07-14T13:00Z", "missing_run")]
+    first_run = _naive_now("2024-01-01 00:00:00")
+    later_run = _naive_now("2024-06-01 00:00:00")
+
+    warehouse.load_gaps(
+        conn, "KPHX", "nbs", date(2023, 7, 14), date(2023, 7, 14), gaps, now=first_run
+    )
+    warehouse.load_gaps(
+        conn, "KPHX", "nbs", date(2023, 7, 14), date(2023, 7, 14), gaps, now=later_run
+    )
+
+    first_seen = conn.execute(
+        "select first_seen from raw.ingest_gaps where station = 'KPHX'"
+    ).fetchone()
+    assert first_seen == (first_run,)
+
+
+def test_load_gaps_assigns_first_seen_to_new_gap(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    gaps = [GapRecord("KPHX", "nbs", "2023-07-14T13:00Z", "missing_run")]
+    now = _naive_now("2024-03-01 00:00:00")
+
+    warehouse.load_gaps(
+        conn, "KPHX", "nbs", date(2023, 7, 14), date(2023, 7, 14), gaps, now=now
+    )
+
+    first_seen = conn.execute(
+        "select first_seen from raw.ingest_gaps where station = 'KPHX'"
+    ).fetchone()
+    assert first_seen == (now,)
+
+
+def test_load_gaps_deletes_vanished_gap(conn: duckdb.DuckDBPyConnection) -> None:
+    gap_a = GapRecord("KPHX", "nbs", "2023-07-14T13:00Z", "missing_run")
+    gap_b = GapRecord("KPHX", "nbs", "2023-07-15T13:00Z", "missing_run")
+    first_run = _naive_now("2024-01-01 00:00:00")
+    later_run = _naive_now("2024-06-01 00:00:00")
+
+    warehouse.load_gaps(
+        conn,
+        "KPHX",
+        "nbs",
+        date(2023, 7, 14),
+        date(2023, 7, 15),
+        [gap_a, gap_b],
+        now=first_run,
+    )
+    warehouse.load_gaps(
+        conn,
+        "KPHX",
+        "nbs",
+        date(2023, 7, 14),
+        date(2023, 7, 15),
+        [gap_a],
+        now=later_run,
+    )
+
+    rows = conn.execute(
+        "select expected, first_seen from raw.ingest_gaps where station = 'KPHX'"
+    ).fetchall()
+    assert rows == [("2023-07-14T13:00Z", first_run)]
+
+
+def test_init_db_upgrades_ingest_gaps_old_schema(tmp_path: Path) -> None:
+    """A pre-#10 database lacks `first_seen`; init_db must add it in place."""
+    old_db = tmp_path / "old_warehouse.duckdb"
+    connection = duckdb.connect(str(old_db))
+    connection.execute("create schema if not exists raw")
+    connection.execute(
+        "create table raw.ingest_gaps ("
+        "station varchar not null, source varchar not null, "
+        "expected varchar not null, reason varchar not null)"
+    )
+    connection.execute(
+        "insert into raw.ingest_gaps values ('KPHX', 'nbs', "
+        "'2023-07-14T13:00Z', 'missing_run')"
+    )
+
+    warehouse.init_db(connection)
+
+    columns = {
+        row[0]
+        for row in connection.execute(
+            "select column_name from information_schema.columns "
+            "where table_schema = 'raw' and table_name = 'ingest_gaps'"
+        ).fetchall()
+    }
+    assert "first_seen" in columns
+    assert connection.execute("select count(*) from raw.ingest_gaps").fetchone() == (
+        1,
+    )
 
 
 def test_load_resolved_windows_is_idempotent(conn: duckdb.DuckDBPyConnection) -> None:

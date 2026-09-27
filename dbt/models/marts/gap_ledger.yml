@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: gap_ledger
+    description: >
+      One row per (station, kind, gap_date, reason) ingest gap on file, with
+      first_seen: the wall-clock time (from the ingest run's injected clock)
+      the gap was first recorded (build spec #10 D3). A gap that disappears
+      on a later ingest is deleted upstream by `warehouse.load_gaps`, not
+      carried here with an end date. Named `gap_date`, not `date`: `date` is
+      a reserved word under the Snowflake dialect (sqlfluff RF04).
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - station
+              - kind
+              - gap_date
+              - reason
+    columns:
+      - name: gap_date
+        data_tests:
+          - not_null
+      - name: station
+        data_tests:
+          - not_null
+      - name: kind
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["nbs", "asos", "cli"]
+      - name: reason
+        data_tests:
+          - not_null
+      - name: first_seen
+        data_tests:
+          - not_null

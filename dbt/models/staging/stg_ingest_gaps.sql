@@ -2,5 +2,6 @@ select
     station,
     source,
     expected,
-    reason
+    reason,
+    first_seen
 from {{ source('raw', 'ingest_gaps') }}
