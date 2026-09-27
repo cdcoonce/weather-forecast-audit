@@ -1,0 +1,50 @@
+state,climate_region
+ID,Northwest
+OR,Northwest
+WA,Northwest
+CA,West
+NV,West
+AZ,Southwest
+CO,Southwest
+NM,Southwest
+UT,Southwest
+MT,Northern Rockies and Plains
+NE,Northern Rockies and Plains
+ND,Northern Rockies and Plains
+SD,Northern Rockies and Plains
+WY,Northern Rockies and Plains
+IA,Upper Midwest
+MI,Upper Midwest
+MN,Upper Midwest
+WI,Upper Midwest
+IL,Ohio Valley
+IN,Ohio Valley
+KY,Ohio Valley
+MO,Ohio Valley
+OH,Ohio Valley
+TN,Ohio Valley
+WV,Ohio Valley
+AR,South
+KS,South
+LA,South
+MS,South
+OK,South
+TX,South
+AL,Southeast
+FL,Southeast
+GA,Southeast
+NC,Southeast
+SC,Southeast
+VA,Southeast
+CT,Northeast
+DE,Northeast
+ME,Northeast
+MD,Northeast
+MA,Northeast
+NH,Northeast
+NJ,Northeast
+NY,Northeast
+PA,Northeast
+RI,Northeast
+VT,Northeast
+DC,Northeast
