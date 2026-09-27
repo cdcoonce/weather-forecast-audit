@@ -346,7 +346,7 @@ def replay_coverage(
     replay", step 2), lays it out as one row per consecutive `run_date`
     starting 2025-01-01, and scores it with `scoring.score(by=(), n_boot=
     n_boot, seed=scoring.SEED, block_days=block_days)` -- the module's own
-    `CI_LEVEL` and `min_sample_dates` defaults apply. Delegates to
+    `CI_LEVEL` and `min_sample_blocks` defaults apply. Delegates to
     `replay_coverage_segments` over the single contiguous segment
     `contiguous_dates(n)`, which draws from `rng` in the same order (one
     `simulate_ar` call per simulation) and so is bit-identical to the

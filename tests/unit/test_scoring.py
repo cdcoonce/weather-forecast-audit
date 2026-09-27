@@ -17,7 +17,8 @@ import polars as pl
 import pytest
 
 from weather_forecast_audit.scoring import (
-    MIN_SAMPLE_DATES,
+    BLOCK_DAYS,
+    MIN_SAMPLE_BLOCKS,
     _block_bootstrap,
     _no_detectable_bias,
     score,
@@ -508,27 +509,78 @@ def test_block_days_seven_beats_block_days_one_on_ar1_data() -> None:
 # -- 9. flags at boundaries ---------------------------------------------------
 
 
-def test_min_sample_flag_boundary() -> None:
-    def _frame(n_dates: int) -> pl.DataFrame:
-        records = []
-        for d in range(n_dates):
-            run_date_ = date(2025, 1, 1) + timedelta(days=d)
-            for s in range(10):
-                records.append(
-                    _row(
-                        station=f"S{s:02d}",
-                        run_date=run_date_,
-                        target_date=run_date_ + timedelta(days=1),
-                        error_f=1.0,
-                    )
+def _block_aligned_start() -> date:
+    """The first date on or after 2025-01-01 that opens a `BLOCK_DAYS` block."""
+    epoch = date(1970, 1, 1)
+    start = date(2025, 1, 1)
+    offset = (-(start - epoch).days) % BLOCK_DAYS
+    return start + timedelta(days=offset)
+
+
+def _frame_on_dates(run_dates: list[date]) -> pl.DataFrame:
+    records = []
+    for run_date_ in run_dates:
+        for s in range(10):
+            records.append(
+                _row(
+                    station=f"S{s:02d}",
+                    run_date=run_date_,
+                    target_date=run_date_ + timedelta(days=1),
+                    error_f=1.0,
                 )
-        return pl.DataFrame(records)
+            )
+    return pl.DataFrame(records)
 
-    at_threshold = score(_frame(MIN_SAMPLE_DATES), n_boot=5).row(0, named=True)
-    below_threshold = score(_frame(MIN_SAMPLE_DATES - 1), n_boot=5).row(0, named=True)
 
-    assert at_threshold["min_sample_flag"] is False
-    assert below_threshold["min_sample_flag"] is True
+def test_min_sample_flag_counts_blocks_not_dates() -> None:
+    """The floor is in blocks (#37): coverage is governed by how many
+    resampling units a slice has, not by how many dates it holds."""
+    start = _block_aligned_start()
+
+    def _full_blocks(n_blocks: int) -> list[date]:
+        return [start + timedelta(days=d) for d in range(n_blocks * BLOCK_DAYS)]
+
+    at_floor = score(_frame_on_dates(_full_blocks(MIN_SAMPLE_BLOCKS)), n_boot=5)
+    below_floor = score(_frame_on_dates(_full_blocks(MIN_SAMPLE_BLOCKS - 1)), n_boot=5)
+
+    at_row = at_floor.row(0, named=True)
+    below_row = below_floor.row(0, named=True)
+    assert at_row["n_blocks"] == MIN_SAMPLE_BLOCKS
+    assert at_row["min_sample_flag"] is False
+    assert below_row["n_blocks"] == MIN_SAMPLE_BLOCKS - 1
+    # 280 dates: far above the old 30-date floor, still too few blocks.
+    assert below_row["n_dates"] == (MIN_SAMPLE_BLOCKS - 1) * BLOCK_DAYS
+    assert below_row["min_sample_flag"] is True
+
+
+def test_n_blocks_counts_distinct_blocks_at_the_given_block_days() -> None:
+    start = _block_aligned_start()
+    # Two dates in each of three blocks at BLOCK_DAYS, with gaps between.
+    run_dates = [
+        start + timedelta(days=block * BLOCK_DAYS + offset)
+        for block in (0, 2, 5)
+        for offset in (0, 1)
+    ]
+    frame = _frame_on_dates(run_dates)
+
+    assert score(frame, n_boot=5).row(0, named=True)["n_blocks"] == 3
+    assert score(frame, n_boot=5, block_days=1).row(0, named=True)["n_blocks"] == 6
+
+
+def test_min_sample_blocks_is_the_measured_value_from_issue_37() -> None:
+    """`MIN_SAMPLE_BLOCKS` is measured, not chosen. Issue #37's pre-registered
+    replay (docs/analysis/2026-09-27-sample-floor/) found 21 the smallest
+    block count at which every contiguous and season-shaped slice, under all
+    ten fitted AR models, covers >= 0.90 at nominal 95% with 14-day blocks;
+    14 blocks (180 dates, or two seasons) fell to 0.879. Change it only by
+    re-running that replay."""
+    import inspect
+
+    from weather_forecast_audit import scoring
+
+    assert scoring.MIN_SAMPLE_BLOCKS == 21
+    assert inspect.signature(score).parameters["min_sample_blocks"].default == 21
+    assert not hasattr(scoring, "MIN_SAMPLE_DATES")
 
 
 @pytest.mark.parametrize(
