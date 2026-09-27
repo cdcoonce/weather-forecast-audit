@@ -414,10 +414,12 @@ def test_title_case_label_period_separator_real_registry_example() -> None:
 
 
 def test_title_case_label_hyphen_separator_real_registry_example() -> None:
-    # dbt/seeds/station_registry.csv: "DESERT ROCK-MERCURY NV, NV"
+    # dbt/seeds/station_registry.csv: "DESERT ROCK-MERCURY NV, NV" -- the
+    # state name is folded into the station name itself, directly against
+    # the comma, not just the trailing tail; both "NV"s must stay upper.
     assert (
         export.title_case_label("DESERT ROCK-MERCURY NV, NV")
-        == "Desert Rock-Mercury Nv, NV"
+        == "Desert Rock-Mercury NV, NV"
     )
 
 
@@ -448,6 +450,40 @@ def test_title_case_label_known_exceptions_from_the_real_registry(
     raw: str, expected: str
 ) -> None:
     assert export.title_case_label(raw) == expected
+
+
+# -- mid-string state codes before the trailing comma -----------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # dbt/seeds/station_registry.csv: the state name is folded into the
+        # station name itself, directly against the comma -- naive casing
+        # lower-cased this mid-string occurrence too (the bug).
+        ("DESERT ROCK-MERCURY NV, NV", "Desert Rock-Mercury NV, NV"),
+        ("WALLA WALLA WA, WA", "Walla Walla WA, WA"),
+        ("BAUDETTE MN, MN", "Baudette MN, MN"),
+        ("NORTH_LAS_VEGAS NV, NV", "North_Las_Vegas NV, NV"),
+        ("MT SHASTA CITY CA, CA", "Mt Shasta City CA, CA"),
+        # A "CO" for "County" immediately before the comma (no state-name
+        # coincidence in the source data): the rule cannot distinguish this
+        # from a real state code and upper-cases it too -- a documented,
+        # accepted side effect (see title_case_label's docstring).
+        ("AKRON/WASHINGTON CO, CO", "Akron/Washington CO, CO"),
+    ],
+)
+def test_title_case_label_upper_cases_a_state_code_adjacent_to_the_comma(
+    raw: str, expected: str
+) -> None:
+    assert export.title_case_label(raw) == expected
+
+
+def test_title_case_label_does_not_upper_case_a_county_co_behind_a_period() -> None:
+    # dbt/seeds/station_registry.csv: "ALMA/BACON CO., GA" -- "CO." is not
+    # *directly* adjacent to the comma (a period sits in between), so the
+    # state-code rule does not fire and naive casing stands.
+    assert export.title_case_label("ALMA/BACON CO., GA") == "Alma/Bacon Co., GA"
 
 
 def test_lock_entries_are_append_only() -> None:

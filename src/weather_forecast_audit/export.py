@@ -202,6 +202,26 @@ _TITLE_EXCEPTIONS = {
 _LABEL_WORD_SPLIT_RE = re.compile(r"([ /\-'.])")
 _LABEL_DELIMITERS = frozenset(" /-'.")
 
+# US state/territory postal codes. A label's head can fold a state name into
+# the station name itself (e.g. "DESERT ROCK-MERCURY NV, NV"), not just the
+# trailing tail after the last comma -- naive title-casing lower-cases that
+# mid-string occurrence to "Nv" too. Found by grepping
+# dbt/seeds/station_registry.csv for a 2-letter token directly adjacent to a
+# comma; see the build report for the full list of labels this changes,
+# including a handful ("...WASHINGTON CO, CO", county abbreviated "CO"
+# immediately before a Colorado tail) where the token is ambiguous between
+# "County" and the state code -- the rule below cannot tell them apart and
+# upper-cases both, which is the documented, accepted trade-off.
+_STATE_CODES = frozenset(
+    {
+        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+        "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+        "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+        "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+        "WI", "WY", "DC", "PR",
+    }
+)
+
 
 def _title_case_token(token: str) -> str:
     """Title-case one delimiter-split token, capitalizing the first letter
@@ -231,15 +251,35 @@ def title_case_label(label: str) -> str:
     each token's first letter and lowercasing the rest, except for
     `_TITLE_EXCEPTIONS`. The two-letter state code after the label's last
     comma is left untouched (it is already upper-case in the source seed).
+    A 2-letter token elsewhere in the label that is itself a recognized
+    state/territory postal code (`_STATE_CODES`) AND sits directly against
+    that same comma -- no space, hyphen, period, etc. in between -- is also
+    kept upper-case, e.g. "DESERT ROCK-MERCURY NV, NV". A token separated
+    from the comma by so much as a period (e.g. the "CO." in "BACON CO.,
+    GA", short for "County") is not touched -- it is not *directly*
+    adjacent to the comma, so the naive title-casing stands.
     """
     head, sep, tail = label.rpartition(",")
     if not sep:
         head, tail = tail, ""
     parts = _LABEL_WORD_SPLIT_RE.split(head)
-    cased_head = "".join(
-        part if part in _LABEL_DELIMITERS else _title_case_token(part)
-        for part in parts
+    last_index = len(parts) - 1
+    keep_upper = (
+        sep
+        and last_index >= 0
+        and parts[last_index] not in _LABEL_DELIMITERS
+        and parts[last_index] != ""
+        and parts[last_index].upper() in _STATE_CODES
     )
+
+    def _cased(i: int, part: str) -> str:
+        if part in _LABEL_DELIMITERS:
+            return part
+        if keep_upper and i == last_index:
+            return part.upper()
+        return _title_case_token(part)
+
+    cased_head = "".join(_cased(i, part) for i, part in enumerate(parts))
     return f"{cased_head},{tail}" if sep else cased_head
 
 
