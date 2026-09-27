@@ -206,3 +206,53 @@ def test_site_fixture_export_matches_a_fresh_export(
         committed_city = json.loads((SITE_FIXTURE_DIR / relative_path).read_text())
         fresh_city = json.loads((out_dir / relative_path).read_text())
         assert committed_city == fresh_city, relative_path
+
+
+def _exported_json(out_dir: Path) -> dict[str, object]:
+    """Every exported JSON file keyed by relative path, `generated_at` dropped."""
+    exported: dict[str, object] = {}
+    for path in sorted(out_dir.rglob("*.json")):
+        payload = json.loads(path.read_text())
+        if isinstance(payload, dict):
+            payload.pop("generated_at", None)
+        exported[str(path.relative_to(out_dir))] = payload
+    return exported
+
+
+def test_correction_model_rows_never_reach_the_published_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The export publishes raw NBM only (v1). Once `wfa predict baseline`
+    (#18) writes `baseline` rows into `fct_forecast_verification`, they must
+    not move a single published number, including `data_through`: add
+    wildly wrong baseline rows, one of them later than any raw row, and the
+    export must be byte-for-byte the same apart from `generated_at`."""
+    db_path = tmp_path / "tracer.duckdb"
+    _build_tracer_db(db_path, monkeypatch)
+    registry = _kphx_registry()
+
+    before_dir = tmp_path / "before"
+    with duckdb.connect(str(db_path)) as conn:
+        export.export(conn, before_dir, registry=registry)
+        raw_rows = conn.execute(
+            "select count(*) from fct_forecast_verification where source = 'raw_nbm'"
+        ).fetchone()
+        assert raw_rows is not None and raw_rows[0] > 0
+        conn.execute(
+            """
+            insert into fct_forecast_verification by name
+            select * replace (
+                'baseline' as source,
+                error_f + 40 as error_f,
+                target_date + interval 400 day as target_date
+            )
+            from fct_forecast_verification
+            where source = 'raw_nbm'
+            """
+        )
+
+    after_dir = tmp_path / "after"
+    with duckdb.connect(str(db_path)) as conn:
+        export.export(conn, after_dir, registry=registry)
+
+    assert _exported_json(after_dir) == _exported_json(before_dir)
