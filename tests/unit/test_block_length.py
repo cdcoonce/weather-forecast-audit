@@ -14,7 +14,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from weather_forecast_audit import scoring
+from weather_forecast_audit import block_length, scoring
 from weather_forecast_audit.block_length import (
     ArFit,
     BlockChoice,
@@ -500,6 +500,41 @@ def test_replay_coverage_segments_draws_independently_per_segment(
     assert not np.array_equal(first_segment_values, second_segment_values)
 
 
+def test_replay_coverage_segments_calls_simulate_ar_once_per_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PREREG.md (#37): "Each simulation draws one independent `simulate_ar`
+    series per segment". A shared series drawn once and sliced across
+    segments would still leave the two halves numerically unequal (the
+    weaker check `test_..._draws_independently_per_segment` above passes
+    either way), so pin the call shape directly: one `simulate_ar` call per
+    segment, each sized to that segment's own length."""
+    fit = ArFit(p=0, phi=np.array([]), sigma2=1.0, mean=0.0)
+    segment_a = contiguous_dates(5, start=date(2025, 1, 1))[0]
+    segment_b = contiguous_dates(7, start=date(2026, 1, 1))[0]
+    call_sizes: list[int] = []
+    original_simulate_ar = block_length.simulate_ar
+
+    def spy_simulate_ar(
+        fit_arg: ArFit, n: int, rng: np.random.Generator, **kwargs: object
+    ) -> np.ndarray:
+        call_sizes.append(n)
+        return original_simulate_ar(fit_arg, n, rng, **kwargs)
+
+    monkeypatch.setattr(block_length, "simulate_ar", spy_simulate_ar)
+
+    replay_coverage_segments(
+        fit,
+        [segment_a, segment_b],
+        block_days=14,
+        n_sims=1,
+        rng=np.random.default_rng(42),
+        n_boot=5,
+    )
+
+    assert call_sizes == [len(segment_a), len(segment_b)]
+
+
 def test_replay_coverage_matches_replay_coverage_segments_bit_identical() -> None:
     # Pins the refactor: replay_coverage now delegates to
     # replay_coverage_segments(fit, contiguous_dates(n), ...), and must draw
@@ -595,4 +630,15 @@ def test_needs_rerun_does_not_flag_when_no_smaller_shape_passes() -> None:
 
 def test_needs_rerun_all_pass_returns_empty() -> None:
     results = [ShapeResult("60d", 5, (0.95,)), ShapeResult("90d", 10, (0.95,))]
+    assert needs_rerun(results) == []
+
+
+def test_needs_rerun_ties_at_equal_block_count_do_not_trigger_rerun() -> None:
+    """A passing shape at the *same* block count is not "strictly fewer
+    n_blocks" (the docstring's own words), so it must not excuse a tied
+    failing shape as noise."""
+    results = [
+        ShapeResult("a", 10, (0.95,)),  # passes
+        ShapeResult("b", 10, (0.80,)),  # fails, ties a's block count
+    ]
     assert needs_rerun(results) == []
