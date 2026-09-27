@@ -8,6 +8,8 @@ requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = [
     "dagster==1.13.22",
+    # dagster-dbt runs 0.(x+16).y alongside dagster==1.13.22.
+    "dagster-dbt==0.29.22",
     "dbt-core>=1.12",
     "dbt-duckdb>=1.11",
     "duckdb>=1.5",

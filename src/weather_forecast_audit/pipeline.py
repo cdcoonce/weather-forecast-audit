@@ -12,7 +12,7 @@ observations on hand: a run on `end` can carry a lead-3 target date of
 """
 
 from dataclasses import dataclass
-from datetime import UTC, date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import duckdb
 
@@ -61,8 +61,17 @@ def ingest_station(
     end: date,
     fetcher: Fetcher,
     regimes: list[CycleRegime],
+    *,
+    now: datetime | None = None,
 ) -> IngestSummary:
-    """Fetch, load, and resolve one station's data for run dates [start, end]."""
+    """Fetch, load, and resolve one station's data for run dates [start, end].
+
+    `now` feeds `warehouse.load_gaps`' `first_seen` bookkeeping; it defaults
+    to the wall clock (naive UTC) but is injectable for callers (Dagster
+    assets, tests) that need a fixed or fake clock.
+    """
+    if now is None:
+        now = datetime.now(UTC).replace(tzinfo=None)
     obs_start = start - timedelta(days=OBS_LOOKBACK_DAYS)
     obs_end = end + timedelta(days=OBS_LOOKAHEAD_DAYS)
 
@@ -76,11 +85,15 @@ def ingest_station(
     warehouse.load_hourly(conn, station.icao, obs_start, obs_end, hourly_result.rows)
     warehouse.load_cli(conn, station.icao, obs_start, obs_end, cli_result.rows)
 
-    warehouse.load_gaps(conn, station.icao, "nbs", start, end, guidance_result.gaps)
     warehouse.load_gaps(
-        conn, station.icao, "asos", obs_start, obs_end, hourly_result.gaps
+        conn, station.icao, "nbs", start, end, guidance_result.gaps, now=now
     )
-    warehouse.load_gaps(conn, station.icao, "cli", obs_start, obs_end, cli_result.gaps)
+    warehouse.load_gaps(
+        conn, station.icao, "asos", obs_start, obs_end, hourly_result.gaps, now=now
+    )
+    warehouse.load_gaps(
+        conn, station.icao, "cli", obs_start, obs_end, cli_result.gaps, now=now
+    )
 
     resolved_rows = resolve_station(conn, station.icao, start, end)
 

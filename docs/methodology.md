@@ -483,3 +483,51 @@ this seed's inclusive `[valid_from, valid_to]`.
 verified, citation)` boundary list, for a future export (issue #9) to
 read as time-series annotations. It does not itself build an export or
 change any export schema version.
+
+## Orchestration and partitions (issue #10)
+
+Ingestion runs as four daily-partitioned Dagster assets, all on one
+`DailyPartitionsDefinition` anchored to the pinned NBS archive start
+(`regimes.load_archive_start()`, currently 2020-09-29): `raw/nbs_guidance`,
+`raw/asos_hourly`, `raw/cli_daily`, and `raw/resolved_windows`.
+
+### Each asset owns exactly its own dates
+
+Every asset's partition key means a specific date in a specific source's own
+terms -- `raw/nbs_guidance` and `raw/resolved_windows` partition by the
+guidance run date (UTC), `raw/asos_hourly` by the observation date (UTC), and
+`raw/cli_daily` by the station's **local** climate date. `warehouse.load_*`
+and `warehouse.load_gaps` delete-then-insert exactly that date's rows before
+inserting the new ones, so re-materializing a date replaces that date's rows
+and never touches another date's -- literally true, not just a design
+intent, because each `fetch_*` client's own `[start, end]` range semantics
+already line up with its partition's date meaning (a run-date range for
+guidance, a UTC observation-date range for asos, a local-date range for
+cli): the partition window passes straight through to the fetch call with
+no boundary adaptation.
+
+### Why a resolved partition can be incomplete
+
+`raw/resolved_windows` depends on `raw/nbs_guidance` by the identity mapping
+and on `raw/asos_hourly` through a `TimeWindowPartitionMapping(start_offset=
+-OBS_LOOKBACK_DAYS, end_offset=OBS_LOOKAHEAD_DAYS)` (1 and 4, the same
+constants `pipeline.ingest_station` pads its own fetch range by). A run on
+date D carries guidance out to a lead-3 min/max whose verification window
+can close as late as `D+4 06Z`, so `raw/asos_hourly` for `D+4` must exist
+before D's windows are fully scorable. A resolved partition for a recent D
+is therefore incomplete -- some of its windows are unscorable for lack of
+observations that haven't happened yet, not because anything is broken --
+until `D+4`'s asos partition is materialized, at which point D must be
+re-materialized to pick up the now-available observations. Scheduling that
+re-materialization is issue #16's job, not this one's.
+
+### `first_seen`: how long a gap has been open
+
+`raw.ingest_gaps` carries a `first_seen` timestamp per `(station, source,
+expected, reason)`. A gap that is still present on a later ingest keeps its
+original `first_seen`; a newly-appearing gap gets the ingest's current
+clock; a gap that has disappeared (the data showed up, or the reason
+changed) is deleted outright, not soft-closed with an end date. This makes
+`first_seen` a simple "how long has this specific gap been open" signal --
+`dbt/models/marts/gap_ledger.sql` exposes it directly -- without needing a
+second table to track gap history.

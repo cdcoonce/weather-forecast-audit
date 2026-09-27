@@ -9,14 +9,30 @@ from dataclasses import asdict
 from pathlib import Path
 
 from dagster import (
+    AssetCheckKey,
     AssetExecutionContext,
+    AssetSelection,
     Definitions,
     MaterializeResult,
     asset,
     define_asset_job,
 )
 
+from weather_forecast_audit.assets import (
+    FRESHNESS_CHECKS,
+    RAW_ASOS_HOURLY_KEY,
+    RAW_INGEST_ASSETS,
+    RAW_NBS_GUIDANCE_KEY,
+    ingest_gaps_spec,
+)
+from weather_forecast_audit.dbt_assets import dbt_resource, dbt_transform_assets
 from weather_forecast_audit.platform_smoke import PlatformSmokeError, run_platform_smoke
+from weather_forecast_audit.resources import (
+    ClockResource,
+    IemResource,
+    StationsResource,
+    WarehouseResource,
+)
 
 # rammingspeed has one run slot shared by every tenant, so every job carries a
 # max runtime: a hung run would otherwise block oura and waga indefinitely.
@@ -50,4 +66,64 @@ platform_smoke_job = define_asset_job(
     tags={"dagster/max_runtime": str(MAX_RUNTIME_SECONDS)},
 )
 
-defs = Definitions(assets=[platform_smoke], jobs=[platform_smoke_job])
+# D6: the four partitioned raw assets, batched into one job so a run
+# materializes guidance/asos/cli/resolved together for the same partitions.
+# AssetSelection.assets(...) pulls in every check on those assets by
+# default, including the two freshness checks (co-located on nbs_guidance/
+# asos_hourly only because they share those assets' resources) -- excluded
+# explicitly, because a backfill of old dates must never fail a freshness
+# check (D6). The gap-rate checks stay in: they run with the
+# materialization by design.
+FRESHNESS_CHECK_KEYS = [
+    AssetCheckKey(asset_key=RAW_NBS_GUIDANCE_KEY, name="guidance_freshness"),
+    AssetCheckKey(asset_key=RAW_ASOS_HOURLY_KEY, name="obs_freshness"),
+]
+
+# Kept as a module-level name (not inlined into define_asset_job) so tests
+# can call .resolve_checks(asset_graph) on the exact selection each job
+# runs -- resolve_job_def's returned JobDefinition does not expose it back.
+INGEST_JOB_SELECTION = AssetSelection.assets(
+    *RAW_INGEST_ASSETS
+) - AssetSelection.checks(*FRESHNESS_CHECK_KEYS)
+
+ingest_job = define_asset_job(
+    "ingest_job",
+    selection=INGEST_JOB_SELECTION,
+    tags={"dagster/max_runtime": str(MAX_RUNTIME_SECONDS)},
+)
+
+# dbt assets are unpartitioned: a full `dbt build` over all raw data (D4).
+transform_job = define_asset_job(
+    "transform_job",
+    selection=AssetSelection.assets(dbt_transform_assets),
+    tags={"dagster/max_runtime": str(MAX_RUNTIME_SECONDS)},
+)
+
+# D6: only the two freshness checks, materializing nothing -- a backfill of
+# old dates must never fail a freshness check, so this must not run inside
+# ingest_job. #16 schedules this job; no schedule is added here.
+FRESHNESS_CHECK_JOB_SELECTION = AssetSelection.checks(*FRESHNESS_CHECK_KEYS)
+
+freshness_check_job = define_asset_job(
+    "freshness_check_job",
+    selection=FRESHNESS_CHECK_JOB_SELECTION,
+    tags={"dagster/max_runtime": str(MAX_RUNTIME_SECONDS)},
+)
+
+defs = Definitions(
+    assets=[
+        platform_smoke,
+        *RAW_INGEST_ASSETS,
+        ingest_gaps_spec,
+        dbt_transform_assets,
+    ],
+    asset_checks=FRESHNESS_CHECKS,
+    jobs=[platform_smoke_job, ingest_job, transform_job, freshness_check_job],
+    resources={
+        "warehouse_resource": WarehouseResource(),
+        "iem": IemResource(),
+        "stations": StationsResource(),
+        "clock": ClockResource(),
+        "dbt": dbt_resource,
+    },
+)

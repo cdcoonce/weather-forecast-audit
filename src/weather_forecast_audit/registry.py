@@ -4,7 +4,9 @@ import csv
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from weather_forecast_audit._paths import find_repo_root
+
+REPO_ROOT = find_repo_root(__file__)
 DEFAULT_SEED_PATH = REPO_ROOT / "dbt" / "seeds" / "station_registry.csv"
 
 
