@@ -20,6 +20,9 @@ select
     n_obs,
     hours_covered,
     scorable,
+    extreme_source,
+    periods_found,
+    hourly_observed_f,
     cli_f,
     case when scorable then forecast_f - observed_f end as error_f
 from {{ ref('int_window_matched_pairs') }}

@@ -86,21 +86,104 @@ a changeover date. A singular dbt test
 (`dbt/tests/singular/cycle_hour_matches_regime.sql`) checks every fact row's
 `cycle_hour` against this seed.
 
-## Completeness threshold
+## Observed extremes
 
-An hourly observation window is **scorable** only when it has at least
-`ceil(0.75 x 18) = 14` distinct UTC clock-hours with at least one
-non-missing `tmpf` reading (routine or special obs both count); the
-observed extreme is the max/min of every non-missing reading in the window,
-not just one per hour. `MIN_HOUR_COVERAGE = 0.75` is a named constant in
-`weather_forecast_audit.resolver`.
+The observed max/min over a verification window comes from the METAR
+6-hour maximum (`1snTTT`) and minimum (`2snTTT`) remark groups, not from
+the hourly `tmpf` readings the KPHX tracer slice (issue #5) used. Issue #6
+measured both sources (and the CLI daily report) across 12 stations' 2025
+windows and chose the source by a rule pre-registered before the
+measurement ran; see
+[`docs/analysis/2026-09-26-extreme-source/PREREG.md`](analysis/2026-09-26-extreme-source/PREREG.md)
+for the fixed decision rule and
+[`docs/analysis/2026-09-26-extreme-source/RESULTS.md`](analysis/2026-09-26-extreme-source/RESULTS.md)
+for the full measurement.
 
-Rationale: 75% coverage tolerates a short outage (up to 4 missing hours out
-of 18) without silently dropping a day, while still requiring enough of the
-window's hours on file that the recorded extreme is unlikely to have missed
-the true daily peak or trough. A stricter threshold drops more days at
-stations with patchier ASOS coverage; issue #6 is expected to revisit this
-methodology once more stations are in the audit.
+### Source: `metar_6h`, tiled by three synoptic periods
+
+Each window is tiled by three consecutive 6-hour synoptic periods:
+
+- **max window** `[D 12Z, D+1 06Z)` is tiled by the periods ending
+  `D 18Z`, `D+1 00Z`, and `D+1 06Z`.
+- **min window** `[D 00Z, D 18Z)` is tiled by the periods ending
+  `D 06Z`, `D 12Z`, and `D 18Z`.
+
+For the period ending at synoptic hour `H`, the group comes from the
+latest qualifying report valid in `[H - 60 min, H)`; US synoptic reports
+are issued at about `H - 9 min`, so a 60-minute lookback comfortably
+covers the issuance report without reaching back far enough to catch the
+previous one. Because of that 9-minute offset, the reports that actually
+tile a window arrive a few minutes before each synoptic hour rather than
+on it: a max window's three periods are typically covered by reports
+around 17:51Z, 23:51Z, and 05:51Z, so in practice the groups that decide a
+max window span about `[11:51Z, 05:51Z)`, not the window's own
+`[12:00Z, 06:00Z)` boundary.
+
+A window is **scorable** exactly when all three periods find a qualifying
+report (`extreme_source = 'metar_6h'`); the observed value is the max/min
+of the three found values, kept in °F to the tenths-of-°C precision of the
+source and not rounded. When one or more periods cannot be tiled, the
+window is **unscorable** (`extreme_source = 'none'`, `observed_f` is
+null). There is no hourly fallback and no bias correction: PREREG's
+fallback rule requires pooled tiling of at least 0.95 with every station
+at or above 0.85 before treating an untiled window as simply unscorable,
+and the measured sample cleared that bar (pooled tiling 0.973 for both
+variables; the lowest station, KSLC, was 0.912). Mixing in hourly-derived
+values at the lower-tiling stations would reintroduce exactly the
+sampling bias `metar_6h` exists to avoid.
+
+### Why `metar_6h` and not hourly
+
+PREREG's decision rule adopts `metar_6h` if pooled tiling is at least 0.90
+for both variables and `metar_6h` agrees with the CLI daily report better
+than hourly does, for both variables. RESULTS.md's measurement, pooled
+across the 2025 sample:
+
+| variable | pooled tiling | mean(hourly - CLI) | mean(metar_6h - CLI) |
+| --- | --- | --- | --- |
+| max | 0.973 | -0.939 F | -0.209 F |
+| min | 0.973 | +1.355 F | +0.806 F |
+
+Both conditions hold clearly, so `metar_6h` is primary.
+
+### The hourly sampling bias this replaces
+
+An hourly reading is a snapshot at about :51 past the hour; it can only
+miss a true peak or trough between readings, never exceed it, so the
+hourly max reads low and the hourly min reads high. Pooled mean(hourly -
+metar_6h) by season, on windows both sources could resolve:
+
+| variable | DJF | MAM | JJA | SON |
+| --- | --- | --- | --- | --- |
+| max | -0.55 F | -0.79 F | -0.86 F | -0.71 F |
+| min | +0.58 F | +0.56 F | +0.52 F | +0.54 F |
+
+`fct_forecast_verification.hourly_observed_f` keeps the hourly value as a
+diagnostic only, not used in `error_f`, so this artifact stays visible
+rather than silently biasing the score. `scripts/sql/kphx_mean_error.sql`
+reports the hourly-based error alongside the official one for the same
+reason.
+
+### The min-vs-CLI residual: an NBM-window effect, not a decoding error
+
+Even `metar_6h` does not match CLI exactly: pooled mean(metar_6h - CLI) is
++0.81 F on min (max is close to zero, at -0.21 F). This residual is not
+spread evenly across stations. It is largest in winter at continental
+stations (KMSP +2.55 F, KBIS +2.08 F, KDEN +1.85 F, DJF) and close to
+zero at mild, temperature-stable stations (KSEA, KPHX, KSFO). That pattern
+points to a definitional mismatch, not a parsing error: CLI's day is
+local-standard midnight to midnight, while the NBM min window is the
+fixed UTC `[D 00Z, D 18Z)`. At a continental station in winter, the
+coldest moment of the local day can fall after 18Z, which the CLI day
+still counts but the NBM window has already closed; a mild coastal or
+desert station's overnight low is far less likely to keep falling that
+late. Consistent with this being a window-definition effect rather than a
+source error, max agrees with CLI exactly on 98% of summer days pooled
+(JJA, round(metar_6h) equal to CLI).
+
+`fct_forecast_verification.cli_f` still carries the CLI value alongside
+`observed_f` on every row; it remains the reference check used above, not
+an input to `error_f`.
 
 ## Boundary convention
 
@@ -109,26 +192,3 @@ window's start counts; one exactly at the window's end does not. The MDL
 text card does not specify this either way, so this is the project's own
 convention, applied consistently by the resolver and unit-tested at the
 boundary (`tests/unit/test_resolver.py`).
-
-## Hourly-sampling caveat
-
-The observed extreme comes from the routine (about :51 past each hour) and
-special METAR reports IEM archives, not from the continuous sensor record
-behind the CLI report. Sampling can only miss the peak, so the hourly max
-reads low and the hourly min reads high. Left uncorrected, that makes the
-forecast look too warm on highs and too cold on lows. On the hand-checked
-KPHX days, the published CLI daily report was
-**1°F more extreme than the hourly-derived value on both the max and the
-min**, on both days:
-
-| date | hourly max | CLI high | hourly min | CLI low |
-| --- | --- | --- | --- | --- |
-| 2023-07-14 | 115 | 116 | 94 | 93 |
-| 2023-07-15 | 117 | 118 | 93 | 92 |
-
-`fct_forecast_verification.cli_f` carries the CLI value alongside the
-hourly-derived `observed_f` specifically so this gap is visible per row,
-not just in this note. The tracer's first numbers show the same signature
-(KPHX, summer 2023 plus spring 2026: highs +1.4°F, lows −0.9°F), so no bias
-figure is published until issue #6 measures this effect and chooses the
-extreme source.

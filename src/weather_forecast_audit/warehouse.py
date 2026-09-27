@@ -21,7 +21,7 @@ import polars as pl
 from weather_forecast_audit.gaps import GapRecord
 from weather_forecast_audit.iem.guidance import GuidanceRow
 from weather_forecast_audit.iem.observations import CliDaily, HourlyObservation
-from weather_forecast_audit.resolver import Variable
+from weather_forecast_audit.resolver import ExtremeSource, Variable
 
 DDL = """
 create schema if not exists raw;
@@ -39,7 +39,9 @@ create table if not exists raw.nbs_guidance (
 create table if not exists raw.asos_hourly (
     station varchar not null,
     valid_utc timestamp not null,
-    tmpf double
+    tmpf double,
+    max_6h_f double,
+    min_6h_f double
 );
 
 create table if not exists raw.cli_daily (
@@ -69,7 +71,10 @@ create table if not exists raw.resolved_windows (
     n_obs integer not null,
     hours_covered integer not null,
     hours_expected integer not null,
-    scorable boolean not null
+    scorable boolean not null,
+    extreme_source varchar,
+    periods_found integer,
+    hourly_observed_f double
 );
 """
 
@@ -89,10 +94,35 @@ class ResolvedWindowRow:
     hours_covered: int
     hours_expected: int
     scorable: bool
+    extreme_source: ExtremeSource
+    periods_found: int
+    hourly_observed_f: float | None
 
 
 def init_db(conn: duckdb.DuckDBPyConnection) -> None:
+    """Create every `raw` table, then upgrade any that predate a schema change.
+
+    `create table if not exists` alone leaves an already-existing table on
+    its old schema; the DuckDB file is a long-lived cache, so the explicit
+    `alter table ... add column if not exists` calls below let a database
+    created before the METAR 6-hour columns existed pick them up in place,
+    without dropping its rows.
+    """
     conn.execute(DDL)
+    conn.execute("alter table raw.asos_hourly add column if not exists max_6h_f double")
+    conn.execute("alter table raw.asos_hourly add column if not exists min_6h_f double")
+    conn.execute(
+        "alter table raw.resolved_windows add column if not exists "
+        "extreme_source varchar"
+    )
+    conn.execute(
+        "alter table raw.resolved_windows add column if not exists "
+        "periods_found integer"
+    )
+    conn.execute(
+        "alter table raw.resolved_windows add column if not exists "
+        "hourly_observed_f double"
+    )
 
 
 def _naive(value: datetime) -> datetime:
@@ -161,9 +191,15 @@ def load_hourly(
     end: date,
     rows: list[HourlyObservation],
 ) -> None:
-    columns = ["station", "valid_utc", "tmpf"]
+    columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
     records = [
-        {"station": row.station, "valid_utc": _naive(row.valid_utc), "tmpf": row.tmpf}
+        {
+            "station": row.station,
+            "valid_utc": _naive(row.valid_utc),
+            "tmpf": row.tmpf,
+            "max_6h_f": row.max_6h_f,
+            "min_6h_f": row.min_6h_f,
+        }
         for row in rows
     ]
     _replace(
@@ -248,6 +284,9 @@ def load_resolved_windows(
         "hours_covered",
         "hours_expected",
         "scorable",
+        "extreme_source",
+        "periods_found",
+        "hourly_observed_f",
     ]
     records = [
         {
@@ -264,6 +303,9 @@ def load_resolved_windows(
             "hours_covered": row.hours_covered,
             "hours_expected": row.hours_expected,
             "scorable": row.scorable,
+            "extreme_source": row.extreme_source,
+            "periods_found": row.periods_found,
+            "hourly_observed_f": row.hourly_observed_f,
         }
         for row in rows
     ]

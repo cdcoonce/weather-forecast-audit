@@ -15,10 +15,16 @@ from datetime import UTC, date, datetime, timedelta
 from weather_forecast_audit.gaps import FetchResult, GapRecord
 from weather_forecast_audit.iem._chunking import date_range, month_chunks
 from weather_forecast_audit.iem.http import Fetcher, FetchError
+from weather_forecast_audit.iem.metar import parse_six_hour_groups
 from weather_forecast_audit.registry import Station
 
 ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
 CLI_URL = "https://mesonet.agron.iastate.edu/json/cli.py"
+
+# The raw metar column must be present; other columns are still read
+# positionally by name (raw["valid"], raw["tmpf"]) rather than validated here,
+# matching the existing behavior this module had before metar parsing.
+REQUIRED_ASOS_COLUMNS = ("valid", "tmpf", "metar")
 
 
 @dataclass(frozen=True)
@@ -26,6 +32,8 @@ class HourlyObservation:
     station: str  # ICAO, e.g. KPHX (not the 3-letter ASOS request code)
     valid_utc: datetime
     tmpf: float | None
+    max_6h_f: float | None
+    min_6h_f: float | None
 
 
 @dataclass(frozen=True)
@@ -56,20 +64,35 @@ def _parse_asos_valid(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%d %H:%M").replace(tzinfo=UTC)
 
 
+def _c_to_f(value_c: float) -> float:
+    return value_c * 9 / 5 + 32
+
+
 def _asos_url(icao: str, chunk_start: date, chunk_end: date) -> str:
     code = _asos_station_code(icao)
     sts = f"{chunk_start.isoformat()}T00:00Z"
     ets = f"{(chunk_end + timedelta(days=1)).isoformat()}T00:00Z"
     return (
-        f"{ASOS_URL}?station={code}&data=tmpf&sts={sts}&ets={ets}"
+        f"{ASOS_URL}?station={code}&data=tmpf&data=metar&sts={sts}&ets={ets}"
         "&tz=Etc/UTC&format=onlycomma&missing=M"
         "&report_type=3&report_type=4&latlon=no"
     )
 
 
 def parse_asos_csv(body: bytes) -> list[dict[str, str]]:
-    """Parse an IEM asos.py onlycomma body into header-keyed rows."""
-    return list(csv.DictReader(io.StringIO(body.decode("utf-8"))))
+    """Parse an IEM asos.py onlycomma body into header-keyed rows.
+
+    Raises ValueError naming the missing column(s) if any required column
+    (valid, tmpf, metar) is absent from the header, the same column-by-name
+    check `iem.guidance.parse_nbs_csv` does for the NBS client.
+    """
+    reader = csv.DictReader(io.StringIO(body.decode("utf-8")))
+    fieldnames = reader.fieldnames or []
+    missing = [column for column in REQUIRED_ASOS_COLUMNS if column not in fieldnames]
+    if missing:
+        msg = f"ASOS CSV missing required column(s): {', '.join(missing)}"
+        raise ValueError(msg)
+    return list(reader)
 
 
 def fetch_hourly(
@@ -106,7 +129,18 @@ def fetch_hourly(
         for raw in parse_asos_csv(response.body):
             valid = _parse_asos_valid(raw["valid"])
             tmpf = _parse_optional_float(raw["tmpf"])
-            rows.append(HourlyObservation(station=icao, valid_utc=valid, tmpf=tmpf))
+            groups = parse_six_hour_groups(raw["metar"])
+            max_6h_f = _c_to_f(groups.max_c) if groups.max_c is not None else None
+            min_6h_f = _c_to_f(groups.min_c) if groups.min_c is not None else None
+            rows.append(
+                HourlyObservation(
+                    station=icao,
+                    valid_utc=valid,
+                    tmpf=tmpf,
+                    max_6h_f=max_6h_f,
+                    min_6h_f=min_6h_f,
+                )
+            )
             if tmpf is not None:
                 dates_with_data.add(valid.date())
 

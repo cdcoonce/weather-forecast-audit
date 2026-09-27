@@ -11,5 +11,8 @@ select
     n_obs,
     hours_covered,
     hours_expected,
-    scorable
+    scorable,
+    extreme_source,
+    periods_found,
+    hourly_observed_f
 from {{ source('raw', 'resolved_windows') }}
