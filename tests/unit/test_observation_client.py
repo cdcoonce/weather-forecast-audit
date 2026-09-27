@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -57,8 +57,53 @@ def test_fetch_hourly_parses_fixture_uses_asos_3letter_code() -> None:
     assert not result.gaps
 
 
+def test_fetch_hourly_requests_metar_alongside_tmpf() -> None:
+    fetcher = FakeFetcher(
+        [
+            (
+                lambda u: "station=PHX" in u,
+                HttpResponse(200, _read("asos_kphx_2023-07-13_2023-07-17.csv")),
+            ),
+        ]
+    )
+    fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 17), fetcher)
+
+    assert "data=tmpf" in fetcher.requested_urls[0]
+    assert "data=metar" in fetcher.requested_urls[0]
+
+
+def test_fetch_hourly_populates_six_hour_groups_on_synoptic_rows_only() -> None:
+    fetcher = FakeFetcher(
+        [(lambda _u: True, HttpResponse(200, _read(
+            "asos_kphx_2023-07-13_2023-07-17.csv"
+        )))]
+    )
+    result = fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 17), fetcher)
+
+    by_valid = {row.valid_utc: row for row in result.rows}
+    synoptic = by_valid[datetime(2023, 7, 15, 23, 51, tzinfo=UTC)]
+    assert synoptic.max_6h_f == pytest.approx(47.8 * 9 / 5 + 32)
+    assert synoptic.min_6h_f == pytest.approx(41.7 * 9 / 5 + 32)
+
+    non_synoptic = by_valid[datetime(2023, 7, 15, 0, 51, tzinfo=UTC)]
+    assert non_synoptic.max_6h_f is None
+    assert non_synoptic.min_6h_f is None
+
+
+def test_fetch_hourly_missing_metar_column_raises() -> None:
+    body = b"station,valid,tmpf\nPHX,2023-07-13 00:51,80.00\n"
+    fetcher = FakeFetcher([(lambda _u: True, HttpResponse(200, body))])
+
+    with pytest.raises(ValueError, match="metar"):
+        fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 13), fetcher)
+
+
 def test_fetch_hourly_missing_tmpf_parses_as_none() -> None:
-    body = b"station,valid,tmpf\nPHX,2023-07-13 00:51,M\nPHX,2023-07-13 01:51,80.00\n"
+    body = (
+        b"station,valid,tmpf,metar\n"
+        b"PHX,2023-07-13 00:51,M,M\n"
+        b"PHX,2023-07-13 01:51,80.00,M\n"
+    )
     fetcher = FakeFetcher([(lambda _u: True, HttpResponse(200, body))])
 
     result = fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 13), fetcher)
@@ -70,7 +115,7 @@ def test_fetch_hourly_missing_tmpf_parses_as_none() -> None:
 
 
 def test_fetch_hourly_all_missing_emits_missing_observations_gap() -> None:
-    body = b"station,valid,tmpf\nPHX,2023-07-13 00:51,M\n"
+    body = b"station,valid,tmpf,metar\nPHX,2023-07-13 00:51,M,M\n"
     fetcher = FakeFetcher([(lambda _u: True, HttpResponse(200, body))])
 
     result = fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 13), fetcher)
