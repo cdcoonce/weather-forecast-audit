@@ -184,6 +184,15 @@ def test_deseasonalize_leaves_white_noise_variance_roughly_unchanged() -> None:
     assert result.std() == pytest.approx(noise.std(), rel=0.2)
 
 
+def test_deseasonalize_window_is_centered_not_trailing() -> None:
+    # A single spike at index 3, window=3 (half=1): the centered window at
+    # index 2 is [1, 3] -- it sees the spike one step *ahead* of it. A
+    # trailing window ending at the current index would not.
+    x = np.array([0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0])
+    result = deseasonalize(x, window=3)
+    assert result[2] == pytest.approx(-10.0 / 3.0)
+
+
 # -- fit_ar_yule_walker --------------------------------------------------
 
 
@@ -230,6 +239,23 @@ def test_fit_ar_yule_walker_recovers_ar2() -> None:
     assert fit.phi[1] == pytest.approx(phi2, abs=0.05)
 
 
+def test_fit_ar_yule_walker_uses_biased_autocovariance() -> None:
+    # A small, deterministic series where an unbiased (/ (n - k)) covariance
+    # would give a visibly different reflection coefficient than the biased
+    # (/ n) one the docstring specifies.
+    x = np.array([1.0, 0.5, 0.6, 0.2, 0.1, -0.1, -0.3, -0.2, 0.0, 0.4])
+    n = x.size
+    demeaned = x - x.mean()
+    gamma0 = np.sum(demeaned**2) / n
+    gamma1 = np.sum(demeaned[:-1] * demeaned[1:]) / n
+    expected_phi1 = gamma1 / gamma0
+
+    fit = fit_ar_yule_walker(x, max_p=1)
+
+    assert fit.p == 1
+    assert fit.phi[0] == pytest.approx(expected_phi1, abs=1e-9)
+
+
 # -- simulate_ar -----------------------------------------------------------
 
 
@@ -241,6 +267,21 @@ def test_simulate_ar_shape_and_reproducibility() -> None:
 
     assert series_a.shape == (50,)
     np.testing.assert_array_equal(series_a, series_b)
+
+
+def test_simulate_ar_discards_burn_in() -> None:
+    # p=0 keeps the recursion out of it: `series` is exactly the innovations
+    # array, so the returned slice's offset is the only thing under test.
+    fit = ArFit(p=0, phi=np.array([]), sigma2=2.0, mean=1.0)
+    n, burn_in = 5, 20
+
+    result = simulate_ar(fit, n=n, rng=np.random.default_rng(3), burn_in=burn_in)
+
+    expected_full = np.random.default_rng(3).normal(
+        0.0, np.sqrt(fit.sigma2), size=n + burn_in
+    )
+    expected = expected_full[burn_in:] + fit.mean
+    np.testing.assert_allclose(result, expected)
 
 
 # -- choose_block_days -----------------------------------------------------
@@ -256,6 +297,20 @@ def test_choose_block_days_floors_at_one() -> None:
     b = {("max", 1): (0.2, 0.1)}
     choice = choose_block_days(b)
     assert choice == BlockChoice(value=1, raw_ceiling=1, capped=False)
+
+
+def test_choose_block_days_floor_applies_at_exactly_zero() -> None:
+    # ceil(0.2) is already 1 -- the floor above never actually exercises
+    # `max(1, ...)`. Only an estimate of exactly 0 does.
+    b = {("max", 1): (0.0, 0.0)}
+    choice = choose_block_days(b)
+    assert choice == BlockChoice(value=1, raw_ceiling=1, capped=False)
+
+
+def test_choose_block_days_station_can_exceed_pooled() -> None:
+    b = {("max", 1): (1.0, 4.6)}
+    choice = choose_block_days(b)
+    assert choice == BlockChoice(value=5, raw_ceiling=5, capped=False)
 
 
 def test_choose_block_days_exact_cap_passes() -> None:
@@ -286,6 +341,26 @@ def test_first_passing_block_days_passes_later() -> None:
 
 def test_first_passing_block_days_never_passes() -> None:
     assert first_passing_block_days(lambda _: [0.1], start=1, cap=14) is None
+
+
+def test_first_passing_block_days_can_return_the_cap_itself() -> None:
+    def coverage_at(block_days: int) -> list[float]:
+        return [0.95] if block_days == 14 else [0.5]
+
+    assert first_passing_block_days(coverage_at, start=1, cap=14) == 14
+
+
+def test_first_passing_block_days_requires_all_series_to_pass() -> None:
+    def coverage_at(block_days: int) -> list[float]:
+        if block_days == 3:
+            return [0.95, 0.95]
+        return [0.95, 0.10]
+
+    assert first_passing_block_days(coverage_at, start=1) == 3
+
+
+def test_first_passing_block_days_accepts_exact_threshold() -> None:
+    assert first_passing_block_days(lambda _: [0.90], start=1) == 1
 
 
 # -- replay_coverage ---------------------------------------------------------
