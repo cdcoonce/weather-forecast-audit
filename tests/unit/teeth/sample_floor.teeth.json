@@ -1,0 +1,156 @@
+{
+  "runner": "pytest",
+  "test_command": ["uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "tests/unit/test_block_length.py", "tests/unit/test_scoring.py"],
+  "collect_command": ["uv", "run", "pytest", "--collect-only", "-q", "tests/unit/test_block_length.py", "tests/unit/test_scoring.py"],
+  "mutants": [
+    {
+      "label": "scoring-flag-uses-n-dates-not-n-blocks",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "min_sample_flag=row[\"n_blocks\"] < min_sample_blocks,",
+      "replace": "min_sample_flag=row[\"n_dates\"] < min_sample_blocks,"
+    },
+    {
+      "label": "scoring-flag-lt-to-lte",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "min_sample_flag=row[\"n_blocks\"] < min_sample_blocks,",
+      "replace": "min_sample_flag=row[\"n_blocks\"] <= min_sample_blocks,"
+    },
+    {
+      "label": "scoring-n-blocks-counts-run-date-not-block-id",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "n_blocks=pl.col(\"block_id\").n_unique(),",
+      "replace": "n_blocks=pl.col(\"run_date\").n_unique(),"
+    },
+    {
+      "label": "scoring-default-param-wired-to-wrong-literal",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "    min_sample_blocks: int = MIN_SAMPLE_BLOCKS,",
+      "replace": "    min_sample_blocks: int = 30,"
+    },
+    {
+      "label": "season-segments-aug31-to-aug30",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "end = date(year, 8, 31)",
+      "replace": "end = date(year, 8, 30)"
+    },
+    {
+      "label": "season-segments-same-year-repeated",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "year = first_year + offset",
+      "replace": "year = first_year"
+    },
+    {
+      "label": "contiguous-dates-off-by-one-length",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    return [[start + timedelta(days=i) for i in range(n)]]",
+      "replace": "    return [[start + timedelta(days=i) for i in range(n - 1)]]"
+    },
+    {
+      "label": "contiguous-dates-ignores-start-param",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    return [[start + timedelta(days=i) for i in range(n)]]",
+      "replace": "    return [[_SIM_START_DATE + timedelta(days=i) for i in range(n)]]"
+    },
+    {
+      "label": "n-blocks-hardcoded-block-days-literal",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    return len({(d - _EPOCH).days // block_days for d in dates})",
+      "replace": "    return len({(d - _EPOCH).days // 7 for d in dates})"
+    },
+    {
+      "label": "n-blocks-mod-not-floordiv",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    return len({(d - _EPOCH).days // block_days for d in dates})",
+      "replace": "    return len({(d - _EPOCH).days % block_days for d in dates})"
+    },
+    {
+      "label": "replay-coverage-segments-shared-series-not-independent",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "        frames = [\n            _frame_for_dates(segment, simulate_ar(fit, len(segment), rng))\n            for segment in segments\n        ]",
+      "replace": "        total_len = sum(len(segment) for segment in segments)\n        shared_series = simulate_ar(fit, total_len, rng)\n        frames = []\n        offset = 0\n        for segment in segments:\n            frames.append(\n                _frame_for_dates(segment, shared_series[offset : offset + len(segment)])\n            )\n            offset += len(segment)"
+    },
+    {
+      "label": "replay-coverage-segments-checks-sample-mean-not-fit-mean",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "        if lo is not None and hi is not None and lo <= fit.mean <= hi:",
+      "replace": "        sample_mean = float(frame[\"error_f\"].mean())\n        if lo is not None and hi is not None and lo <= sample_mean <= hi:"
+    },
+    {
+      "label": "replay-coverage-segments-ignores-block-days",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "            block_days=block_days,",
+      "replace": "            block_days=1,"
+    },
+    {
+      "label": "replay-coverage-delegation-hardcodes-block-days",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "        fit, contiguous_dates(n), block_days, n_sims=n_sims, rng=rng, n_boot=n_boot",
+      "replace": "        fit, contiguous_dates(n), 1, n_sims=n_sims, rng=rng, n_boot=n_boot"
+    },
+    {
+      "label": "choose-min-sample-blocks-eligibility-gt-not-gte",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "        eligible = [result for result in results if result.n_blocks >= k]",
+      "replace": "        eligible = [result for result in results if result.n_blocks > k]"
+    },
+    {
+      "label": "choose-min-sample-blocks-returns-largest-not-smallest",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    candidates = sorted({result.n_blocks for result in results})\n    for k in candidates:\n        eligible = [result for result in results if result.n_blocks >= k]\n        if all(\n            all(coverage >= threshold for coverage in result.coverages)\n            for result in eligible\n        ):\n            return k\n    return None",
+      "replace": "    candidates = sorted({result.n_blocks for result in results})\n    passing_k: int | None = None\n    for k in candidates:\n        eligible = [result for result in results if result.n_blocks >= k]\n        if all(\n            all(coverage >= threshold for coverage in result.coverages)\n            for result in eligible\n        ):\n            passing_k = k\n    return passing_k"
+    },
+    {
+      "label": "choose-min-sample-blocks-exact-k-not-monotone",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "        eligible = [result for result in results if result.n_blocks >= k]",
+      "replace": "        eligible = [result for result in results if result.n_blocks == k]"
+    },
+    {
+      "label": "choose-min-sample-blocks-threshold-boundary-off-by-one",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "        if all(\n            all(coverage >= threshold for coverage in result.coverages)\n            for result in eligible\n        ):",
+      "replace": "        if all(\n            all(coverage > threshold for coverage in result.coverages)\n            for result in eligible\n        ):"
+    },
+    {
+      "label": "needs-rerun-strict-lt-to-lte",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "            passes[j] and results[j].n_blocks < result.n_blocks",
+      "replace": "            passes[j] and results[j].n_blocks <= result.n_blocks"
+    },
+    {
+      "label": "needs-rerun-flags-all-failing-regardless",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    flagged: list[int] = []\n    for i, result in enumerate(results):\n        if passes[i]:\n            continue\n        if any(\n            passes[j] and results[j].n_blocks < result.n_blocks\n            for j in range(len(results))\n        ):\n            flagged.append(i)\n    return flagged",
+      "replace": "    flagged: list[int] = []\n    for i, result in enumerate(results):\n        if passes[i]:\n            continue\n        flagged.append(i)\n    return flagged"
+    },
+    {
+      "label": "control-rename-comprehension-variable-in-n-blocks",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Renames the set comprehension's bound variable from `d` to `dt` in `n_blocks`. That name is local to the comprehension's own scope and is never referenced outside it, so the rename cannot change the returned value -- a pure relabeling, not a logic change (same shape as block_length.teeth.json's own `control-rename-local-variable` row).",
+      "find": "    return len({(d - _EPOCH).days // block_days for d in dates})",
+      "replace": "    return len({(dt - _EPOCH).days // block_days for dt in dates})"
+    }
+  ]
+}

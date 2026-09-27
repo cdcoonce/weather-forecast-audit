@@ -14,16 +14,24 @@ import numpy as np
 import polars as pl
 import pytest
 
+from weather_forecast_audit import block_length, scoring
 from weather_forecast_audit.block_length import (
     ArFit,
     BlockChoice,
+    ShapeResult,
     acf,
     choose_block_days,
+    choose_min_sample_blocks,
+    contiguous_dates,
     deseasonalize,
     first_passing_block_days,
     fit_ar_yule_walker,
+    n_blocks,
+    needs_rerun,
     pooled_series,
     replay_coverage,
+    replay_coverage_segments,
+    season_segments,
     simulate_ar,
     station_series,
     upper_median_index,
@@ -391,3 +399,246 @@ def test_replay_coverage_ar1_block_one_worse_than_block_fourteen() -> None:
 
     assert coverage_block1 < 0.75
     assert coverage_block14 > coverage_block1
+
+
+# -- contiguous_dates ---------------------------------------------------------
+
+
+def test_contiguous_dates_default_start() -> None:
+    segments = contiguous_dates(5)
+    assert segments == [[date(2025, 1, 1) + timedelta(days=i) for i in range(5)]]
+
+
+def test_contiguous_dates_custom_start() -> None:
+    segments = contiguous_dates(3, start=date(2030, 6, 1))
+    assert segments == [[date(2030, 6, 1), date(2030, 6, 2), date(2030, 6, 3)]]
+
+
+# -- season_segments -----------------------------------------------------------
+
+
+def test_season_segments_single_year_spans_jja() -> None:
+    segments = season_segments(1)
+    assert len(segments) == 1
+    assert len(segments[0]) == 92
+    assert segments[0][0] == date(2021, 6, 1)
+    assert segments[0][-1] == date(2021, 8, 31)
+
+
+def test_season_segments_multiple_years_in_order() -> None:
+    segments = season_segments(3, first_year=2021)
+    assert [segment[0].year for segment in segments] == [2021, 2022, 2023]
+    assert all(len(segment) == 92 for segment in segments)
+    assert all(segment[0] == date(segment[0].year, 6, 1) for segment in segments)
+    assert all(segment[-1] == date(segment[0].year, 8, 31) for segment in segments)
+
+
+# -- n_blocks ------------------------------------------------------------------
+
+
+def test_n_blocks_contiguous_365_at_14_is_27() -> None:
+    dates = contiguous_dates(365)[0]
+    assert n_blocks(dates, 14) == 27
+
+
+def test_n_blocks_season_segment_92_dates_at_14_is_7() -> None:
+    segment = season_segments(1)[0]
+    assert len(segment) == 92
+    assert n_blocks(segment, 14) == 7
+
+
+def test_n_blocks_counts_distinct_ids_not_dates() -> None:
+    # 14 consecutive dates at block_days=14 always land in at most 2 blocks
+    # (a run can straddle an id boundary); a single day is exactly 1.
+    assert n_blocks([date(2025, 1, 1)], 14) == 1
+
+
+# -- replay_coverage_segments ---------------------------------------------------
+
+
+def test_replay_coverage_segments_white_noise_near_nominal() -> None:
+    fit = ArFit(p=0, phi=np.array([]), sigma2=1.0, mean=0.7)
+    segments = [
+        contiguous_dates(60, start=date(2025, 1, 1))[0],
+        contiguous_dates(60, start=date(2026, 1, 1))[0],
+    ]
+    rng = np.random.default_rng(20260929)
+
+    coverage = replay_coverage_segments(
+        fit, segments, block_days=1, n_sims=150, rng=rng, n_boot=300
+    )
+
+    assert 0.88 <= coverage <= 1.0
+
+
+def test_replay_coverage_segments_draws_independently_per_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fit = ArFit(p=0, phi=np.array([]), sigma2=1.0, mean=0.0)
+    segment_a = contiguous_dates(5, start=date(2025, 1, 1))[0]
+    segment_b = contiguous_dates(5, start=date(2026, 1, 1))[0]
+    captured: list[pl.DataFrame] = []
+    original_score = scoring.score
+
+    def spy_score(frame: pl.DataFrame, *args: object, **kwargs: object) -> pl.DataFrame:
+        captured.append(frame)
+        return original_score(frame, *args, **kwargs)
+
+    monkeypatch.setattr(scoring, "score", spy_score)
+
+    replay_coverage_segments(
+        fit,
+        [segment_a, segment_b],
+        block_days=14,
+        n_sims=1,
+        rng=np.random.default_rng(42),
+        n_boot=5,
+    )
+
+    values = captured[0]["error_f"].to_numpy()
+    first_segment_values, second_segment_values = values[:5], values[5:]
+    assert not np.array_equal(first_segment_values, second_segment_values)
+
+
+def test_replay_coverage_segments_calls_simulate_ar_once_per_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PREREG.md (#37): "Each simulation draws one independent `simulate_ar`
+    series per segment". A shared series drawn once and sliced across
+    segments would still leave the two halves numerically unequal (the
+    weaker check `test_..._draws_independently_per_segment` above passes
+    either way), so pin the call shape directly: one `simulate_ar` call per
+    segment, each sized to that segment's own length."""
+    fit = ArFit(p=0, phi=np.array([]), sigma2=1.0, mean=0.0)
+    segment_a = contiguous_dates(5, start=date(2025, 1, 1))[0]
+    segment_b = contiguous_dates(7, start=date(2026, 1, 1))[0]
+    call_sizes: list[int] = []
+    original_simulate_ar = block_length.simulate_ar
+
+    def spy_simulate_ar(
+        fit_arg: ArFit, n: int, rng: np.random.Generator, **kwargs: object
+    ) -> np.ndarray:
+        call_sizes.append(n)
+        return original_simulate_ar(fit_arg, n, rng, **kwargs)
+
+    monkeypatch.setattr(block_length, "simulate_ar", spy_simulate_ar)
+
+    replay_coverage_segments(
+        fit,
+        [segment_a, segment_b],
+        block_days=14,
+        n_sims=1,
+        rng=np.random.default_rng(42),
+        n_boot=5,
+    )
+
+    assert call_sizes == [len(segment_a), len(segment_b)]
+
+
+def test_replay_coverage_matches_replay_coverage_segments_bit_identical() -> None:
+    # Pins the refactor: replay_coverage now delegates to
+    # replay_coverage_segments(fit, contiguous_dates(n), ...), and must draw
+    # from `rng` in the same order to reproduce the pre-refactor numbers
+    # exactly for a fixed seed.
+    fit = ArFit(p=1, phi=np.array([0.4]), sigma2=1.0, mean=0.3)
+    n, block_days, n_sims, n_boot = 60, 14, 30, 200
+
+    coverage_direct = replay_coverage(
+        fit, n, block_days, n_sims=n_sims, rng=np.random.default_rng(7), n_boot=n_boot
+    )
+    coverage_segments = replay_coverage_segments(
+        fit,
+        contiguous_dates(n),
+        block_days,
+        n_sims=n_sims,
+        rng=np.random.default_rng(7),
+        n_boot=n_boot,
+    )
+
+    assert coverage_direct == coverage_segments
+
+
+# -- ShapeResult / choose_min_sample_blocks -------------------------------------
+
+
+def test_choose_min_sample_blocks_monotone_pass() -> None:
+    results = [
+        ShapeResult("60d", 5, (0.95, 0.95)),
+        ShapeResult("90d", 10, (0.95, 0.95)),
+        ShapeResult("120d", 15, (0.95, 0.95)),
+    ]
+    assert choose_min_sample_blocks(results) == 5
+
+
+def test_choose_min_sample_blocks_nonmonotone_failure_pushes_k_up() -> None:
+    results = [
+        ShapeResult("60d", 5, (0.95, 0.95)),
+        ShapeResult("90d", 10, (0.80, 0.95)),  # fails
+        ShapeResult("120d", 15, (0.95, 0.95)),
+    ]
+    assert choose_min_sample_blocks(results) == 15
+
+
+def test_choose_min_sample_blocks_largest_fails_returns_none() -> None:
+    results = [
+        ShapeResult("60d", 5, (0.95, 0.95)),
+        ShapeResult("90d", 10, (0.95, 0.95)),
+        ShapeResult("120d", 15, (0.80, 0.95)),  # largest shape fails
+    ]
+    assert choose_min_sample_blocks(results) is None
+
+
+def test_choose_min_sample_blocks_exact_threshold_passes() -> None:
+    results = [ShapeResult("60d", 5, (0.90, 0.90))]
+    assert choose_min_sample_blocks(results) == 5
+
+
+def test_choose_min_sample_blocks_ties_require_all_at_that_block_count() -> None:
+    results = [
+        ShapeResult("a", 10, (0.95,)),
+        ShapeResult("b", 10, (0.80,)),  # ties with a at n_blocks=10, fails
+        ShapeResult("c", 20, (0.95,)),
+    ]
+    # k=10 is rejected because b fails despite a passing at the same block
+    # count; the next distinct block count, 20, is the answer.
+    assert choose_min_sample_blocks(results) == 20
+
+
+def test_choose_min_sample_blocks_empty_returns_none() -> None:
+    assert choose_min_sample_blocks([]) is None
+
+
+# -- needs_rerun -----------------------------------------------------------------
+
+
+def test_needs_rerun_flags_failure_above_a_passing_smaller_shape() -> None:
+    results = [
+        ShapeResult("60d", 5, (0.95, 0.95)),
+        ShapeResult("90d", 10, (0.80, 0.95)),  # fails; 5-block shape passed
+        ShapeResult("120d", 15, (0.95, 0.95)),
+    ]
+    assert needs_rerun(results) == [1]
+
+
+def test_needs_rerun_does_not_flag_when_no_smaller_shape_passes() -> None:
+    results = [
+        ShapeResult("60d", 5, (0.80, 0.95)),  # fails
+        ShapeResult("90d", 10, (0.70, 0.95)),  # fails, nothing smaller passed
+    ]
+    assert needs_rerun(results) == []
+
+
+def test_needs_rerun_all_pass_returns_empty() -> None:
+    results = [ShapeResult("60d", 5, (0.95,)), ShapeResult("90d", 10, (0.95,))]
+    assert needs_rerun(results) == []
+
+
+def test_needs_rerun_ties_at_equal_block_count_do_not_trigger_rerun() -> None:
+    """A passing shape at the *same* block count is not "strictly fewer
+    n_blocks" (the docstring's own words), so it must not excuse a tied
+    failing shape as noise."""
+    results = [
+        ShapeResult("a", 10, (0.95,)),  # passes
+        ShapeResult("b", 10, (0.80,)),  # fails, ties a's block count
+    ]
+    assert needs_rerun(results) == []

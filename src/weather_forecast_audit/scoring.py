@@ -25,12 +25,17 @@ import polars as pl
 N_BOOT = 2000
 SEED = 20260927
 CI_LEVEL = 0.95
-MIN_SAMPLE_DATES = 30
 # Measured, not chosen (#31): the pre-registered Politis-White rule on 12
 # stations over 2025 gave ceil(13.18) = 14, and the fitted-AR coverage
 # replay passed at 14 (worst 0.9075) against 0.6475 at 1. Evidence:
 # docs/analysis/2026-09-27-block-length/. Re-measure before changing it.
 BLOCK_DAYS = 14
+# Measured, not chosen (#37): the smallest block count at which every
+# contiguous and season-shaped slice, under all ten AR models fitted in #31,
+# covered >= 0.90 at nominal 95% with 14-day blocks. It counts blocks, not
+# dates, because the number of resampling units is what governs coverage.
+# Evidence: docs/analysis/2026-09-27-sample-floor/. Re-measure before changing.
+MIN_SAMPLE_BLOCKS = 21
 
 _REQUIRED_COLUMNS = (
     "station",
@@ -135,7 +140,7 @@ def score(
     n_boot: int = N_BOOT,
     seed: int = SEED,
     ci_level: float = CI_LEVEL,
-    min_sample_dates: int = MIN_SAMPLE_DATES,
+    min_sample_blocks: int = MIN_SAMPLE_BLOCKS,
     block_days: int = BLOCK_DAYS,
 ) -> pl.DataFrame:
     """Score `rows` per slice, with a date-block bootstrap CI on bias/mae/skill.
@@ -147,9 +152,11 @@ def score(
     key -- pooling error across sources is meaningless -- and may also be
     named in `by` without being duplicated in the output.
 
-    `min_sample_flag` counts distinct issuance dates (`n_dates`), not rows,
-    because dates -- not verification rows -- are the bootstrap's
-    independent resampling unit.
+    `min_sample_flag` counts distinct bootstrap blocks (`n_blocks`), not
+    dates or rows, because blocks of issuance dates are the bootstrap's
+    independent resampling unit and a percentile interval over too few of
+    them is too narrow at any block length (#37). `n_dates` is still
+    reported.
 
     `skill` (`1 - MAE_source / MAE_raw_nbm`) is computed on matched pairs
     only: a row of a non-`raw_nbm` source is matched when a scorable
@@ -207,6 +214,7 @@ def score(
             *group_keys,
             "n",
             "n_dates",
+            "n_blocks",
             "bias",
             "bias_lo",
             "bias_hi",
@@ -226,6 +234,7 @@ def score(
         .agg(
             n=pl.len(),
             n_dates=pl.col("run_date").n_unique(),
+            n_blocks=pl.col("block_id").n_unique(),
             bias=pl.col("error_f").mean(),
             mae=pl.col("error_f").abs().mean(),
         )
@@ -305,6 +314,7 @@ def score(
         record.update(
             n=row["n"],
             n_dates=n_dates,
+            n_blocks=row["n_blocks"],
             bias=row["bias"],
             bias_lo=bias_lo,
             bias_hi=bias_hi,
@@ -314,7 +324,7 @@ def score(
             skill=skill,
             skill_lo=skill_lo,
             skill_hi=skill_hi,
-            min_sample_flag=n_dates < min_sample_dates,
+            min_sample_flag=row["n_blocks"] < min_sample_blocks,
             no_detectable_bias=_no_detectable_bias(bias_lo, bias_hi),
         )
         records.append(record)

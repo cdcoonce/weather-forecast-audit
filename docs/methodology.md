@@ -303,12 +303,15 @@ cannot perturb the first station's confidence interval.
 
 ### `min_sample_flag` and `no_detectable_bias`
 
-`min_sample_flag` fires when a slice has fewer than `MIN_SAMPLE_DATES`
-(default 30) **distinct issuance dates**, not rows. Dates, not
-verification rows, are the bootstrap's independent unit -- a slice built
-from 30 stations reporting on a single date is not more trustworthy than
-one station reporting on 30 dates, and counting rows would make it look
-that way.
+`min_sample_flag` fires when a slice has fewer than `MIN_SAMPLE_BLOCKS`
+(21, measured in #37) **distinct bootstrap blocks** (`n_blocks`), not
+dates and not rows. Blocks of issuance dates are the bootstrap's
+independent resampling unit. A slice built from 30 stations reporting on
+one date is not more trustworthy than one station reporting on 30 dates,
+and counting rows would make it look so. Counting dates fails the same
+way one level up: 180 consecutive dates are only 14 blocks, and a
+percentile interval over 14 resampled units is too narrow (limitation 3).
+`n_dates` is still reported, and it is what the site shows.
 
 `no_detectable_bias` is `bias_lo <= 0 <= bias_hi` (both endpoints
 inclusive: a CI that touches exactly zero still "spans" it). When the CI
@@ -386,25 +389,43 @@ What the number does and does not rest on:
   somewhat narrower than its own persistence warrants.
 - **Short slices are a separate problem** -- see limitation 3.
 
-### Limitation 3: short slices under-cover at any block length (open, #37)
+### Limitation 3 (resolved by #37): the sample floor counts blocks
 
-The #31 replay scored full-year series. Replayed with the same ten fitted
-models at the lengths the export actually publishes -- post hoc, not
-pre-registered, `posthoc_short_slices.py` -- nominal 95% intervals cover
-0.905–0.95 at 365 dates with 14-day blocks, but only 0.83–0.89 at 90 dates
-(one season) and 0.73–0.80 at 30 dates (`MIN_SAMPLE_DATES`). No block
-length fixes it: at 90 dates 7-day blocks do slightly better than 14, and
-both fall short of 0.90.
+The #31 replay certified `BLOCK_DAYS = 14` on full-year series. Replayed at
+shorter lengths, nominal 95% intervals covered only 0.83–0.89 at 90 dates
+(one season) and 0.73–0.80 at 30 dates, the old `MIN_SAMPLE_DATES`. No
+block length fixed that. A percentile bootstrap over a handful of
+resampled units is too narrow on its own, and
+`test_date_block_coverage_beats_row_level` shows it even with no
+persistence (0.870 on 60 iid dates at 14-day blocks, which is why that
+test pins `block_days=1`).
 
-The cause is the block count, not persistence. A percentile bootstrap over
-a handful of resampled units is too narrow on its own: a 30-date slice at
-14-day blocks holds three blocks. `test_date_block_coverage_beats_row_level`
-shows it with no persistence at all, falling from at least 0.90 at 1-day
-blocks to 0.870 at 14-day blocks on its 60-date iid series, which is why
-that test now pins `block_days=1`. The fix is a block-aware
-publishability floor, seasons pooled across years, or a different interval
-for few-block slices. That choice is issue #37, and it blocks the public
-launch.
+**The floor: `MIN_SAMPLE_BLOCKS = 21`**, chosen by a replay pre-registered
+before it ran (`docs/analysis/2026-09-27-sample-floor/`). The ten AR models
+fitted in #31 were simulated 1000 times per slice shape at 14-day blocks.
+The shapes were contiguous runs of 60–730 dates, and season-shaped slices
+made of one 92-date JJA segment per year for 1–6 years. The floor is the
+smallest block count at which every shape with at least that many blocks
+kept all ten models at or above 0.90:
+
+| shape | dates | blocks | worst of ten |
+| --- | --- | --- | --- |
+| contiguous | 180 | 14 | 0.879 |
+| contiguous | 270 | **21** | **0.904** |
+| contiguous | 365 | 27 | 0.911 |
+| season, 2 years | 184 | 14 | 0.885 |
+| season, 3 years | 276 | 22 | 0.913 |
+| season, 6 years | 552 | 46 | 0.920 |
+
+One shape (540 contiguous dates, 40 blocks, 0.894 on one model) was re-run
+at 2000 sims under the pre-registered noise protocol and read 0.912.
+
+What it means for the site. A per-season cell (`station`, `variable`,
+`lead_day`, `season`) pools every archive year, so it needs **three years
+of that season** before it can carry a bias claim. A single season, or two,
+reads as "too few days". The national backfill (#11, archive from
+2020-09-29) gives every station about six years. Until that backfill runs,
+essentially every published cell is flagged, and that is the honest state.
 
 ## Walk-forward evaluation
 
@@ -689,19 +710,14 @@ cross-lead correlation).
 
 A city's summary claims a direction and a number only for a slice whose
 bias interval **excludes 0** (`no_detectable_bias = false`) with **enough
-distinct issuance dates** (`min_sample_flag = false`); the per-city stat
+distinct bootstrap blocks** (`min_sample_flag = false`, limitation 3); the per-city stat
 table applies the identical rule to every cell, never just the summary
 sentence. Every other slice reads as "no detectable bias" or "too few
 days," never as a number that happens to round toward zero.
 
 Both rules -- lead-1 only, and significance gated on both flags -- describe
-what the site is allowed to say **today**. The block length behind every
-interval is now measured (`BLOCK_DAYS = 14`, limitation 2), but that
-measurement certifies full-year slices only. The per-season cells this
-export publishes are about 90 issuance dates, and `min_sample_flag` admits a
-slice at 30. Limitation 3 shows that intervals over that few blocks are too
-narrow at any block length. Until issue #37 settles a block-aware floor or a
-different interval for short slices, a season-level bias claim from this
-export is a conservative reading of an interval known to under-cover, not a
-validated public finding. Publishing the site (PRD milestone M4, #16) waits
-on #37.
+what the site is allowed to say. Both statistical inputs behind them are
+now measured: the block length (`BLOCK_DAYS = 14`, limitation 2) and the
+sample floor (`MIN_SAMPLE_BLOCKS = 21`, limitation 3). What remains open
+before a public launch (#16) is operational: the backfill that gives
+per-season cells their three years (#11), and the nightly schedule.

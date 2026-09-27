@@ -14,12 +14,19 @@ per-station series, the Yule-Walker AR fit and AIC order selection, the
 coverage replay that is the acceptance check for a candidate `BLOCK_DAYS`,
 and the decision rule (with its cap) that turns per-series estimates into
 one value.
+
+`contiguous_dates`, `season_segments`, `n_blocks`, `replay_coverage_segments`,
+`ShapeResult`, `choose_min_sample_blocks` and `needs_rerun` implement the
+follow-on sample-floor pre-registration,
+`docs/analysis/2026-09-27-sample-floor/PREREG.md` (#37): the shapes replayed
+for block-count coverage, and the rule that turns per-shape coverage into
+`MIN_SAMPLE_BLOCKS`.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -39,6 +46,7 @@ _SIM_START_DATE = date(2025, 1, 1)
 _SIM_STATION = "SIM"
 _SIM_LEAD_DAY = 1
 _SIM_VARIABLE = "max"
+_EPOCH = date(1970, 1, 1)
 
 
 def pooled_series(rows: pl.DataFrame, *, min_stations: int = 6) -> pl.DataFrame:
@@ -220,21 +228,107 @@ def simulate_ar(
     return series[burn_in:] + fit.mean
 
 
-def _replay_frame(values: np.ndarray) -> pl.DataFrame:
-    n = values.size
-    run_dates = [_SIM_START_DATE + timedelta(days=i) for i in range(n)]
+def contiguous_dates(n: int, start: date = _SIM_START_DATE) -> list[list[date]]:
+    """One segment of `n` consecutive dates starting at `start`.
+
+    PREREG.md (#37) "Shapes", contiguous: n consecutive issuance dates
+    starting 2025-01-01. Returned as a single-segment list so it can be
+    passed straight to `replay_coverage_segments`.
+    """
+    return [[start + timedelta(days=i) for i in range(n)]]
+
+
+def season_segments(years: int, first_year: int = 2021) -> list[list[date]]:
+    """`years` segments, each the JJA dates (June 1 - Aug 31) of one year.
+
+    PREREG.md (#37) "Shapes", season-shaped: Y segments, one per year, for
+    years `first_year, first_year + 1, ...`. Each segment is the 92 dates
+    June 1 to August 31 of that year (unaffected by leap years, which only
+    move February).
+    """
+    segments: list[list[date]] = []
+    for offset in range(years):
+        year = first_year + offset
+        start = date(year, 6, 1)
+        end = date(year, 8, 31)
+        segments.append(
+            [start + timedelta(days=i) for i in range((end - start).days + 1)]
+        )
+    return segments
+
+
+def n_blocks(dates: Iterable[date], block_days: int) -> int:
+    """Count of distinct `(date - 1970-01-01).days // block_days` ids.
+
+    Matches `scoring.score`'s `block_id` (`run_date.dt.epoch(time_unit=
+    "d") // block_days`) exactly, so a shape's block count is deterministic
+    given its dates alone -- it does not require running the replay.
+    """
+    return len({(d - _EPOCH).days // block_days for d in dates})
+
+
+def _frame_for_dates(dates: Sequence[date], values: np.ndarray) -> pl.DataFrame:
+    n = len(dates)
+    dates_list = list(dates)
     return pl.DataFrame(
         {
             "station": [_SIM_STATION] * n,
-            "run_date": run_dates,
+            "run_date": dates_list,
             "lead_day": [_SIM_LEAD_DAY] * n,
             "variable": [_SIM_VARIABLE] * n,
             "source": [_RAW_SOURCE] * n,
-            "target_date": run_dates,
+            "target_date": dates_list,
             "scorable": [True] * n,
             "error_f": values.tolist(),
         }
     )
+
+
+def _replay_frame(values: np.ndarray) -> pl.DataFrame:
+    return _frame_for_dates(contiguous_dates(values.size)[0], values)
+
+
+def replay_coverage_segments(
+    fit: ArFit,
+    segments: Sequence[Sequence[date]],
+    block_days: int,
+    *,
+    n_sims: int,
+    rng: np.random.Generator,
+    n_boot: int,
+) -> float:
+    """Share of `n_sims` simulated bootstrap CIs that contain `fit.mean`.
+
+    Generalizes the single-contiguous-run replay to a shape made of several
+    disjoint date segments (PREREG.md (#37) "Shapes", season-shaped). Each
+    simulation draws one independent `simulate_ar` series per segment, in
+    segment order, lays each on that segment's own dates, and concatenates
+    the segments before scoring with `scoring.score(by=(), n_boot=n_boot,
+    seed=scoring.SEED, block_days=block_days)`. Segments are treated as
+    independent draws because they sit about 270 days apart, where the
+    fitted autocorrelations are negligible (PREREG.md); the dates are real
+    calendar dates, so the block ids split at segment edges exactly as real
+    data would.
+    """
+    hits = 0
+    for _ in range(n_sims):
+        frames = [
+            _frame_for_dates(segment, simulate_ar(fit, len(segment), rng))
+            for segment in segments
+        ]
+        frame = pl.concat(frames)
+        result = scoring.score(
+            frame,
+            by=(),
+            n_boot=n_boot,
+            seed=scoring.SEED,
+            block_days=block_days,
+        )
+        row = result.row(0, named=True)
+        lo, hi = row["bias_lo"], row["bias_hi"]
+        if lo is not None and hi is not None and lo <= fit.mean <= hi:
+            hits += 1
+    return hits / n_sims
 
 
 def replay_coverage(
@@ -252,24 +346,16 @@ def replay_coverage(
     replay", step 2), lays it out as one row per consecutive `run_date`
     starting 2025-01-01, and scores it with `scoring.score(by=(), n_boot=
     n_boot, seed=scoring.SEED, block_days=block_days)` -- the module's own
-    `CI_LEVEL` and `min_sample_dates` defaults apply.
+    `CI_LEVEL` and `min_sample_blocks` defaults apply. Delegates to
+    `replay_coverage_segments` over the single contiguous segment
+    `contiguous_dates(n)`, which draws from `rng` in the same order (one
+    `simulate_ar` call per simulation) and so is bit-identical to the
+    pre-#37 implementation for a fixed seed -- pinned by
+    `test_replay_coverage_matches_replay_coverage_segments`.
     """
-    hits = 0
-    for _ in range(n_sims):
-        values = simulate_ar(fit, n, rng)
-        frame = _replay_frame(values)
-        result = scoring.score(
-            frame,
-            by=(),
-            n_boot=n_boot,
-            seed=scoring.SEED,
-            block_days=block_days,
-        )
-        row = result.row(0, named=True)
-        lo, hi = row["bias_lo"], row["bias_hi"]
-        if lo is not None and hi is not None and lo <= fit.mean <= hi:
-            hits += 1
-    return hits / n_sims
+    return replay_coverage_segments(
+        fit, contiguous_dates(n), block_days, n_sims=n_sims, rng=rng, n_boot=n_boot
+    )
 
 
 @dataclass(frozen=True)
@@ -315,3 +401,70 @@ def first_passing_block_days(
         if all(c >= threshold for c in coverage_at(block_days)):
             return block_days
     return None
+
+
+@dataclass(frozen=True)
+class ShapeResult:
+    """One shape's coverage record for the sample-floor rule (#37 PREREG).
+
+    `coverages` holds one coverage value per model at this shape, in the
+    fixed model order; by the time a `ShapeResult` is built, PREREG rule 2's
+    re-runs (if any) have already been substituted in for the models they
+    covered, so both `choose_min_sample_blocks` and `needs_rerun` see only
+    the values that decide the rule.
+    """
+
+    label: str
+    n_blocks: int
+    coverages: tuple[float, ...]
+
+
+def choose_min_sample_blocks(
+    results: Sequence[ShapeResult], threshold: float = 0.90
+) -> int | None:
+    """PREREG.md (#37) "Decision rule" step 3 (and step 4's `None` case).
+
+    A shape "passes" when every one of its `coverages` is `>= threshold`
+    (step 1). `MIN_SAMPLE_BLOCKS` is the smallest `n_blocks` value among
+    `results` such that every shape with `n_blocks` at least that value
+    passes. Because every candidate `k` this tries is itself one of the
+    shapes' block counts, and every larger-or-equal-block shape is included
+    at every such `k`, the largest-block shape is always in play: if it
+    fails, no `k` can succeed and this returns `None` (step 4 -- "the
+    largest shape still fails").
+    """
+    candidates = sorted({result.n_blocks for result in results})
+    for k in candidates:
+        eligible = [result for result in results if result.n_blocks >= k]
+        if all(
+            all(coverage >= threshold for coverage in result.coverages)
+            for result in eligible
+        ):
+            return k
+    return None
+
+
+def needs_rerun(results: Sequence[ShapeResult], threshold: float = 0.90) -> list[int]:
+    """PREREG.md (#37) "Decision rule" step 2's re-run trigger.
+
+    A shape (by index into `results`) needs a re-run when it fails --
+    some `coverages` value is below `threshold` -- while some *other* shape
+    with strictly fewer `n_blocks` passes. That is the "noise protocol":
+    a lone failure above an already-passing, smaller shape is treated as a
+    Monte Carlo artifact worth re-running, rather than as evidence the rule
+    should stop there.
+    """
+    passes = [
+        all(coverage >= threshold for coverage in result.coverages)
+        for result in results
+    ]
+    flagged: list[int] = []
+    for i, result in enumerate(results):
+        if passes[i]:
+            continue
+        if any(
+            passes[j] and results[j].n_blocks < result.n_blocks
+            for j in range(len(results))
+        ):
+            flagged.append(i)
+    return flagged
