@@ -16,6 +16,18 @@ does not say whether the boundary observations count; the spec's known
 answers only distinguish behavior when the window end is not on an observed
 minute, so `[start, end)` is a choice, documented in docs/methodology.md,
 not a re-derivation of an established fact.
+
+Observed-extreme source (issue #6): `resolve_observed` is the single entry
+point callers should use. Per PREREG.md/RESULTS.md, METAR 6-hour max/min
+remark groups (`six_hour_extreme`) are the primary source -- a window is
+`scorable` exactly when its three synoptic periods tile, with
+`extreme_source = 'metar_6h'`. An untiled window is unscorable, with
+`extreme_source = 'none'` and `value_f = None`; there is no hourly fallback
+and no correction. `observed_extreme`'s hourly max/min is kept only as
+`hourly_value_f`, a diagnostic gated by its own `MIN_HOUR_COVERAGE`
+threshold, independent of `scorable`. `observed_extreme` and
+`six_hour_extreme` remain the pure building blocks `resolve_observed`
+composes.
 """
 
 from collections.abc import Iterable
@@ -33,6 +45,7 @@ WINDOW_HOURS = 18
 SYNOPTIC_REPORT_LOOKBACK = timedelta(minutes=60)
 
 Variable = Literal["max", "min"]
+ExtremeSource = Literal["metar_6h", "none"]
 
 
 @dataclass(frozen=True)
@@ -224,3 +237,64 @@ def six_hour_extreme(
         value_f = max(found_values) if variable == "max" else min(found_values)
 
     return SixHourExtreme(value_f=value_f, periods_found=periods_found, tiled=tiled)
+
+
+@dataclass(frozen=True)
+class Observed:
+    """The resolved observed extreme for a window, per issue #6's decision.
+
+    `value_f`/`extreme_source`/`scorable` are the authoritative result:
+    `metar_6h` and tiled, or `none` and unscorable with `value_f = None`.
+    `hourly_value_f` is a diagnostic only -- the legacy hourly max/min,
+    gated by its own `MIN_HOUR_COVERAGE` threshold -- and does not affect
+    `scorable`. `n_obs`/`hours_covered`/`hours_expected` describe the hourly
+    coverage backing that diagnostic.
+    """
+
+    value_f: float | None
+    extreme_source: ExtremeSource
+    scorable: bool
+    periods_found: int
+    hourly_value_f: float | None
+    n_obs: int
+    hours_covered: int
+    hours_expected: int
+
+
+def resolve_observed(
+    window: Window,
+    variable: Variable,
+    reports: Iterable[tuple[datetime, float | None, float | None, float | None]],
+) -> Observed:
+    """Resolve `window`'s observed extreme per issue #6's decision.
+
+    Each report is `(valid_utc, tmpf, max_6h_f, min_6h_f)`. The METAR 6-hour
+    groups (`six_hour_extreme`) decide `value_f`/`extreme_source`/`scorable`;
+    `observed_extreme`'s hourly max/min is carried through only as the
+    diagnostic `hourly_value_f`, per its own coverage threshold. Mixing
+    sources is never attempted: an untiled window is `extreme_source =
+    'none'` with `value_f = None`, regardless of hourly coverage.
+    """
+    report_rows = list(reports)
+    hourly_observations = [
+        (valid, tmpf) for valid, tmpf, _max_6h_f, _min_6h_f in report_rows
+    ]
+    six_hour_reports = [
+        (valid, max_6h_f, min_6h_f) for valid, _tmpf, max_6h_f, min_6h_f in report_rows
+    ]
+
+    hourly = observed_extreme(window, variable, hourly_observations)
+    tiled = six_hour_extreme(window, variable, six_hour_reports)
+
+    extreme_source: ExtremeSource = "metar_6h" if tiled.tiled else "none"
+
+    return Observed(
+        value_f=tiled.value_f,
+        extreme_source=extreme_source,
+        scorable=tiled.tiled,
+        periods_found=tiled.periods_found,
+        hourly_value_f=hourly.value_f,
+        n_obs=hourly.n_obs,
+        hours_covered=hourly.hours_covered,
+        hours_expected=hourly.hours_expected,
+    )

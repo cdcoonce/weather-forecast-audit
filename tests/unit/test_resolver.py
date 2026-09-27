@@ -18,6 +18,7 @@ from weather_forecast_audit.resolver import (
     classify_txn,
     lead_day,
     observed_extreme,
+    resolve_observed,
     resolve_window,
     six_hour_extreme,
     six_hour_periods,
@@ -52,6 +53,20 @@ def _load_six_hour_reports() -> list[tuple[datetime, float | None, float | None]
             max_f = groups.max_c * 9 / 5 + 32 if groups.max_c is not None else None
             min_f = groups.min_c * 9 / 5 + 32 if groups.min_c is not None else None
             reports.append((_utc(record["valid"]), max_f, min_f))
+    return reports
+
+
+def _load_resolve_observed_reports() -> (
+    list[tuple[datetime, float | None, float | None, float | None]]
+):
+    reports: list[tuple[datetime, float | None, float | None, float | None]] = []
+    with ASOS_FIXTURE.open(newline="") as handle:
+        for record in csv.DictReader(handle):
+            tmpf = None if record["tmpf"] in ("M", "") else float(record["tmpf"])
+            groups = parse_six_hour_groups(record["metar"])
+            max_f = groups.max_c * 9 / 5 + 32 if groups.max_c is not None else None
+            min_f = groups.min_c * 9 / 5 + 32 if groups.min_c is not None else None
+            reports.append((_utc(record["valid"]), tmpf, max_f, min_f))
     return reports
 
 
@@ -360,3 +375,95 @@ def test_synthetic_extreme_between_hourly_readings() -> None:
     assert six_hour_result.tiled is True
     assert six_hour_result.value_f == 118.2
     assert six_hour_result.value_f > hourly_result.value_f
+
+
+# -- resolve_observed: known answers (five 13Z-2023-07-14 targets) -----------
+
+
+@pytest.mark.parametrize(
+    ("target", "variable", "expected_value_f", "expected_hourly_f"),
+    [
+        (date(2023, 7, 15), "min", 91.94, 93.0),
+        (date(2023, 7, 15), "max", 118.04, 117.0),
+        (date(2023, 7, 16), "min", 93.92, 94.0),
+        (date(2023, 7, 16), "max", 114.08, 113.0),
+    ],
+)
+def test_resolve_observed_tiled_targets_are_metar_6h_and_scorable(
+    target: date,
+    variable: str,
+    expected_value_f: float,
+    expected_hourly_f: float,
+) -> None:
+    reports = _load_resolve_observed_reports()
+    window = resolve_window(target, variable)
+    result = resolve_observed(window, variable, reports)
+
+    assert result.extreme_source == "metar_6h"
+    assert result.scorable is True
+    assert result.periods_found == 3
+    assert result.value_f == pytest.approx(expected_value_f)
+    assert result.hourly_value_f == pytest.approx(expected_hourly_f)
+
+
+def test_resolve_observed_untiled_target_is_none_and_unscorable() -> None:
+    """2023-07-17's min window: the 17:51 report the fixture drops leaves the
+
+    18Z synoptic period without a qualifying report, so the window cannot be
+    tiled. hourly_value_f still follows its own coverage threshold (12 of 18
+    hours here, below MIN_HOUR_COVERAGE), independent of extreme_source.
+    """
+    reports = _load_resolve_observed_reports()
+    window = resolve_window(date(2023, 7, 17), "min")
+    result = resolve_observed(window, "min", reports)
+
+    assert result.extreme_source == "none"
+    assert result.scorable is False
+    assert result.value_f is None
+    assert result.periods_found == 2
+    assert result.hourly_value_f is None
+    assert result.hours_covered == 12
+
+
+# -- resolve_observed: synthetic fallback and recovery cases ------------------
+
+
+def test_resolve_observed_one_missing_synoptic_report_falls_back_to_none() -> None:
+    window = resolve_window(date(2023, 7, 15), "max")
+    h1, h2, _h3 = six_hour_periods(window)
+    reports = [
+        (h1 - timedelta(minutes=9), None, 100.0, None),
+        (h2 - timedelta(minutes=9), None, 100.0, None),
+        # third synoptic report (h3) is missing entirely
+    ]
+    result = resolve_observed(window, "max", reports)
+
+    assert result.extreme_source == "none"
+    assert result.scorable is False
+    assert result.value_f is None
+    assert result.periods_found == 2
+
+
+def test_resolve_observed_recovers_peak_hourly_misses() -> None:
+    """issue #6's core case: metar_6h finds a peak between hourly readings."""
+    window = resolve_window(date(2024, 1, 1), "max")
+    hourly_reports = [
+        (window.start_utc + timedelta(hours=h), 110.0 + h, None, None)
+        for h in range(7)
+    ] + [
+        (window.start_utc + timedelta(hours=h), 117.0 - (h - 7), None, None)
+        for h in range(7, 18)
+    ]
+    h1, h2, h3 = six_hour_periods(window)
+    six_hour_reports = [
+        (h1 - timedelta(minutes=9), None, 110.0, None),
+        (h2 - timedelta(minutes=9), None, 118.2, None),  # the missed peak
+        (h3 - timedelta(minutes=9), None, 112.0, None),
+    ]
+    result = resolve_observed(window, "max", hourly_reports + six_hour_reports)
+
+    assert result.extreme_source == "metar_6h"
+    assert result.scorable is True
+    assert result.value_f == 118.2
+    assert result.hourly_value_f == 117.0
+    assert result.value_f > result.hourly_value_f
