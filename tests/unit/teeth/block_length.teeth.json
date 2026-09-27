@@ -1,0 +1,186 @@
+{
+  "runner": "pytest",
+  "test_command": ["uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "tests/unit/test_block_length.py"],
+  "collect_command": ["uv", "run", "pytest", "--collect-only", "-q", "tests/unit/test_block_length.py"],
+  "mutants": [
+    {
+      "label": "pooled_series-drop-source-filter",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    filtered = rows.filter(\n        (pl.col(\"source\") == _RAW_SOURCE)\n        & pl.col(\"scorable\")\n        & pl.col(\"error_f\").is_not_null()\n    )\n    grouped = filtered.group_by([\"variable\", \"lead_day\", \"run_date\"]).agg(",
+      "replace": "    filtered = rows.filter(\n        pl.col(\"scorable\")\n        & pl.col(\"error_f\").is_not_null()\n    )\n    grouped = filtered.group_by([\"variable\", \"lead_day\", \"run_date\"]).agg("
+    },
+    {
+      "label": "pooled_series-drop-scorable-filter",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    filtered = rows.filter(\n        (pl.col(\"source\") == _RAW_SOURCE)\n        & pl.col(\"scorable\")\n        & pl.col(\"error_f\").is_not_null()\n    )\n    grouped = filtered.group_by([\"variable\", \"lead_day\", \"run_date\"]).agg(",
+      "replace": "    filtered = rows.filter(\n        (pl.col(\"source\") == _RAW_SOURCE)\n        & pl.col(\"error_f\").is_not_null()\n    )\n    grouped = filtered.group_by([\"variable\", \"lead_day\", \"run_date\"]).agg("
+    },
+    {
+      "label": "pooled_series-count-not-n-unique",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "n_stations=pl.col(\"station\").n_unique(),",
+      "replace": "n_stations=pl.col(\"station\").count(),"
+    },
+    {
+      "label": "pooled_series-min-stations-off-by-one",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "pl.col(\"n_stations\") >= min_stations",
+      "replace": "pl.col(\"n_stations\") > min_stations"
+    },
+    {
+      "label": "station_series-drop-scorable-filter",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    filtered = rows.filter(\n        (pl.col(\"source\") == _RAW_SOURCE)\n        & pl.col(\"scorable\")\n        & pl.col(\"error_f\").is_not_null()\n    )\n    columns = [\"station\", \"variable\", \"lead_day\", \"run_date\", \"error_f\"]",
+      "replace": "    filtered = rows.filter(\n        (pl.col(\"source\") == _RAW_SOURCE)\n        & pl.col(\"error_f\").is_not_null()\n    )\n    columns = [\"station\", \"variable\", \"lead_day\", \"run_date\", \"error_f\"]"
+    },
+    {
+      "label": "upper_median_index-lower-median",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    return int(order[len(values) // 2])",
+      "replace": "    return int(order[(len(values) - 1) // 2])"
+    },
+    {
+      "label": "upper_median_index-sorted-position-not-original-index",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "    return int(order[len(values) // 2])",
+      "replace": "    return len(values) // 2"
+    },
+    {
+      "label": "acf-gamma0-not-demeaned",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "gamma0 = np.sum(demeaned**2)",
+      "replace": "gamma0 = np.sum(x**2)"
+    },
+    {
+      "label": "acf-off-by-one-lag",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "gamma_lag = np.sum(demeaned[:-i] * demeaned[i:])",
+      "replace": "gamma_lag = np.sum(demeaned[: -(i + 1)] * demeaned[i + 1 :])"
+    },
+    {
+      "label": "deseasonalize-trailing-not-centered",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "        lo = max(0, i - half)\n        hi = min(n, i + half + 1)",
+      "replace": "        lo = max(0, i - window + 1)\n        hi = i + 1"
+    },
+    {
+      "label": "fit_ar_yule_walker-aic-penalty-dropped",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "aic = [n * math.log(s) + 2 * p for p, s in enumerate(sigma2_by_order)]",
+      "replace": "aic = [n * math.log(s) + 0 * p for p, s in enumerate(sigma2_by_order)]"
+    },
+    {
+      "label": "fit_ar_yule_walker-unbiased-autocovariance",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "[np.sum(demeaned[: n - k] * demeaned[k:]) / n for k in range(max_p + 1)]",
+      "replace": "[np.sum(demeaned[: n - k] * demeaned[k:]) / (n - k) for k in range(max_p + 1)]"
+    },
+    {
+      "label": "fit_ar_yule_walker-levinson-sign-error",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "[phi_prev - reflection * phi_prev[::-1], [reflection]]",
+      "replace": "[phi_prev + reflection * phi_prev[::-1], [reflection]]"
+    },
+    {
+      "label": "simulate_ar-burn-in-not-discarded",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "return series[burn_in:] + fit.mean",
+      "replace": "return series[:n] + fit.mean"
+    },
+    {
+      "label": "simulate_ar-mean-not-added",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "return series[burn_in:] + fit.mean",
+      "replace": "return series[burn_in:]"
+    },
+    {
+      "label": "replay_coverage-strict-containment",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "lo and hi are bootstrap-resampled quantiles of simulated Gaussian-innovation series; fit.mean is a fixed float chosen independently of that resampling. The probability the continuous resampling distribution lands its quantile estimate on that exact float is 0, so switching the containment check from <= to < cannot change any hit/miss decision in practice -- confirmed empirically: the full spec run (150-400 replay sims per test) shows this mutant surviving both existing replay_coverage tests.",
+      "find": "if lo is not None and hi is not None and lo <= fit.mean <= hi:",
+      "replace": "if lo is not None and hi is not None and lo < fit.mean < hi:"
+    },
+    {
+      "label": "replay_coverage-block-days-not-passed-through",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "block_days=block_days,",
+      "replace": "block_days=1,"
+    },
+    {
+      "label": "choose_block_days-max-not-taken",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "per_key_max = [max(b_pooled, b_station) for b_pooled, b_station in b.values()]",
+      "replace": "per_key_max = [b_pooled for b_pooled, b_station in b.values()]"
+    },
+    {
+      "label": "choose_block_days-round-not-ceil",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "raw_ceiling = max(1, math.ceil(max(per_key_max)))",
+      "replace": "raw_ceiling = max(1, round(max(per_key_max)))"
+    },
+    {
+      "label": "choose_block_days-floor-removed",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "raw_ceiling = max(1, math.ceil(max(per_key_max)))",
+      "replace": "raw_ceiling = math.ceil(max(per_key_max))"
+    },
+    {
+      "label": "choose_block_days-cap-boundary-off-by-one",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "if raw_ceiling > cap:",
+      "replace": "if raw_ceiling >= cap:"
+    },
+    {
+      "label": "first_passing_block_days-range-excludes-cap",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "for block_days in range(start, cap + 1):",
+      "replace": "for block_days in range(start, cap):"
+    },
+    {
+      "label": "first_passing_block_days-any-not-all",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "if all(c >= threshold for c in coverage_at(block_days)):",
+      "replace": "if any(c >= threshold for c in coverage_at(block_days)):"
+    },
+    {
+      "label": "first_passing_block_days-threshold-boundary-off-by-one",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "find": "if all(c >= threshold for c in coverage_at(block_days)):",
+      "replace": "if all(c > threshold for c in coverage_at(block_days)):"
+    },
+    {
+      "label": "control-rename-local-variable",
+      "file": "../../../src/weather_forecast_audit/block_length.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Renames the local `order` to `sorted_order` consistently within upper_median_index's own scope. It is never referenced outside this function, so the rename cannot change behavior -- a pure relabeling, not a logic change.",
+      "find": "    order = np.argsort(np.asarray(values), kind=\"stable\")\n    return int(order[len(values) // 2])",
+      "replace": "    sorted_order = np.argsort(np.asarray(values), kind=\"stable\")\n    return int(sorted_order[len(values) // 2])"
+    }
+  ]
+}
