@@ -55,6 +55,17 @@ jobs:
       - name: Ruff
         run: scripts/offline.sh uv run ruff check .
 
+      - name: dbt parse (bake the manifest for dagster-dbt)
+        run: |
+          # weather_forecast_audit.definitions loads dbt models as Dagster
+          # assets via @dbt_assets(manifest=...), which needs an existing
+          # dbt/target/manifest.json at import time -- and Pytest imports it.
+          # dbt/target/ is gitignored, so a fresh checkout has none yet.
+          # parse opens no connection, but the profile's env_var() must still
+          # resolve, so WFA_DUCKDB_PATH only needs to be set, not to exist
+          # (matches the Dockerfile's own `dbt parse` bake step).
+          scripts/offline.sh uv run dbt parse --project-dir dbt --profiles-dir dbt
+
       - name: Pytest
         run: scripts/offline.sh uv run pytest -m "not network"
 

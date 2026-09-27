@@ -25,12 +25,22 @@ The same gate CI runs:
 
 ```bash
 uv run ruff check .
-uv run pytest -m "not network"
 export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb" && mkdir -p .ci
+uv run dbt parse --project-dir dbt --profiles-dir dbt  # bakes dbt/target/manifest.json
+uv run pytest -m "not network"
 uv run wfa init-db
 uv run dbt build --project-dir dbt --profiles-dir dbt
 uv run sqlfluff lint dbt/models
 ```
+
+The `dbt parse` step has to run before `pytest`: `weather_forecast_audit.definitions`
+loads dbt models as Dagster assets via `@dbt_assets(manifest=...)`, which
+needs an existing `dbt/target/manifest.json` at import time. `dbt/target/`
+is gitignored (rebuilt every time), so a fresh checkout has no manifest
+until something creates one; the Docker image does this at build time
+(`dbt parse` against a dummy `WFA_DUCKDB_PATH`, since parse opens no
+connection but the profile's `env_var()` must still resolve), and local/CI
+runs do the same thing as a gate step for the same reason.
 
 ### The `wfa` CLI
 
@@ -42,6 +52,34 @@ export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 uv run wfa init-db
 uv run wfa ingest --station KPHX --start 2023-07-14 --end 2023-07-14
 ```
+
+### Dagster: materializing one partition for a station subset
+
+`weather_forecast_audit.definitions:defs` exposes four daily-partitioned raw
+assets (`raw/nbs_guidance`, `raw/asos_hourly`, `raw/cli_daily`,
+`raw/resolved_windows`, batched together in `ingest_job`), plus
+`transform_job` (the dbt models) and `freshness_check_job` (the two
+freshness checks only -- no schedule is wired up yet; that's issue #16).
+`StationsResource.only` restricts a run to a station subset without editing
+the seed. From a Python shell or a script, with `WFA_DUCKDB_PATH` set:
+
+```python
+from dagster import DagsterInstance
+from weather_forecast_audit.definitions import defs, ingest_job
+from weather_forecast_audit.resources import StationsResource
+
+job = defs.resolve_job_def("ingest_job")
+with DagsterInstance.get() as instance:
+    result = job.execute_in_process(
+        instance=instance,
+        partition_key="2023-07-14",
+        run_config={"resources": {"stations": {"config": {"only": ["KPHX"]}}}},
+    )
+```
+
+Materializing a recent `raw/resolved_windows` partition before its
+dependent `raw/asos_hourly` partitions exist yet (out to `D+4`) is expected
+to leave some windows unscorable; re-materialize once they land.
 
 ### Tracer bullet
 
@@ -70,12 +108,18 @@ export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 | `dbt/.sqlfluff` | Snowflake-dialect lint config (the portability guard) |
 | `dbt/seeds/` | `station_registry.csv`/`station_exclusions.csv` (built by `scripts/registry/build_registry.py`), `nbs_cycle_regimes.csv`/`nbs_archive.csv` (built by `scripts/registry/probe_archive_start.py`) — the only source of station metadata, cycle-changeover dates, and the pinned archive start |
 | `dbt/models/marts/fct_forecast_verification.sql` | The verification fact table |
-| `docs/methodology.md` | Verification windows, scope, completeness threshold, and known caveats |
+| `dbt/models/marts/gap_ledger.sql` | One row per open ingest gap, with `first_seen` |
+| `docs/methodology.md` | Verification windows, scope, completeness threshold, orchestration/partitions, and known caveats |
 | `tests/` | pytest suite |
 | `src/weather_forecast_audit/definitions.py` | Dagster code location, served on gRPC 4002 on rammingspeed |
+| `src/weather_forecast_audit/assets.py` | The four daily-partitioned raw ingest assets, `raw/ingest_gaps`, and the freshness/gap-rate checks |
+| `src/weather_forecast_audit/dbt_assets.py` | dbt models loaded as Dagster assets (`@dbt_assets`) |
+| `src/weather_forecast_audit/resources.py` | `WarehouseResource`/`IemResource`/`StationsResource`/`ClockResource` |
+| `src/weather_forecast_audit/checks.py` | Pure freshness/gap-rate evaluators the asset checks wrap |
 | `Dockerfile` | Code-location image; also the image every run container starts from |
 | `scripts/offline.sh` | Runs a command with no network access (Linux CI only) |
 | `scripts/tracer_kphx.sh` | Ingests, builds, and prints the KPHX verification tracer bullet |
+| `scripts/record_fixtures.py` | One-off: records IEM fixtures for the Dagster asset tests (KORD, extended KPHX asos) |
 
 ### Conventions
 
