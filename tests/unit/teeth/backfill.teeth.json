@@ -1,0 +1,177 @@
+{
+  "runner": "pytest",
+  "test_command": ["uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "tests/unit/test_backfill.py", "tests/dagster/test_sensors.py"],
+  "collect_command": ["uv", "run", "pytest", "--collect-only", "-q", "tests/unit/test_backfill.py", "tests/dagster/test_sensors.py"],
+  "mutants": [
+    {
+      "label": "blackout-start-boundary-exclusive",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "            if start_local <= local_window_end and local_window_start <= end_local:",
+      "replace": "            if start_local < local_window_end and local_window_start <= end_local:"
+    },
+    {
+      "label": "blackout-end-boundary-exclusive",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "            if start_local <= local_window_end and local_window_start <= end_local:",
+      "replace": "            if start_local <= local_window_end and local_window_start < end_local:"
+    },
+    {
+      "label": "blackout-drops-multiday-loop",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    day = start_local.date()\n    while day <= end_local.date():\n        for window_start, window_end in BLACKOUT_WINDOWS:\n            local_window_start = datetime.combine(day, window_start, tzinfo=PHOENIX)\n            local_window_end = datetime.combine(day, window_end, tzinfo=PHOENIX)\n            if start_local <= local_window_end and local_window_start <= end_local:\n                return True\n        day += timedelta(days=1)\n    return False",
+      "replace": "    day = start_local.date()\n    for window_start, window_end in BLACKOUT_WINDOWS:\n        local_window_start = datetime.combine(day, window_start, tzinfo=PHOENIX)\n        local_window_end = datetime.combine(day, window_end, tzinfo=PHOENIX)\n        if start_local <= local_window_end and local_window_start <= end_local:\n            return True\n    return False"
+    },
+    {
+      "label": "blackout-uses-utc-not-phoenix",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Dropping .astimezone(PHOENIX) leaves start_local/end_local as the same absolute instants, only re-labeled tzinfo=UTC instead of America/Phoenix. Python compares aware datetimes by absolute instant regardless of the tzinfo label, so every `start_local <= local_window_end` / `local_window_start <= end_local` comparison is unaffected -- the local_window_* values are still built via datetime.combine(day, ..., tzinfo=PHOENIX), so they are correctly anchored. The only thing the missing astimezone changes is which calendar `day` the loop starts/ends on (`.date()` read off a UTC-labeled instant instead of a Phoenix one): PHOENIX is a fixed UTC-7 offset (no DST), so that shifts the UTC-derived date to the Phoenix date, or one day ahead, exactly when the Phoenix local hour is >=17 (i.e. once the day's own 05:45-07:15 window has already elapsed) -- so a 'skipped' day can never be a day whose window a forward-looking interval could still reach. Verified empirically, not just argued: a brute-force comparison of the real and mutated implementations across 2,040,000 (now_utc, horizon_s) pairs -- 2,000,000 random draws over a 10-year span with horizons from 0s to 2 days, plus an exhaustive minute-by-minute sweep of 5 calendar days at horizons {0, 60, 900, 3600, 86400, 90000}s -- found zero mismatches.",
+      "find": "    start_local = now_utc.replace(tzinfo=UTC).astimezone(PHOENIX)\n    end_local = (\n        (now_utc + timedelta(seconds=horizon_s)).replace(tzinfo=UTC).astimezone(PHOENIX)\n    )",
+      "replace": "    start_local = now_utc.replace(tzinfo=UTC)\n    end_local = (now_utc + timedelta(seconds=horizon_s)).replace(tzinfo=UTC)"
+    },
+    {
+      "label": "blackout-horizon-ignored",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    end_local = (\n        (now_utc + timedelta(seconds=horizon_s)).replace(tzinfo=UTC).astimezone(PHOENIX)\n    )",
+      "replace": "    end_local = start_local"
+    },
+    {
+      "label": "plan-units-stations-not-sorted",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    sorted_stations = sorted(stations)",
+      "replace": "    sorted_stations = list(stations)"
+    },
+    {
+      "label": "plan-units-last-month-not-clipped-to-end",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "        window_end = min(month_last, end)",
+      "replace": "        window_end = month_last"
+    },
+    {
+      "label": "cursor-state-missing-generation-raises",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    @classmethod\n    def from_json(cls, raw: str | None) -> CursorState:\n        if not raw:\n            return cls(next_index=0, attempt=1, last_run_id=None)\n        # Old cursors predate `submitted_at`/`generation`; both have\n        # defaults, so a dict missing either key still constructs cleanly.\n        return cls(**json.loads(raw))",
+      "replace": "    @classmethod\n    def from_json(cls, raw: str | None) -> CursorState:\n        if not raw:\n            return cls(next_index=0, attempt=1, last_run_id=None)\n        data = json.loads(raw)\n        return cls(\n            next_index=data[\"next_index\"],\n            attempt=data[\"attempt\"],\n            last_run_id=data[\"last_run_id\"],\n            transform_requested=data.get(\"transform_requested\", False),\n            submitted_at=data.get(\"submitted_at\"),\n            generation=data[\"generation\"],\n        )"
+    },
+    {
+      "label": "decide-not-found-treated-as-terminal-success",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    if state.last_run_id is not None and last_run_status not in TERMINAL_RUN_STATUSES:\n        if last_run_status is None and state.submitted_at is not None:\n            submitted_at = datetime.fromisoformat(state.submitted_at)\n            elapsed_s = (now_utc - submitted_at).total_seconds()\n            if elapsed_s > not_found_timeout_s:\n                return Halt(\n                    f\"submitted run {state.last_run_id} never appeared after \"\n                    f\"{not_found_timeout_s}s: run_key dedupe (bump the cursor's \"\n                    \"generation and clear last_run_id to force a fresh run_key) \"\n                    \"or a daemon launch failure\"\n                )\n        return Wait(\"run in flight\")\n\n    working = state\n    if state.last_run_id is not None:\n        # last_run_status is terminal here (the branch above returned\n        # otherwise), so `working` always reflects a resolved run below.\n        if state.transform_requested:\n            if last_run_status == \"SUCCESS\":\n                return Done()\n            return Halt(f\"transform run {state.last_run_id} ended {last_run_status}\")\n        if last_run_status == \"SUCCESS\":",
+      "replace": "    if (\n        state.last_run_id is not None\n        and last_run_status not in TERMINAL_RUN_STATUSES\n        and last_run_status is not None\n    ):\n        return Wait(\"run in flight\")\n\n    working = state\n    if state.last_run_id is not None:\n        # last_run_status is terminal here (the branch above returned\n        # otherwise), so `working` always reflects a resolved run below.\n        if state.transform_requested:\n            if last_run_status == \"SUCCESS\" or last_run_status is None:\n                return Done()\n            return Halt(f\"transform run {state.last_run_id} ended {last_run_status}\")\n        if last_run_status == \"SUCCESS\" or last_run_status is None:"
+    },
+    {
+      "label": "decide-not-found-timeout-comparison-flipped",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "            elapsed_s = (now_utc - submitted_at).total_seconds()\n            if elapsed_s > not_found_timeout_s:",
+      "replace": "            elapsed_s = (now_utc - submitted_at).total_seconds()\n            if elapsed_s < not_found_timeout_s:"
+    },
+    {
+      "label": "decide-retry-does-not-increment-attempt",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "            next_attempt = state.attempt + 1",
+      "replace": "            next_attempt = state.attempt"
+    },
+    {
+      "label": "decide-max-attempts-off-by-one",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "            if next_attempt > max_attempts:",
+      "replace": "            if next_attempt >= max_attempts:"
+    },
+    {
+      "label": "decide-halt-skipped-keeps-retrying-forever",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "            next_attempt = state.attempt + 1\n            if next_attempt > max_attempts:\n                return Halt(\n                    f\"unit {state.next_index} failed {max_attempts} times \"\n                    f\"(last run {state.last_run_id}, status {last_run_status})\"\n                )\n            working = replace(\n                state, attempt=next_attempt, last_run_id=None, submitted_at=None\n            )",
+      "replace": "            next_attempt = state.attempt + 1\n            working = replace(\n                state, attempt=next_attempt, last_run_id=None, submitted_at=None\n            )"
+    },
+    {
+      "label": "decide-success-does-not-reset-attempt",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "            working = replace(\n                state,\n                next_index=state.next_index + 1,\n                attempt=1,\n                last_run_id=None,\n                submitted_at=None,\n            )",
+      "replace": "            working = replace(\n                state,\n                next_index=state.next_index + 1,\n                attempt=state.attempt,\n                last_run_id=None,\n                submitted_at=None,\n            )"
+    },
+    {
+      "label": "decide-transform-submitted-before-all-units-done",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    if working.next_index >= n_units:",
+      "replace": "    if working.next_index > n_units:"
+    },
+    {
+      "label": "decide-transform-path-ignores-slot-busy",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    if working.next_index >= n_units:\n        if working.transform_requested:\n            return Wait(\"transform pending\")\n        if slot_busy:\n            return Wait(\"slot busy\")\n        if blackout:\n            return Wait(\"blackout\")\n        return SubmitTransform(",
+      "replace": "    if working.next_index >= n_units:\n        if working.transform_requested:\n            return Wait(\"transform pending\")\n        if blackout:\n            return Wait(\"blackout\")\n        return SubmitTransform("
+    },
+    {
+      "label": "decide-submit-path-slot-busy-check-removed",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    if slot_busy:\n        return Wait(\"slot busy\")\n    if blackout:\n        return Wait(\"blackout\")\n    return Submit(",
+      "replace": "    if blackout:\n        return Wait(\"blackout\")\n    return Submit("
+    },
+    {
+      "label": "decide-submit-path-blackout-check-removed",
+      "file": "../../../src/weather_forecast_audit/backfill.py",
+      "oracle": "real",
+      "find": "    if slot_busy:\n        return Wait(\"slot busy\")\n    if blackout:\n        return Wait(\"blackout\")\n    return Submit(",
+      "replace": "    if slot_busy:\n        return Wait(\"slot busy\")\n    return Submit("
+    },
+    {
+      "label": "sensor-run-key-without-generation",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "RUN_KEY_TEMPLATE = \"{unit_id}-a{attempt}-g{generation}\"",
+      "replace": "RUN_KEY_TEMPLATE = \"{unit_id}-a{attempt}\""
+    },
+    {
+      "label": "sensor-unit-run-max-runtime-tag-dropped",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "        tags={\n            UNIT_TAG: unit.unit_id,\n            ATTEMPT_TAG: str(attempt),\n            GENERATION_TAG: str(generation),\n            \"dagster/max_runtime\": str(MAX_RUNTIME_SECONDS),\n            ASSET_PARTITION_RANGE_START_TAG: unit.start.isoformat(),\n            ASSET_PARTITION_RANGE_END_TAG: unit.end.isoformat(),\n        },",
+      "replace": "        tags={\n            UNIT_TAG: unit.unit_id,\n            ATTEMPT_TAG: str(attempt),\n            GENERATION_TAG: str(generation),\n            ASSET_PARTITION_RANGE_START_TAG: unit.start.isoformat(),\n            ASSET_PARTITION_RANGE_END_TAG: unit.end.isoformat(),\n        },"
+    },
+    {
+      "label": "sensor-partition-range-end-equals-start",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "            ASSET_PARTITION_RANGE_END_TAG: unit.end.isoformat(),",
+      "replace": "            ASSET_PARTITION_RANGE_END_TAG: unit.start.isoformat(),"
+    },
+    {
+      "label": "sensor-stations-run-config-omitted",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "        run_config={\n            \"resources\": {\"stations\": {\"config\": {\"only\": list(unit.stations)}}}\n        },",
+      "replace": "        run_config={},"
+    },
+    {
+      "label": "sensor-slot-busy-scoped-to-own-job-only",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "    return instance.get_runs_count(dg.RunsFilter(statuses=IN_FLIGHT_STATUSES)) > 0",
+      "replace": "    return (\n        instance.get_runs_count(\n            dg.RunsFilter(job_name=ingest_job.name, statuses=IN_FLIGHT_STATUSES)\n        )\n        > 0\n    )"
+    },
+    {
+      "label": "sensor-plan-end-not-frozen-recomputed-each-tick",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "    plan_end, state = _load_cursor(context.cursor)\n    if plan_end is None:\n        # Frozen here, on first evaluation, so the plan can't grow while the\n        # backfill is in flight: \"yesterday\" per the injectable clock, read\n        # once and stored in the cursor from then on.\n        plan_end = _now().date() - timedelta(days=1)",
+      "replace": "    plan_end, state = _load_cursor(context.cursor)\n    # Frozen here, on first evaluation, so the plan can't grow while the\n    # backfill is in flight: \"yesterday\" per the injectable clock, read\n    # once and stored in the cursor from then on.\n    plan_end = _now().date() - timedelta(days=1)"
+    }
+  ]
+}

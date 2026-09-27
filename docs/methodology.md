@@ -698,6 +698,140 @@ DuckDB allows one writer process per database file. rammingspeed's single run sl
 
 The tests could not see this failure. `execute_in_process` always runs steps sequentially in one process, so only a structural assertion on the configured executor catches it.
 
+## National backfill (issue #11)
+
+`national_backfill_sensor` (`sensors.py`) drives `ingest_job` and
+`transform_job` through the whole archive -- `ARCHIVE_START` through
+yesterday -- one run at a time, on rammingspeed's single shared run slot,
+without a human launching each run by hand.
+
+### The run unit
+
+The archive is planned (`backfill.plan_units`) into calendar-month x
+station-chunk units: each unit is one `ingest_job` run over a whole
+calendar month (clipped to the archive/end bounds) for 30 stations
+(`BACKFILL_CHUNK_SIZE`) sorted from the registry. A month matches D2's
+existing ingest batching (a run already receives up to a month and fetches
+each station once over the whole range); the 30-station chunk exists
+because the archive has ~573 stations and ingest costs ~12s/station-month
+(IEM's rate limit is 1 req/s) -- a national month in one run would take
+over 6800s, and `MAX_RUNTIME_SECONDS` (600) caps every run at 600s. 30
+stations keeps a unit's ingest under ~360s, leaving headroom under the cap.
+Units are submitted in month-major, chunk-minor order, so every station
+gets a given month before the backfill moves on to the next.
+
+### The blackout window, and why the 600s cap is what makes it safe
+
+rammingspeed's other tenants (oura, waga) have schedules firing every 15
+minutes from 06:00 through 07:00 America/Phoenix (no DST there, so this is
+a fixed UTC offset). `backfill.BLACKOUT_WINDOWS` blocks a new unit's
+submission from 05:45 to 07:15 local -- 15 minutes of padding either side
+of that window.
+
+The padding's size is not arbitrary: `in_blackout` is checked against
+`[now, now + horizon_s]`, where `horizon_s = MAX_RUNTIME_SECONDS + 300`.
+`MAX_RUNTIME_SECONDS` is the run's own hard cap (run monitoring kills
+anything longer), so a run launched right before the blackout starts is
+*guaranteed* to have finished (or been killed) within 600s, plus a 300s
+margin for the time between "the sensor's `RunRequest` is picked up" and
+"the run actually starts occupying the slot" (container/process start).
+That is the sense in which the 600s cap is a safety property here, not
+just a runtime budget: without it, a run could still be holding the slot
+when oura/waga need it, and the backfill would be blocking production
+schedules instead of yielding to them.
+
+### Retry and halt
+
+Each unit gets up to 3 attempts (`MAX_BACKFILL_ATTEMPTS`). A `FAILURE` or
+`CANCELED` run retries the same unit with the attempt incremented; a third
+failure halts the whole backfill rather than silently skipping a unit or
+retrying forever. A halted sensor keeps returning the identical `Halt`
+decision, and keeps writing back the identical (unchanged) cursor, on
+every subsequent tick -- it will never resubmit on its own. Unhalting
+requires a human to look at the failed run, fix whatever broke, and reset
+the cursor (see below); there is no automatic recovery, by design, because
+a `FAILURE` that recurs three times against the same station/month is
+worth a look, not a fourth blind retry.
+
+The transform job (`dbt build`, run once after every ingest unit succeeds)
+follows the same shape: its `FAILURE` halts, its `SUCCESS` completes the
+backfill.
+
+A submitted run that never appears at all (`last_run_status` reads `None`
+-- no run tagged with this unit/attempt/generation exists yet) also halts,
+but only after `not_found_timeout_s` (15 minutes) has passed since
+`submitted_at`, not immediately: a run can legitimately take a moment to
+show up. Dagster's sensor daemon dedupes `RunRequest`s by `run_key`, scoped
+to the sensor (`dagster/_daemon/sensor.py`'s `fetch_existing_runs` and
+`_get_or_create_sensor_run`): once a run_key has been used, the daemon will
+never mint a *second* run under it, even if the first one never actually
+launched (a daemon crash between building the `RunRequest` and creating the
+run, for instance). Without the timeout, a cursor stuck on a never-created
+run would `Wait("run in flight")` forever, silently, with no run to look
+at and no way to tell the difference from a normal in-progress run. The
+halt message says so explicitly and points at the fix (below).
+
+### The frozen plan end
+
+`plan_units`'s `end` argument -- "yesterday" at the sensor's first
+evaluation -- is computed once and stored in the cursor from then on, not
+recomputed on every tick. Without freezing it, a national backfill running
+for weeks would see its own plan grow by one day (and therefore its unit
+count and every unit's index) every time the clock ticks past midnight
+UTC, which would either resubmit units whose indices shifted or leave a
+"complete" backfill perpetually one day short. Freezing the end date at
+evaluation time means the plan is a fixed, finite list from the first tick
+onward: N units, then the transform, then done.
+
+### Starting, stopping, and resetting the sensor
+
+The sensor's `default_status` is `STOPPED`: nothing runs until a human
+starts `national_backfill_sensor` from the Dagster UI (Automation ->
+Sensors) or `dagster sensor start national_backfill_sensor`. Stopping it
+(`dagster sensor stop national_backfill_sensor`) simply pauses evaluation;
+the cursor is untouched, so starting it again resumes exactly where it
+left off, including replaying an unresolved `Wait` or a `Halt`.
+
+To reset a halted (or otherwise stuck) backfill entirely, delete the
+sensor's cursor from the Dagster UI (the sensor's page has a "Reset
+cursor" action) or via `dagster instance` tooling. The next evaluation
+then starts over from a fresh cursor: a newly frozen plan end, unit 0,
+attempt 1, generation 0.
+
+To retry a specific halted unit/attempt *without* restarting the whole
+backfill, edit the cursor JSON by hand (the envelope is `{"plan_end": ...,
+"state": {"next_index", "attempt", "last_run_id", "transform_requested",
+"submitted_at", "generation"}}`): keep `next_index` and `attempt` as they
+are, set `last_run_id` and `submitted_at` to `null`, and **increment
+`generation`**. The generation bump is not optional -- because the sensor
+daemon dedupes by `run_key` (`f"{unit_id}-a{attempt}-g{generation}"`,
+`f"transform-g{generation}"` for the transform), clearing `last_run_id`
+alone would make the next tick recompute the *identical* run_key the
+backfill was already stuck on, and the daemon would just find (or silently
+skip past) that same never-materialized run again. This is a deliberate,
+manual override; the sensor itself never bumps `generation` on its own.
+
+### Risk: the transform run may exceed the 600s cap
+
+`transform_job` is a full `dbt build` over the whole raw archive (D4), and
+it runs under the same `dagster/max_runtime: "600"` tag as every other job
+here -- run monitoring kills it at 600s exactly like an ingest unit. That
+budget was sized against ingest (`~12s/station-month`, chunked to fit), not
+against a `dbt build` over six years of national data on rammingspeed's
+no-AVX2 host; at that scale it may legitimately take longer than 600s,
+and there is currently no measurement of its actual duration to say
+otherwise. If the transform run is killed for exceeding the cap, the
+sensor halts (per the transform's own `FAILURE`/`CANCELED` rule above) --
+it does not retry, because a killed `dbt build` is exactly the kind of
+failure worth a human look, not a blind resubmission.
+
+The transform job's duration at national scale is not yet known; issue #11
+asks for it to be recorded once the backfill actually reaches that step.
+Until then, treat a transform halt as expected rather than surprising, and
+run it by hand instead (`dagster job execute -j transform_job`, or `wfa`'s
+own `dbt build` invocation) **outside the blackout window**, since a
+manual run occupies the same shared slot the sensor is respecting.
+
 ## Published numbers
 
 `weather_forecast_audit.export` (issue #9) turns `scoring.score` output into
