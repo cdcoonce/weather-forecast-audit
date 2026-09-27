@@ -6,8 +6,11 @@ lists. `tests/integration/test_export_tracer.py` covers the DB-backed
 export and schema validation against the tracer fixture.
 """
 
+import csv
 import json
+import re
 from collections.abc import Mapping
+from pathlib import Path
 
 import pytest
 
@@ -464,13 +467,7 @@ def test_title_case_label_known_exceptions_from_the_real_registry(
         ("DESERT ROCK-MERCURY NV, NV", "Desert Rock-Mercury NV, NV"),
         ("WALLA WALLA WA, WA", "Walla Walla WA, WA"),
         ("BAUDETTE MN, MN", "Baudette MN, MN"),
-        ("NORTH_LAS_VEGAS NV, NV", "North_Las_Vegas NV, NV"),
         ("MT SHASTA CITY CA, CA", "Mt Shasta City CA, CA"),
-        # A "CO" for "County" immediately before the comma (no state-name
-        # coincidence in the source data): the rule cannot distinguish this
-        # from a real state code and upper-cases it too -- a documented,
-        # accepted side effect (see title_case_label's docstring).
-        ("AKRON/WASHINGTON CO, CO", "Akron/Washington CO, CO"),
     ],
 )
 def test_title_case_label_upper_cases_a_state_code_adjacent_to_the_comma(
@@ -504,3 +501,39 @@ def test_lock_entries_are_append_only() -> None:
         assert isinstance(digest, str)
         assert len(digest) == 64  # sha256 hex digest length
         int(digest, 16)  # every entry is valid hex
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # "CO" before the comma is County in these...
+        ("AKRON/WASHINGTON CO, CO", "Akron/Washington Co, CO"),
+        ("ANNISTON/CALHOUN CO, AL", "Anniston/Calhoun Co, AL"),
+        ("BLUEFIELD/MERCER CO, WV", "Bluefield/Mercer Co, WV"),
+        ("CORTEZ/MONTEZUMA CO, CO", "Cortez/Montezuma Co, CO"),
+        ("DURANGO/LA PLATA CO, CO", "Durango/La Plata Co, CO"),
+        ("MOSES LAKE/GRANT CO, WA", "Moses Lake/Grant Co, WA"),
+        ("ROCHESTER/MONROE CO, NY", "Rochester/Monroe Co, NY"),
+        # ...and Colorado in these, so no token rule can decide it.
+        ("FT COLLINS/LOVELAND CO, CO", "Ft Collins/Loveland CO, CO"),
+        ("GREELEY  CO, CO", "Greeley CO, CO"),
+        ("NORTH_LAS_VEGAS NV, NV", "North Las Vegas NV, NV"),
+    ],
+)
+def test_title_case_label_overrides_decide_ambiguous_labels(
+    raw: str, expected: str
+) -> None:
+    assert export.title_case_label(raw) == expected
+
+
+def test_every_ambiguous_co_label_in_the_registry_has_an_override() -> None:
+    # "X CO, ST" may mean County or Colorado; only a person can tell. A new
+    # registry station with this shape must fail here until it is decided.
+    registry = Path(__file__).resolve().parents[2] / "dbt/seeds/station_registry.csv"
+    with registry.open(newline="") as handle:
+        labels = {row["label"] for row in csv.DictReader(handle)}
+    ambiguous = {label for label in labels if re.search(r" CO, [A-Z]{2}$", label)}
+    assert ambiguous, "expected the known County/Colorado labels in the registry"
+    assert ambiguous <= set(export.LABEL_OVERRIDES), sorted(
+        ambiguous - set(export.LABEL_OVERRIDES)
+    )

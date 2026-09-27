@@ -244,6 +244,24 @@ def _title_case_token(token: str) -> str:
     return "".join(chars)
 
 
+# Labels no token rule can case correctly, decided by hand against the
+# registry. "X CO, ST" means County in most rows but Colorado in two (Fort
+# Collins/Loveland, Greeley); a registry test fails if a new label of that
+# shape appears without an entry here.
+LABEL_OVERRIDES: dict[str, str] = {
+    "AKRON/WASHINGTON CO, CO": "Akron/Washington Co, CO",
+    "ANNISTON/CALHOUN CO, AL": "Anniston/Calhoun Co, AL",
+    "BLUEFIELD/MERCER CO, WV": "Bluefield/Mercer Co, WV",
+    "CORTEZ/MONTEZUMA CO, CO": "Cortez/Montezuma Co, CO",
+    "DURANGO/LA PLATA CO, CO": "Durango/La Plata Co, CO",
+    "MOSES LAKE/GRANT CO, WA": "Moses Lake/Grant Co, WA",
+    "ROCHESTER/MONROE CO, NY": "Rochester/Monroe Co, NY",
+    "FT COLLINS/LOVELAND CO, CO": "Ft Collins/Loveland CO, CO",
+    "GREELEY  CO, CO": "Greeley CO, CO",
+    "NORTH_LAS_VEGAS NV, NV": "North Las Vegas NV, NV",
+}
+
+
 def title_case_label(label: str) -> str:
     """Title-case a station label, keeping its trailing state code upper-case.
 
@@ -259,6 +277,8 @@ def title_case_label(label: str) -> str:
     GA", short for "County") is not touched -- it is not *directly*
     adjacent to the comma, so the naive title-casing stands.
     """
+    if label in LABEL_OVERRIDES:
+        return LABEL_OVERRIDES[label]
     head, sep, tail = label.rpartition(",")
     if not sep:
         head, tail = tail, ""
