@@ -4,11 +4,15 @@ rammingspeed is an Ivy Bridge i5 with no AVX2. Wheels built for a newer
 baseline die there with an illegal instruction, usually at import or first
 use. Each check here exercises the native code path the pipeline depends on:
 DuckDB (window query plus Parquet round trip), LightGBM (fit and predict),
-and Polars (group-by, via the `rtcompat` build).
+Polars (group-by, via the `rtcompat` build), and the Polars-to-DuckDB insert
+(`insert into t select * from frame`, which DuckDB's replacement scan reads
+by converting the Polars frame through Arrow/pyarrow) that warehouse.py's
+loaders depend on.
 """
 
 import importlib.metadata
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
@@ -36,11 +40,22 @@ class LightGBMResult:
 
 
 @dataclass(frozen=True)
+class PolarsDuckDBInsertResult:
+    rows: int
+    stations: list[str]
+    valid_utc: list[datetime]
+    local_date: list[date]
+    tmpf: list[float | None]
+    n_obs: list[int]
+
+
+@dataclass(frozen=True)
 class SmokeReport:
     duckdb: DuckDBResult
     lightgbm: LightGBMResult
     polars: dict[str, int]
     polars_runtime: str
+    polars_duckdb_insert: PolarsDuckDBInsertResult
     avx2: bool | None
     versions: dict[str, str]
 
@@ -75,6 +90,63 @@ def duckdb_window_parquet_roundtrip(workdir: Path) -> DuckDBResult:
             f"select running_total from read_parquet('{parquet}') order by station, day"
         ).fetchall()
     return DuckDBResult(rows=len(rows), running_totals=[row[0] for row in rows])
+
+
+def polars_duckdb_insert(workdir: Path) -> PolarsDuckDBInsertResult:
+    """Mirror warehouse.py's real load path: build a `pl.DataFrame`, then
+    `insert into t (cols) select cols from frame`, referencing the frame by
+    variable name so DuckDB's replacement scan reads it through Arrow
+    (pyarrow). Covers the column types warehouse.py's DDL actually loads
+    (varchar, timestamp, date, double, integer), with a null in the double
+    column, so the read-back can assert the null survived and the
+    date/timestamp values round-tripped exactly.
+    """
+    database = workdir / "platform_smoke_insert.duckdb"
+    columns = ["station", "valid_utc", "local_date", "tmpf", "n_obs"]
+    records = [
+        {
+            "station": "PHX",
+            "valid_utc": datetime(2026, 9, 26, 18, 0, 0),  # noqa: DTZ001 (naive on purpose)
+            "local_date": date(2026, 9, 26),
+            "tmpf": 98.6,
+            "n_obs": 24,
+        },
+        {
+            "station": "DEN",
+            "valid_utc": datetime(2026, 9, 26, 19, 0, 0),  # noqa: DTZ001 (naive on purpose)
+            "local_date": date(2026, 9, 26),
+            "tmpf": None,
+            "n_obs": 18,
+        },
+    ]
+    column_list = ", ".join(columns)
+    with duckdb.connect(str(database)) as connection:
+        connection.execute(
+            """
+            create or replace table t (
+                station varchar not null,
+                valid_utc timestamp not null,
+                local_date date not null,
+                tmpf double,
+                n_obs integer not null
+            )
+            """
+        )
+        frame = pl.DataFrame(records)  # noqa: F841 (read by name via duckdb's scan)
+        connection.execute(
+            f"insert into t ({column_list}) select {column_list} from frame"
+        )
+        rows = connection.execute(
+            f"select {column_list} from t order by station"
+        ).fetchall()
+    return PolarsDuckDBInsertResult(
+        rows=len(rows),
+        stations=[row[0] for row in rows],
+        valid_utc=[row[1] for row in rows],
+        local_date=[row[2] for row in rows],
+        tmpf=[row[3] for row in rows],
+        n_obs=[row[4] for row in rows],
+    )
 
 
 def assert_identical(first: np.ndarray, second: np.ndarray) -> None:
@@ -140,9 +212,10 @@ def run_platform_smoke(workdir: Path) -> SmokeReport:
         lightgbm=lightgbm_deterministic_fit(),
         polars=polars_group_by(),
         polars_runtime=polars_runtime(),
+        polars_duckdb_insert=polars_duckdb_insert(workdir),
         avx2=cpu_has_avx2(),
         versions={
             name: importlib.metadata.version(name)
-            for name in ("duckdb", "lightgbm", "polars", "numpy")
+            for name in ("duckdb", "lightgbm", "polars", "numpy", "pyarrow")
         },
     )

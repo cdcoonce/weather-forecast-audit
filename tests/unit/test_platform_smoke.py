@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,23 @@ def test_duckdb_window_query_round_trips_through_parquet(tmp_path: Path) -> None
     assert all(type(total) is int for total in result.running_totals)
     assert (tmp_path / "platform_smoke.duckdb").exists()
     assert (tmp_path / "platform_smoke.parquet").exists()
+
+
+@pytest.mark.io
+def test_polars_duckdb_insert_round_trips_types_and_nulls(tmp_path: Path) -> None:
+    result = platform_smoke.polars_duckdb_insert(tmp_path)
+
+    assert result.rows == 2
+    assert result.stations == ["DEN", "PHX"]
+    assert result.valid_utc == [
+        datetime(2026, 9, 26, 19, 0, 0),  # noqa: DTZ001 (naive on purpose)
+        datetime(2026, 9, 26, 18, 0, 0),  # noqa: DTZ001 (naive on purpose)
+    ]
+    assert result.local_date == [date(2026, 9, 26), date(2026, 9, 26)]
+    # DEN's tmpf is the deliberate null; PHX's must round-trip exactly.
+    assert result.tmpf == [None, 98.6]
+    assert result.n_obs == [18, 24]
+    assert (tmp_path / "platform_smoke_insert.duckdb").exists()
 
 
 def test_lightgbm_fit_is_deterministic_and_learns() -> None:
@@ -64,4 +82,12 @@ def test_run_platform_smoke_reports_every_check(tmp_path: Path) -> None:
     assert report.lightgbm.deterministic
     assert report.polars == {"a": 3, "b": 12}
     assert report.polars_runtime == "compat"
-    assert set(report.versions) == {"duckdb", "lightgbm", "polars", "numpy"}
+    assert report.polars_duckdb_insert.rows == 2
+    assert report.polars_duckdb_insert.tmpf == [None, 98.6]
+    assert set(report.versions) == {
+        "duckdb",
+        "lightgbm",
+        "polars",
+        "numpy",
+        "pyarrow",
+    }
