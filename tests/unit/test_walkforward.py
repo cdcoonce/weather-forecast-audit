@@ -583,6 +583,188 @@ def _canonical_cycle_hour(run_date_: date) -> int:
     return 13 if run_date_ <= date(2026, 4, 29) else 12
 
 
+def test_training_pairs_are_sorted_by_window_end_utc() -> None:
+    """Contract (build spec #18 D2): `fit` always sees an ascending prefix."""
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 20)
+    pairs = _synthetic_pairs(run_dates, seed=11)
+
+    spy = SpyModel()
+    walk_forward(pairs, spy, start=run_dates[5], end=run_dates[-1], retrain="daily")
+
+    assert spy.fit_calls
+    for training_pairs in spy.fit_calls:
+        window_ends = training_pairs.get_column("window_end_utc").to_list()
+        assert window_ends == sorted(window_ends)
+
+
+# -- 9. predict_detail protocol (build spec #18 D2) --------------------------
+
+
+class DetailModel:
+    """Uses `predict_detail`; flags every other row as a fallback."""
+
+    name = "detail"
+
+    def fit(self, training_pairs: pl.DataFrame) -> None:
+        return None
+
+    def predict_detail(self, run_rows: pl.DataFrame) -> pl.DataFrame:
+        n = run_rows.height
+        fallback = [i % 2 == 0 for i in range(n)]
+        return pl.DataFrame(
+            {
+                "forecast_f": run_rows["forecast_f"],
+                "fallback": pl.Series(fallback, dtype=pl.Boolean),
+                "bias_estimate_f": pl.Series([1.23] * n, dtype=pl.Float64),
+                "n_pairs": pl.Series([5] * n, dtype=pl.Int64),
+            }
+        )
+
+
+class RecordingDetailModel:
+    """Records whether `predict` or `predict_detail` was actually called."""
+
+    name = "recording_detail"
+
+    def __init__(self) -> None:
+        self.predict_called = False
+        self.predict_detail_called = False
+
+    def fit(self, training_pairs: pl.DataFrame) -> None:
+        return None
+
+    def predict(self, run_rows: pl.DataFrame) -> pl.Series:
+        self.predict_called = True
+        return run_rows["forecast_f"]
+
+    def predict_detail(self, run_rows: pl.DataFrame) -> pl.DataFrame:
+        self.predict_detail_called = True
+        return pl.DataFrame(
+            {
+                "forecast_f": run_rows["forecast_f"],
+                "fallback": pl.Series([False] * run_rows.height, dtype=pl.Boolean),
+            }
+        )
+
+
+class DetailWrongLengthModel:
+    name = "detail_wrong_length"
+
+    def fit(self, training_pairs: pl.DataFrame) -> None:
+        return None
+
+    def predict_detail(self, run_rows: pl.DataFrame) -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "forecast_f": run_rows["forecast_f"].head(1),
+                "fallback": pl.Series([False], dtype=pl.Boolean),
+            }
+        )
+
+
+class DetailNullForecastModel:
+    name = "detail_null_forecast"
+
+    def fit(self, training_pairs: pl.DataFrame) -> None:
+        return None
+
+    def predict_detail(self, run_rows: pl.DataFrame) -> pl.DataFrame:
+        values = run_rows["forecast_f"].to_list()
+        values[0] = None
+        return pl.DataFrame(
+            {
+                "forecast_f": pl.Series(values, dtype=pl.Float64),
+                "fallback": pl.Series([False] * run_rows.height, dtype=pl.Boolean),
+            }
+        )
+
+
+class DetailNullFallbackModel:
+    name = "detail_null_fallback"
+
+    def fit(self, training_pairs: pl.DataFrame) -> None:
+        return None
+
+    def predict_detail(self, run_rows: pl.DataFrame) -> pl.DataFrame:
+        fallback = [False] * run_rows.height
+        fallback[0] = None
+        return pl.DataFrame(
+            {
+                "forecast_f": run_rows["forecast_f"],
+                "fallback": pl.Series(fallback, dtype=pl.Boolean),
+            }
+        )
+
+
+def test_output_carries_fallback_column_raw_nbm_all_false() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 10)
+    pairs = _synthetic_pairs(run_dates, seed=12)
+
+    result = walk_forward(
+        pairs, RawNbmModel(), start=run_dates[0], end=run_dates[-1]
+    )
+
+    assert "fallback" in result.columns
+    assert result["fallback"].dtype == pl.Boolean
+    assert result["fallback"].null_count() == 0
+    assert (~result["fallback"]).all()
+
+
+def test_predict_detail_is_used_instead_of_predict_when_present() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 10)
+    pairs = _synthetic_pairs(run_dates, seed=13)
+
+    model = RecordingDetailModel()
+    result = walk_forward(pairs, model, start=run_dates[0], end=run_dates[-1])
+
+    assert model.predict_detail_called
+    assert not model.predict_called
+    assert (~result["fallback"]).all()
+
+
+def test_predict_detail_fallback_values_flow_through() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 10)
+    pairs = _synthetic_pairs(run_dates, seed=14, stations=("KPHX",))
+
+    result = walk_forward(
+        pairs, DetailModel(), start=run_dates[0], end=run_dates[-1]
+    )
+
+    assert set(result["fallback"].to_list()) == {True, False}
+    assert "bias_estimate_f" not in result.columns
+    assert "n_pairs" not in result.columns
+
+
+def test_predict_detail_wrong_length_raises() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 5)
+    pairs = _synthetic_pairs(run_dates, seed=15)
+    with pytest.raises(ValueError):
+        walk_forward(
+            pairs, DetailWrongLengthModel(), start=run_dates[0], end=run_dates[-1]
+        )
+
+
+def test_predict_detail_null_forecast_raises() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 5)
+    pairs = _synthetic_pairs(run_dates, seed=16)
+    with pytest.raises(ValueError):
+        walk_forward(
+            pairs, DetailNullForecastModel(), start=run_dates[0], end=run_dates[-1]
+        )
+
+
+def test_predict_detail_null_fallback_raises() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 5)
+    pairs = _synthetic_pairs(run_dates, seed=17)
+    with pytest.raises(ValueError):
+        walk_forward(
+            pairs, DetailNullFallbackModel(), start=run_dates[0], end=run_dates[-1]
+        )
+
+
+# -- 10. canonical-cycle changeover --------------------------------------------
+
+
 def test_canonical_cycle_changeover() -> None:
     run_dates = _consecutive_run_dates(date(2026, 4, 25), 10)
     pairs = _synthetic_pairs(run_dates, seed=9, cycle_hour=_canonical_cycle_hour)

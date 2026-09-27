@@ -80,20 +80,41 @@ _OUTPUT_SCHEMA = {
     "raw_forecast_f": pl.Float64,
     "retrained_on": pl.Date,
     "trained_through": pl.Datetime("us", "UTC"),
+    "fallback": pl.Boolean,
 }
 
 
 class Model(Protocol):
-    """A correction model the evaluator fits and queries at each retrain."""
+    """A correction model the evaluator fits and queries at each retrain.
+
+    `fit` always receives its `training_pairs` sorted ascending by
+    `window_end_utc` (build spec #18 D2) -- a model may rely on that order
+    (e.g. a rolling window via `searchsorted`) rather than re-sorting.
+    """
 
     name: str
 
     def fit(self, training_pairs: pl.DataFrame) -> None:
-        """Fit on pairs with `scorable = true` and `window_end_utc < T`."""
+        """Fit on pairs with `scorable = true` and `window_end_utc < T`.
+
+        `training_pairs` is sorted ascending by `window_end_utc`.
+        """
         ...
 
     def predict(self, run_rows: pl.DataFrame) -> pl.Series:
         """Corrected `forecast_f`, aligned to `run_rows` (same length, no nulls)."""
+        ...
+
+    def predict_detail(self, run_rows: pl.DataFrame) -> pl.DataFrame:
+        """Optional richer alternative to `predict`, used instead when present.
+
+        Not part of every model: the evaluator detects it with `hasattr`.
+        Must return a frame aligned to `run_rows` (same row count) with a
+        `forecast_f` column (no nulls) and, optionally, a boolean `fallback`
+        column (no nulls if present). Any other column (e.g. a bias estimate
+        or a pair count) is a fit-time diagnostic and is never carried into
+        `walk_forward`'s output.
+        """
         ...
 
 
@@ -232,7 +253,33 @@ def walk_forward(
         run_rows = pairs.filter(pl.col("run_date") == run_date_).sort(
             list(_PREDICT_ROW_SORT_KEYS)
         )
-        predictions = model.predict(run_rows.select(predict_columns))
+        selected_rows = run_rows.select(predict_columns)
+
+        if hasattr(model, "predict_detail"):
+            detail = model.predict_detail(selected_rows)
+            if "forecast_f" not in detail.columns:
+                msg = (
+                    f"predict_detail returned no forecast_f column for run_date "
+                    f"{run_date_}"
+                )
+                raise ValueError(msg)
+            predictions = detail["forecast_f"]
+            if "fallback" in detail.columns:
+                fallback_col = detail["fallback"]
+                if fallback_col.null_count() > 0:
+                    msg = (
+                        f"predict_detail returned null fallback values for "
+                        f"run_date {run_date_}"
+                    )
+                    raise ValueError(msg)
+                fallback_values = fallback_col
+            else:
+                fallback_values = pl.Series(
+                    [False] * run_rows.height, dtype=pl.Boolean
+                )
+        else:
+            predictions = model.predict(selected_rows)
+            fallback_values = pl.Series([False] * run_rows.height, dtype=pl.Boolean)
 
         if predictions.len() != run_rows.height:
             msg = (
@@ -242,6 +289,12 @@ def walk_forward(
             raise ValueError(msg)
         if predictions.null_count() > 0:
             msg = f"predict returned null values for run_date {run_date_}"
+            raise ValueError(msg)
+        if fallback_values.len() != run_rows.height:
+            msg = (
+                f"predict_detail returned {fallback_values.len()} fallback "
+                f"values for run_date {run_date_}, expected {run_rows.height}"
+            )
             raise ValueError(msg)
 
         outputs.append(
@@ -258,6 +311,7 @@ def walk_forward(
                 source=pl.lit(model.name),
                 retrained_on=pl.lit(last_retrain_date),
                 trained_through=pl.lit(trained_through, dtype=pl.Datetime("us", "UTC")),
+                fallback=pl.Series(fallback_values, dtype=pl.Boolean),
             )
         )
 
