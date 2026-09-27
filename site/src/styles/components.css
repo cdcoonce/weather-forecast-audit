@@ -1,0 +1,134 @@
+/* CitySearch (combobox), CityCard, and its stat table. Semantic tokens only. */
+
+/* -- CitySearch ----------------------------------------------------------- */
+
+.city-search {
+  position: relative;
+  max-width: var(--container-narrow);
+}
+
+.city-search__label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.city-search__input {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.city-search__listbox {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  position: absolute;
+  z-index: 10;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.city-search__option {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.city-search__option--active {
+  background: var(--accent-surface);
+}
+
+.city-search__option-icao {
+  color: var(--text-muted);
+}
+
+/* -- CityCard --------------------------------------------------------------- */
+
+.city-card {
+  max-width: var(--container-content);
+}
+
+.city-card__title {
+  font-size: var(--text-2xl);
+  margin: 0 0 var(--space-4);
+}
+
+.city-card__icao {
+  color: var(--text-muted);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-lg);
+}
+
+.city-card__summary {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.city-card__summary--significant {
+  color: var(--text);
+}
+
+.city-card__explainer {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  margin: 0 0 var(--space-8);
+  max-width: var(--container-narrow);
+}
+
+.city-card__table-scroll {
+  overflow-x: auto;
+  margin-bottom: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.city-card__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  min-width: 26rem;
+}
+
+.city-card__table caption {
+  text-align: left;
+  font-weight: var(--weight-semibold);
+  padding: var(--space-3) var(--space-4);
+  color: var(--text);
+  background: var(--surface);
+}
+
+.city-card__table th,
+.city-card__table td {
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.city-card__table thead th {
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.city-card__footnote {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  max-width: var(--container-narrow);
+}

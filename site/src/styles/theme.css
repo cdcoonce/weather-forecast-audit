@@ -1,0 +1,44 @@
+/* Semantic theme tokens, mapped onto tokens.css's vendored grayscale.
+   The vendored source (PortfolioWebsite) has no dark theme; this file is
+   new and is a design-review item -- see the build report for the exact
+   values and their contrast ratios.
+
+   Components must reference only the semantic tokens below (--bg,
+   --surface, --text, --text-muted, --border, --focus, --accent), never the
+   vendored --gray-* / --white / --black tokens directly, so a theme swap
+   never needs a component change. */
+
+:root {
+  --bg: var(--white);
+  --surface: var(--gray-50);
+  --text: var(--gray-800);
+  --text-muted: var(--gray-500);
+  --border: var(--border-hairline);
+  --focus: var(--gray-800);
+  --accent-surface: var(--accent-blue-soft);
+}
+
+/* System preference, unless the user has explicitly chosen light via the
+   toggle (data-theme="light" overrides the media query). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121212;
+    --surface: #1c1c1c;
+    --text: #f0f0f0;
+    --text-muted: #aaa;
+    --border: var(--gray-800);
+    --focus: #f0f0f0;
+    --accent-surface: rgba(var(--accent-blue-rgb), 0.15);
+  }
+}
+
+/* Explicit user choice via the theme toggle, regardless of system preference. */
+:root[data-theme="dark"] {
+  --bg: #121212;
+  --surface: #1c1c1c;
+  --text: #f0f0f0;
+  --text-muted: #aaa;
+  --border: var(--gray-800);
+  --focus: #f0f0f0;
+  --accent-surface: rgba(var(--accent-blue-rgb), 0.15);
+}
