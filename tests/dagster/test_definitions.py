@@ -27,3 +27,5 @@ def test_platform_smoke_materializes_with_report_metadata() -> None:
     assert metadata["polars_runtime"] == "compat"
     assert metadata["lightgbm_deterministic"] is True
     assert metadata["duckdb_rows"] == 6
+    assert metadata["polars_duckdb_insert_rows"] == 2
+    assert metadata["version_pyarrow"]

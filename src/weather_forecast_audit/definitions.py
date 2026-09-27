@@ -38,6 +38,7 @@ def platform_smoke(context: AssetExecutionContext) -> MaterializeResult:
             "lightgbm_deterministic": report.lightgbm.deterministic,
             "lightgbm_r2": report.lightgbm.r2,
             "polars_runtime": report.polars_runtime,
+            "polars_duckdb_insert_rows": report.polars_duckdb_insert.rows,
             **{f"version_{name}": v for name, v in report.versions.items()},
         }
     )
