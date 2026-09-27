@@ -537,3 +537,30 @@ second table to track gap history.
 DuckDB allows one writer process per database file. rammingspeed's single run slot serializes *runs*, but it does not serialize the *steps inside* a run. Under Dagster's default multiprocess executor, `ingest_job`'s independent raw assets (guidance, ASOS and CLI) start in parallel subprocesses. Each opens the warehouse for writing, and all but the first fail on the file lock. That is what happened in the first host run (8e53a237, 2026-09-27), where only `asos_hourly` materialized. Every job therefore runs on `in_process_executor`, set once on `Definitions` so future jobs inherit it, and a test asserts it for each job.
 
 The tests could not see this failure. `execute_in_process` always runs steps sequentially in one process, so only a structural assertion on the configured executor catches it.
+
+## Published numbers
+
+`weather_forecast_audit.export` (issue #9) turns `scoring.score` output into
+the site's per-city summary and stat table. A published bias number always
+comes from a **lead-1** slice: the site's plain-language summary and its
+"day-ahead forecasts" wording never draw from lead 2 or lead 3, even when a
+longer lead's bias is larger, so the one number a visitor reads without
+statistics training is the least confounded by limitation 1 above (pooled
+cross-lead correlation) and by the still-unmeasured block length in
+limitation 2.
+
+A city's summary claims a direction and a number only for a slice whose
+bias interval **excludes 0** (`no_detectable_bias = false`) with **enough
+distinct issuance dates** (`min_sample_flag = false`); the per-city stat
+table applies the identical rule to every cell, never just the summary
+sentence. Every other slice reads as "no detectable bias" or "too few
+days," never as a number that happens to round toward zero.
+
+Both rules -- lead-1 only, and significance gated on both flags -- describe
+what the site is allowed to say **today**, on `BLOCK_DAYS = 1`. That
+default is not the pre-registered measurement limitation 2 calls for: the
+persistence of the daily cross-station mean error is still unmeasured, and
+until that measurement lands (issue #31), no bias claim from this export is
+a validated public finding, only a conservative reading of an
+under-characterized interval. Publishing the site (PRD milestone M4) is not
+a substitute for that measurement.

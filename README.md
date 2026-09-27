@@ -51,7 +51,14 @@ warehouse. `WFA_DUCKDB_PATH` is required for every command:
 export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 uv run wfa init-db
 uv run wfa ingest --station KPHX --start 2023-07-14 --end 2023-07-14
+uv run wfa export --out /tmp/wfa-export
 ```
+
+`wfa export` writes the versioned export contract (`export_schema/v1/`):
+`manifest.json`, `city_index.json`, one `cities/{ICAO}.json` per station in
+the registry, and a `completeness.json` stub. It reads
+`fct_forecast_verification` (`source = raw_nbm` only in v1), so `dbt build`
+must have run first.
 
 ### Dagster: materializing one partition for a station subset
 
@@ -93,6 +100,41 @@ export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 ./scripts/tracer_kphx.sh
 ```
 
+## Site
+
+`site/` is a static React + Vite + TypeScript app (Poppins, grayscale
+chrome, light and dark themes, no UI framework, no router library) that
+reads the export contract as static JSON files under `data/`.
+
+```bash
+cd site
+npm install
+npm run dev
+```
+
+Dev data lives at `site/public/data/` (gitignored: never hand-write it).
+Regenerate it from a warehouse you've already built (`wfa init-db` +
+ingest + `dbt build`, or `./scripts/tracer_kphx.sh` -- see "Local setup"
+above and "Tracer bullet" below):
+
+```bash
+export WFA_DUCKDB_PATH="$PWD/../.ci/warehouse.duckdb"  # from site/
+npm run generate:data
+```
+
+That script is a thin wrapper around `uv run wfa export --out public/data`
+run from the repo root; it never writes the JSON itself.
+
+Site gate, mirroring CI's `site` job:
+
+```bash
+cd site
+npm ci
+npm run lint     # tsc --noEmit, then ESLint
+npm test -- --run
+npm run build
+```
+
 ### Layout
 
 | Path | What |
@@ -102,7 +144,10 @@ export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 | `src/weather_forecast_audit/resolver.py` | Pure NBM verification-window resolver (no I/O, no time zones) |
 | `src/weather_forecast_audit/warehouse.py` | Owns all `raw.*` DDL and the idempotent DuckDB loaders |
 | `src/weather_forecast_audit/pipeline.py` | `ingest_station`/`resolve_station`: fetch, load, resolve one station |
-| `src/weather_forecast_audit/cli.py` | The `wfa` CLI (`init-db`, `ingest`) |
+| `src/weather_forecast_audit/export.py` | The v1 export contract: manifest, city index, per-city stats, completeness stub |
+| `src/weather_forecast_audit/cli.py` | The `wfa` CLI (`init-db`, `ingest`, `export`) |
+| `export_schema/v1/` | The four JSON Schemas (draft 2020-12) for the export contract |
+| `export_schema/lock.json` | SHA-256 lock of every schema version, append-only |
 | `dbt/` | dbt project on `dbt-duckdb`; the database file is `$WFA_DUCKDB_PATH` |
 | `dbt/profiles.yml` | Checked-in profile, env vars only; also carries an unused `snowflake` target |
 | `dbt/.sqlfluff` | Snowflake-dialect lint config (the portability guard) |
@@ -111,6 +156,7 @@ export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 | `dbt/models/marts/gap_ledger.sql` | One row per open ingest gap, with `first_seen` |
 | `docs/methodology.md` | Verification windows, scope, completeness threshold, orchestration/partitions, and known caveats |
 | `tests/` | pytest suite |
+| `tests/support/fixture_fetcher.py` | Shared IEM fixture fetcher for DB-backed tests |
 | `src/weather_forecast_audit/definitions.py` | Dagster code location, served on gRPC 4002 on rammingspeed |
 | `src/weather_forecast_audit/assets.py` | The four daily-partitioned raw ingest assets, `raw/ingest_gaps`, and the freshness/gap-rate checks |
 | `src/weather_forecast_audit/dbt_assets.py` | dbt models loaded as Dagster assets (`@dbt_assets`) |
@@ -120,6 +166,9 @@ export WFA_DUCKDB_PATH="$PWD/.ci/warehouse.duckdb"
 | `scripts/offline.sh` | Runs a command with no network access (Linux CI only) |
 | `scripts/tracer_kphx.sh` | Ingests, builds, and prints the KPHX verification tracer bullet |
 | `scripts/record_fixtures.py` | One-off: records IEM fixtures for the Dagster asset tests (KORD, extended KPHX asos) |
+| `site/` | The React + Vite + TypeScript site (see "Site" above) |
+| `site/scripts/generate-dev-data.mjs` | `npm run generate:data`: runs `wfa export` into `site/public/data/` |
+| `site/src/test/fixtures/export/` | Committed export of the tracer fixture DB, drift-guarded against a fresh export |
 
 ### Conventions
 
