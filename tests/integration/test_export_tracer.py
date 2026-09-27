@@ -148,6 +148,31 @@ def test_malformed_generated_at_fails_validation(
         validator.validate(manifest)
 
 
+def test_exported_stats_never_contradict_their_own_no_detectable_bias_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """For every exported stat with non-null endpoints, re-deriving
+    `no_detectable_bias` from the *exported* (rounded) numbers must agree
+    with the exported flag, and the exported point estimate must lie within
+    the exported endpoints -- the sign-preserving rounding invariant, run
+    against a real DB-backed export of the tracer fixture rather than only
+    hand-built stats (see tests/unit/test_export.py for those exercising
+    the actual near-zero cases -- the tracer fixture's few distinct
+    issuance dates mean its own bootstrap CIs are usually null, so this
+    pass is a drift guard more than a source of new near-zero cases)."""
+    out_dir = _run_export(tmp_path, monkeypatch)
+    kphx = json.loads((out_dir / "cities" / "KPHX.json").read_text())
+    assert kphx["stats"], "KPHX must have at least one stat row for this test"
+
+    for stat in kphx["stats"]:
+        if stat["bias_lo_f"] is None or stat["bias_hi_f"] is None:
+            continue
+        derived = stat["bias_lo_f"] <= 0 <= stat["bias_hi_f"]
+        assert stat["no_detectable_bias"] == derived, stat
+        if stat["bias_f"] is not None:
+            assert stat["bias_lo_f"] <= stat["bias_f"] <= stat["bias_hi_f"], stat
+
+
 def test_site_fixture_export_matches_a_fresh_export(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

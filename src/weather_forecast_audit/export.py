@@ -250,17 +250,84 @@ def _round2(value: object) -> float | None:
     return None if value is None else round(float(value), 2)  # type: ignore[arg-type]
 
 
+def _round_sign_preserving(value: float, *, exclude_zero: bool) -> float:
+    """Round one bias value to 2 dp, never letting the rounding land on or
+    cross 0 when the *unrounded* CI excludes 0 (`exclude_zero`, i.e.
+    `no_detectable_bias` is false).
+
+    Plain rounding can flip a barely-nonzero endpoint (or the point
+    estimate) to 0.00, which reads as "spans zero" even though the
+    unrounded value was, say, -0.0041 -- the exact opposite of what
+    `no_detectable_bias: false` claims. When that would happen, this emits
+    the smallest 2-dp value with the value's own sign instead (+0.01 or
+    -0.01), nudging the published number by less than 0.01F toward the
+    excluded side. The published data must never contradict its own flag.
+
+    When `exclude_zero` is false (the CI spans 0), plain rounding can never
+    break that: a value <= 0 rounds to something <= 0, and a value >= 0
+    rounds to something >= 0 (nearest-2dp rounding never crosses 0 for an
+    input that is already on the non-strict side of it) -- asserted by
+    `test_rounding_never_breaks_the_spans_zero_invariant` rather than
+    assumed here.
+    """
+    rounded = round(value, 2)
+    if not exclude_zero:
+        return rounded
+    if value > 0 and rounded <= 0:
+        return 0.01
+    if value < 0 and rounded >= 0:
+        return -0.01
+    return rounded
+
+
 def round_stat(stat: Mapping[str, object]) -> dict[str, object]:
     """Round a stat's float fields to 2 decimals for JSON output.
 
     Flags (`min_sample_flag`, `no_detectable_bias`) are computed by
     `scoring.score` from unrounded values and passed through unchanged here:
-    rounding must never be able to flip a flag.
+    rounding must never be able to flip a flag. Endpoints (and the point
+    estimate) are rounded sign-preservingly instead of plainly, via
+    `_round_sign_preserving`, precisely so that reading the flag back off
+    the *rounded, exported* numbers (`bias_lo_f <= 0 <= bias_hi_f`) always
+    agrees with `no_detectable_bias` -- see its docstring.
+
+    Sign-preserving rounding of `bias_lo_f`/`bias_hi_f` alone would fix the
+    endpoints but could still leave the rounded `bias_f` point estimate
+    outside `[bias_lo_f, bias_hi_f]` (e.g. a `bias_f` that plain-rounds to
+    0.00 while a nudged `bias_hi_f` sits at -0.01). `bias_f` is rounded the
+    same sign-preserving way, and as a last resort clamped into the rounded
+    interval, so the point estimate never contradicts its own CI either.
     """
+    exclude_zero = not stat["no_detectable_bias"]
+
+    bias_lo_f = stat["bias_lo_f"]
+    bias_hi_f = stat["bias_hi_f"]
+    bias_f = stat["bias_f"]
+
+    rounded_lo = (
+        None
+        if bias_lo_f is None
+        else _round_sign_preserving(float(bias_lo_f), exclude_zero=exclude_zero)  # type: ignore[arg-type]
+    )
+    rounded_hi = (
+        None
+        if bias_hi_f is None
+        else _round_sign_preserving(float(bias_hi_f), exclude_zero=exclude_zero)  # type: ignore[arg-type]
+    )
+    rounded_bias = (
+        None
+        if bias_f is None
+        else _round_sign_preserving(float(bias_f), exclude_zero=exclude_zero)  # type: ignore[arg-type]
+    )
+    if rounded_bias is not None and rounded_lo is not None:
+        rounded_bias = max(rounded_bias, rounded_lo)
+    if rounded_bias is not None and rounded_hi is not None:
+        rounded_bias = min(rounded_bias, rounded_hi)
+
     rounded = dict(stat)
-    rounded["bias_f"] = _round2(stat["bias_f"])
-    rounded["bias_lo_f"] = _round2(stat["bias_lo_f"])
-    rounded["bias_hi_f"] = _round2(stat["bias_hi_f"])
+    rounded["bias_f"] = rounded_bias
+    rounded["bias_lo_f"] = rounded_lo
+    rounded["bias_hi_f"] = rounded_hi
     rounded["mae_f"] = _round2(stat["mae_f"])
     return rounded
 

@@ -7,6 +7,7 @@ export and schema validation against the tracer fixture.
 """
 
 import json
+from collections.abc import Mapping
 
 import pytest
 
@@ -204,6 +205,83 @@ def test_rounding_a_borderline_bias_does_not_flip_no_detectable_bias() -> None:
     assert rounded_a["bias_f"] == rounded_b["bias_f"] == 0.01
     assert rounded_a["no_detectable_bias"] is False
     assert rounded_b["no_detectable_bias"] is True
+
+
+# -- sign-preserving endpoint rounding (the exported data must never -------
+# -- contradict its own no_detectable_bias flag) ----------------------------
+
+
+def _no_detectable_bias_from_exported(stat: Mapping[str, object]) -> bool:
+    lo, hi = stat["bias_lo_f"], stat["bias_hi_f"]
+    assert lo is not None and hi is not None
+    return lo <= 0 <= hi  # type: ignore[operator]
+
+
+def _assert_stat_is_internally_consistent(rounded: Mapping[str, object]) -> None:
+    """The exported (rounded) `no_detectable_bias` must agree with what a
+    reader would derive from the exported (rounded) endpoints, and the
+    exported point estimate must lie within the exported endpoints."""
+    if rounded["bias_lo_f"] is None or rounded["bias_hi_f"] is None:
+        return
+    assert rounded["no_detectable_bias"] == _no_detectable_bias_from_exported(rounded)
+    if rounded["bias_f"] is not None:
+        assert rounded["bias_lo_f"] <= rounded["bias_f"] <= rounded["bias_hi_f"]  # type: ignore[operator]
+
+
+def test_real_world_case_a_hi_barely_below_zero_rounds_toward_excluded_side() -> None:
+    # Real KPHX case (min, lead 3, SON): the unrounded hi was slightly below
+    # 0 and plain-rounded to 0.0, contradicting no_detectable_bias: false.
+    stat = _stat(bias_f=-0.34, bias_lo_f=-0.6523, bias_hi_f=-0.0041)
+    rounded = export.round_stat(stat)
+    assert rounded["bias_lo_f"] == -0.65
+    assert rounded["bias_hi_f"] == -0.01
+    assert rounded["bias_f"] == -0.34
+    _assert_stat_is_internally_consistent(rounded)
+
+
+def test_mirror_case_a_lo_barely_above_zero_rounds_toward_the_excluded_side() -> None:
+    stat = _stat(bias_f=0.34, bias_lo_f=0.0032, bias_hi_f=0.53)
+    rounded = export.round_stat(stat)
+    assert rounded["bias_lo_f"] == 0.01
+    assert rounded["bias_hi_f"] == 0.53
+    assert rounded["bias_f"] == 0.34
+    _assert_stat_is_internally_consistent(rounded)
+
+
+def test_point_estimate_rounding_that_would_escape_the_interval_is_clamped() -> None:
+    # bias_f itself rounds to 0.0 (spans-zero-looking) even though the CI
+    # excludes 0 on the negative side -- bias_f must be pulled back inside
+    # the (also sign-preservingly rounded) interval, never left at 0.0.
+    stat = _stat(bias_f=-0.001, bias_lo_f=-0.2, bias_hi_f=-0.0005)
+    rounded = export.round_stat(stat)
+    assert rounded["bias_hi_f"] == -0.01
+    assert rounded["bias_f"] <= rounded["bias_hi_f"]
+    _assert_stat_is_internally_consistent(rounded)
+
+
+@pytest.mark.parametrize(
+    ("bias_f", "bias_lo_f", "bias_hi_f", "no_detectable_bias"),
+    [
+        (-0.34, -0.6523, -0.0041, False),  # real KPHX case
+        (0.34, 0.0032, 0.53, False),  # mirror
+        (0.006, -0.0001, 0.02, True),  # spans zero, barely
+        (0.0, -0.0001, 0.0001, True),  # spans zero, both tiny
+        (-0.0, 0.0, 0.0, True),  # exactly zero everywhere
+        (1.2345, 0.9, 1.6, False),  # ordinary, far from zero
+        (-1.2345, -1.6, -0.9, False),  # ordinary, far from zero, negative
+    ],
+)
+def test_rounding_never_breaks_the_spans_zero_invariant(
+    bias_f: float, bias_lo_f: float, bias_hi_f: float, no_detectable_bias: bool
+) -> None:
+    stat = _stat(
+        bias_f=bias_f,
+        bias_lo_f=bias_lo_f,
+        bias_hi_f=bias_hi_f,
+        no_detectable_bias=no_detectable_bias,
+    )
+    rounded = export.round_stat(stat)
+    _assert_stat_is_internally_consistent(rounded)
 
 
 # -- schema / lock versioning guard ----------------------------------------
