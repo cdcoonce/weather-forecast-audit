@@ -11,8 +11,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from dagster import Definitions
+
+from weather_forecast_audit.assets import (
+    FRESHNESS_CHECKS,
+    RAW_INGEST_ASSETS,
+    ingest_gaps_spec,
+)
 from weather_forecast_audit.iem.http import HttpResponse
-from weather_forecast_audit.resources import IemResource
+from weather_forecast_audit.resources import (
+    ClockResource,
+    IemResource,
+    StationsResource,
+    WarehouseResource,
+)
 
 pytest_plugins = ["pytester"]
 
@@ -91,3 +103,49 @@ class FixtureIemResource(IemResource):
 
     def fetcher(self) -> DagsterFixtureFetcher:
         return DagsterFixtureFetcher()
+
+
+class OneStationMissingGuidanceFetcher(DagsterFixtureFetcher):
+    """As `DagsterFixtureFetcher`, but KORD's NBS run is missing for 07-14.
+
+    Engineers a real gap (`missing_run`) for exactly one of two stations, so
+    tests can assert both "gaps are recorded where the fixtures lack data"
+    and a >5% gap rate (1 of 2 stations = 50%), per the build spec's own
+    suggested example ("one station with a missing run").
+    """
+
+    def get(self, url: str) -> HttpResponse:
+        if "mos.py" in url and "station=KORD" in url:
+            return HttpResponse(200, _read("nbs_kphx_empty.csv"))
+        return super().get(url)
+
+
+class OneStationMissingGuidanceIemResource(FixtureIemResource):
+    def fetcher(self) -> OneStationMissingGuidanceFetcher:
+        return OneStationMissingGuidanceFetcher()
+
+
+def build_ingest_test_defs(
+    duckdb_path: str, only: list[str], iem_resource: IemResource
+) -> Definitions:
+    """A standalone `Definitions` binding the real raw ingest assets to
+    test-scoped resources (a temp DuckDB path, a fixture fetcher, a station
+    subset). `defs.resolve_job_def(...)`'s returned job is already bound to
+    the *production* resources, and dagster refuses a conflicting `resources=`
+    override at `execute_in_process` time (resource identity must match by
+    reference) -- so tests build their own `Definitions` from the same
+    asset/job objects instead.
+    """
+    from weather_forecast_audit.definitions import ingest_job
+
+    return Definitions(
+        assets=[*RAW_INGEST_ASSETS, ingest_gaps_spec],
+        asset_checks=FRESHNESS_CHECKS,
+        jobs=[ingest_job],
+        resources={
+            "warehouse_resource": WarehouseResource(duckdb_path=duckdb_path),
+            "iem": iem_resource,
+            "stations": StationsResource(only=only),
+            "clock": ClockResource(),
+        },
+    )
