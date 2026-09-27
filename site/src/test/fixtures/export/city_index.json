@@ -1,0 +1,16 @@
+{
+  "cities": [
+    {
+      "climate_region": "Southwest",
+      "icao": "KPHX",
+      "label": "PHOENIX/SKY HARBOR, AZ",
+      "lat": 33.4343,
+      "lon": -112.0116,
+      "summary": {
+        "significant": false,
+        "text": "Not enough data yet."
+      }
+    }
+  ],
+  "schema_version": "1.0.0"
+}

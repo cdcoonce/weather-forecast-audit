@@ -1,0 +1,8 @@
+{
+  "1.0.0": {
+    "city.schema.json": "3d0c3aca08a23405d831e76b884f01b4177480a71c490e6209fb63df348504cc",
+    "city_index.schema.json": "1c0e879805095eedab681e228d764514043c081519f288b37b0f52940ae94bfa",
+    "completeness.schema.json": "3505f4dd0ec567e42ff435abcfe22b3e66c95026be6a1121924dab4cf0ab0615",
+    "manifest.schema.json": "bd4e51dafb32436b683abe8bd37c176cca884dfa56d9c28a61135dad4d5c4c73"
+  }
+}

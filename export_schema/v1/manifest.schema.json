@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weather-forecast-audit.example/export_schema/v1/manifest.schema.json",
+  "title": "manifest",
+  "description": "Export run metadata: version, freshness, and the files written.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "data_through",
+    "station_count",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp the export was generated at."
+    },
+    "data_through": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "The latest target_date with a scorable verification row."
+    },
+    "station_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "files": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

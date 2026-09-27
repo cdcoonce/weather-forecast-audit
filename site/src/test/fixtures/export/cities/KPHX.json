@@ -1,0 +1,59 @@
+{
+  "icao": "KPHX",
+  "label": "PHOENIX/SKY HARBOR, AZ",
+  "schema_version": "1.0.0",
+  "stats": [
+    {
+      "bias_f": -0.04,
+      "bias_hi_f": null,
+      "bias_lo_f": null,
+      "lead_day": 1,
+      "mae_f": 0.04,
+      "min_sample_flag": true,
+      "n": 1,
+      "n_dates": 1,
+      "no_detectable_bias": true,
+      "season": "JJA",
+      "variable": "max"
+    },
+    {
+      "bias_f": 3.92,
+      "bias_hi_f": null,
+      "bias_lo_f": null,
+      "lead_day": 2,
+      "mae_f": 3.92,
+      "min_sample_flag": true,
+      "n": 1,
+      "n_dates": 1,
+      "no_detectable_bias": true,
+      "season": "JJA",
+      "variable": "max"
+    },
+    {
+      "bias_f": 1.06,
+      "bias_hi_f": null,
+      "bias_lo_f": null,
+      "lead_day": 1,
+      "mae_f": 1.06,
+      "min_sample_flag": true,
+      "n": 1,
+      "n_dates": 1,
+      "no_detectable_bias": true,
+      "season": "JJA",
+      "variable": "min"
+    },
+    {
+      "bias_f": -0.92,
+      "bias_hi_f": null,
+      "bias_lo_f": null,
+      "lead_day": 2,
+      "mae_f": 0.92,
+      "min_sample_flag": true,
+      "n": 1,
+      "n_dates": 1,
+      "no_detectable_bias": true,
+      "season": "JJA",
+      "variable": "min"
+    }
+  ]
+}
