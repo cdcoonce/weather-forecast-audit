@@ -72,7 +72,19 @@ BLACKOUT_HORIZON_S = MAX_RUNTIME_SECONDS + 300
 
 UNIT_TAG = "wfa/backfill_unit"
 ATTEMPT_TAG = "wfa/backfill_attempt"
+GENERATION_TAG = "wfa/backfill_generation"
 TRANSFORM_UNIT_ID = "transform"
+
+# Dagster's sensor daemon dedupes RunRequests by run_key, scoped to this
+# sensor (dagster/_daemon/sensor.py's fetch_existing_runs/
+# _get_or_create_sensor_run): once a run_key has been used, the daemon will
+# never create a second run under it -- it returns (or silently skips past)
+# whatever run already carries that key, even if that run never actually
+# started. `generation` exists so a human resetting a halted (never-appeared
+# run) backfill can force a genuinely new run_key rather than resubmitting
+# the identical, permanently-stuck one; `decide` never changes it itself.
+RUN_KEY_TEMPLATE = "{unit_id}-a{attempt}-g{generation}"
+TRANSFORM_RUN_KEY_TEMPLATE = "transform-g{generation}"
 
 # Any run in one of these states may still be using -- or about to use --
 # the single shared run slot.
@@ -138,8 +150,12 @@ def _run_status(instance: dg.DagsterInstance, tags: dict[str, str]) -> str | Non
     return runs[0].status.value
 
 
-def _unit_run_request(unit: BackfillUnit, attempt: int) -> dg.RunRequest:
-    run_key = f"{unit.unit_id}-a{attempt}"
+def _unit_run_request(
+    unit: BackfillUnit, attempt: int, generation: int
+) -> dg.RunRequest:
+    run_key = RUN_KEY_TEMPLATE.format(
+        unit_id=unit.unit_id, attempt=attempt, generation=generation
+    )
     return dg.RunRequest(
         run_key=run_key,
         job_name=ingest_job.name,
@@ -149,6 +165,7 @@ def _unit_run_request(unit: BackfillUnit, attempt: int) -> dg.RunRequest:
         tags={
             UNIT_TAG: unit.unit_id,
             ATTEMPT_TAG: str(attempt),
+            GENERATION_TAG: str(generation),
             "dagster/max_runtime": str(MAX_RUNTIME_SECONDS),
             ASSET_PARTITION_RANGE_START_TAG: unit.start.isoformat(),
             ASSET_PARTITION_RANGE_END_TAG: unit.end.isoformat(),
@@ -156,12 +173,14 @@ def _unit_run_request(unit: BackfillUnit, attempt: int) -> dg.RunRequest:
     )
 
 
-def _transform_run_request() -> dg.RunRequest:
+def _transform_run_request(generation: int) -> dg.RunRequest:
+    run_key = TRANSFORM_RUN_KEY_TEMPLATE.format(generation=generation)
     return dg.RunRequest(
-        run_key=TRANSFORM_UNIT_ID,
+        run_key=run_key,
         job_name=transform_job.name,
         tags={
             UNIT_TAG: TRANSFORM_UNIT_ID,
+            GENERATION_TAG: str(generation),
             "dagster/max_runtime": str(MAX_RUNTIME_SECONDS),
         },
     )
@@ -193,12 +212,19 @@ def national_backfill_sensor(context: dg.SensorEvaluationContext) -> dg.SensorRe
     if state.last_run_id is None:
         last_run_status = None
     elif state.transform_requested:
-        last_run_status = _run_status(context.instance, {UNIT_TAG: TRANSFORM_UNIT_ID})
+        last_run_status = _run_status(
+            context.instance,
+            {UNIT_TAG: TRANSFORM_UNIT_ID, GENERATION_TAG: str(state.generation)},
+        )
     else:
         unit = units[state.next_index]
         last_run_status = _run_status(
             context.instance,
-            {UNIT_TAG: unit.unit_id, ATTEMPT_TAG: str(state.attempt)},
+            {
+                UNIT_TAG: unit.unit_id,
+                ATTEMPT_TAG: str(state.attempt),
+                GENERATION_TAG: str(state.generation),
+            },
         )
 
     decision = decide(
@@ -207,21 +233,28 @@ def national_backfill_sensor(context: dg.SensorEvaluationContext) -> dg.SensorRe
         last_run_status=last_run_status,
         slot_busy=_slot_busy(context.instance),
         blackout=in_blackout(_now(), BLACKOUT_HORIZON_S),
+        now_utc=_now(),
         max_attempts=MAX_BACKFILL_ATTEMPTS,
     )
 
     if isinstance(decision, Submit):
         unit = units[decision.unit_index]
-        new_state = replace(
-            decision.new_state, last_run_id=f"{unit.unit_id}-a{decision.attempt}"
+        generation = decision.new_state.generation
+        run_key = RUN_KEY_TEMPLATE.format(
+            unit_id=unit.unit_id, attempt=decision.attempt, generation=generation
         )
+        new_state = replace(decision.new_state, last_run_id=run_key)
         context.update_cursor(_dump_cursor(plan_end, new_state))
-        return dg.SensorResult(run_requests=[_unit_run_request(unit, decision.attempt)])
+        return dg.SensorResult(
+            run_requests=[_unit_run_request(unit, decision.attempt, generation)]
+        )
 
     if isinstance(decision, SubmitTransform):
-        new_state = replace(decision.new_state, last_run_id=TRANSFORM_UNIT_ID)
+        generation = decision.new_state.generation
+        run_key = TRANSFORM_RUN_KEY_TEMPLATE.format(generation=generation)
+        new_state = replace(decision.new_state, last_run_id=run_key)
         context.update_cursor(_dump_cursor(plan_end, new_state))
-        return dg.SensorResult(run_requests=[_transform_run_request()])
+        return dg.SensorResult(run_requests=[_transform_run_request(generation)])
 
     if isinstance(decision, Wait):
         context.update_cursor(_dump_cursor(plan_end, state))

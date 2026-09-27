@@ -146,19 +146,34 @@ class CursorState:
     `last_run_id` is repurposed to hold the run_key of the most recently
     submitted run, not a Dagster-assigned run id: the sensor never has a
     real run id to hand `decide` at submission time (the run does not exist
-    yet), and a deterministic run_key (`f"{unit_id}-a{attempt}"`, or
-    `"transform"`) is exactly what the sensor needs anyway, to look the run
-    back up next tick via `RunsFilter(tags={RUN_KEY_TAG: run_key})` or the
-    equivalent `wfa/backfill_unit`/`wfa/backfill_attempt` tags. This keeps
-    `decide` fully pure: it never has to be told about Dagster's run-id
-    generation, and the field's name matches the shape the build spec asked
-    for.
+    yet), and a deterministic run_key (`f"{unit_id}-a{attempt}-g{generation}"`,
+    or `"transform-g{generation}"`) is exactly what the sensor needs anyway,
+    to look the run back up next tick via `RunsFilter(tags={RUN_KEY_TAG:
+    run_key})` or the equivalent `wfa/backfill_unit`/`wfa/backfill_attempt`/
+    `wfa/backfill_generation` tags. This keeps `decide` fully pure: it never
+    has to be told about Dagster's run-id generation, and the field's name
+    matches the shape the build spec asked for.
+
+    `submitted_at` (a naive-UTC ISO-8601 string, repo convention) is stamped
+    by `decide` itself on every `Submit`/`SubmitTransform`, so a later
+    evaluation can tell how long a run has been "not found" (see `decide`'s
+    not-found-timeout rule). `generation` exists purely for a human reset:
+    Dagster's sensor daemon dedupes `RunRequest`s by `run_key`, scoped to
+    the sensor (`dagster/_daemon/sensor.py`'s `fetch_existing_runs` and
+    `_get_or_create_sensor_run`), so replaying the *same* run_key after
+    clearing `last_run_id` to retry a stuck unit would just find (or
+    silently skip past) that same never-materialized run again. Bumping
+    `generation` changes the run_key, so the next submission is guaranteed
+    to be a fresh one. `decide` never changes `generation` itself -- only a
+    human, editing the cursor by hand, does.
     """
 
     next_index: int
     attempt: int
     last_run_id: str | None
     transform_requested: bool = False
+    submitted_at: str | None = None
+    generation: int = 0
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -167,6 +182,8 @@ class CursorState:
     def from_json(cls, raw: str | None) -> CursorState:
         if not raw:
             return cls(next_index=0, attempt=1, last_run_id=None)
+        # Old cursors predate `submitted_at`/`generation`; both have
+        # defaults, so a dict missing either key still constructs cleanly.
         return cls(**json.loads(raw))
 
 
@@ -207,7 +224,9 @@ def decide(
     last_run_status: str | None,
     slot_busy: bool,
     blackout: bool,
+    now_utc: datetime,
     max_attempts: int = 3,
+    not_found_timeout_s: int = 900,
 ) -> Decision:
     """One sensor evaluation's worth of decision-making, given the current
     cursor and this tick's read of the world (the last run's status, the
@@ -216,8 +235,10 @@ def decide(
     Rules, in order (matching the build spec):
 
     1. An outstanding run (`last_run_id` set, status not yet terminal --
-       including "not found yet", read as `None`) always waits, regardless
-       of `slot_busy`/`blackout`.
+       including "not found yet", read as `None`) waits, regardless of
+       `slot_busy`/`blackout` -- UNLESS the status has been `None` for more
+       than `not_found_timeout_s` since `submitted_at`, in which case it
+       halts (see "Never-appeared runs" below).
     2. A resolved run's outcome is applied first, before anything else is
        decided: SUCCESS advances to the next unit (attempt reset to 1);
        FAILURE/CANCELED retries the same unit with `attempt + 1`, or halts
@@ -231,14 +252,41 @@ def decide(
        Done.
     4. Otherwise, a busy shared run slot blocks submission.
     5. Otherwise, a blackout window blocks submission.
-    6. Otherwise, submit the next unit.
+    6. Otherwise, submit the next unit. `Submit`/`SubmitTransform`'s
+       `new_state` always carries `submitted_at=now_utc` (naive UTC,
+       repo convention), stamped here rather than by the sensor.
 
     A `Halt` carries no new state: the sensor persists the cursor
     unchanged, so replaying the same (halted) cursor against the same
-    (still-terminal) run status halts again, forever, until a human resets
-    the cursor by hand.
+    (still-terminal, or still-missing) run status halts again, forever,
+    until a human resets the cursor by hand.
+
+    Never-appeared runs: `last_run_status is None` means "no run tagged
+    with this run_key exists yet" -- either it hasn't been picked up by the
+    daemon, or it never will be (a daemon crash between building the
+    `RunRequest` and creating the run, or the run_key was already used).
+    Dagster's sensor daemon dedupes `RunRequest`s by `run_key`, scoped to
+    the sensor (`dagster/_daemon/sensor.py`'s `fetch_existing_runs`, which
+    looks up every run tagged `RUN_KEY_TAG == run_key` for this sensor, and
+    `_get_or_create_sensor_run`, which returns that existing run -- or
+    silently skips creating a new one -- whenever one is found). So a
+    cursor that keeps resubmitting the identical run_key for a run that
+    never actually got created will keep finding nothing, forever: there is
+    no automatic recovery, because the daemon will never mint a second run
+    under the same key. Past `not_found_timeout_s`, this halts loudly
+    instead of waiting silently forever, and says so.
     """
     if state.last_run_id is not None and last_run_status not in TERMINAL_RUN_STATUSES:
+        if last_run_status is None and state.submitted_at is not None:
+            submitted_at = datetime.fromisoformat(state.submitted_at)
+            elapsed_s = (now_utc - submitted_at).total_seconds()
+            if elapsed_s > not_found_timeout_s:
+                return Halt(
+                    f"submitted run {state.last_run_id} never appeared after "
+                    f"{not_found_timeout_s}s: run_key dedupe (bump the cursor's "
+                    "generation and clear last_run_id to force a fresh run_key) "
+                    "or a daemon launch failure"
+                )
         return Wait("run in flight")
 
     working = state
@@ -251,7 +299,11 @@ def decide(
             return Halt(f"transform run {state.last_run_id} ended {last_run_status}")
         if last_run_status == "SUCCESS":
             working = replace(
-                state, next_index=state.next_index + 1, attempt=1, last_run_id=None
+                state,
+                next_index=state.next_index + 1,
+                attempt=1,
+                last_run_id=None,
+                submitted_at=None,
             )
         else:
             next_attempt = state.attempt + 1
@@ -260,7 +312,9 @@ def decide(
                     f"unit {state.next_index} failed {max_attempts} times "
                     f"(last run {state.last_run_id}, status {last_run_status})"
                 )
-            working = replace(state, attempt=next_attempt, last_run_id=None)
+            working = replace(
+                state, attempt=next_attempt, last_run_id=None, submitted_at=None
+            )
 
     if working.next_index >= n_units:
         if working.transform_requested:
@@ -269,10 +323,16 @@ def decide(
             return Wait("slot busy")
         if blackout:
             return Wait("blackout")
-        return SubmitTransform(replace(working, transform_requested=True))
+        return SubmitTransform(
+            replace(working, transform_requested=True, submitted_at=now_utc.isoformat())
+        )
 
     if slot_busy:
         return Wait("slot busy")
     if blackout:
         return Wait("blackout")
-    return Submit(working.next_index, working.attempt, working)
+    return Submit(
+        working.next_index,
+        working.attempt,
+        replace(working, submitted_at=now_utc.isoformat()),
+    )

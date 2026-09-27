@@ -5,7 +5,8 @@ No Dagster imports anywhere in this file or in `weather_forecast_audit.backfill`
 branch of `decide` is exercised here without a running instance.
 """
 
-from datetime import UTC, date, datetime
+import json
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -138,10 +139,38 @@ def test_cursor_state_from_json_none_or_empty_is_initial_state() -> None:
 
 def test_cursor_state_round_trips_through_json() -> None:
     state = CursorState(
-        next_index=3, attempt=2, last_run_id="2020-09-c00-a2", transform_requested=True
+        next_index=3,
+        attempt=2,
+        last_run_id="2020-09-c00-a2",
+        transform_requested=True,
+        submitted_at="2026-01-01T00:00:00",
+        generation=1,
     )
 
     assert CursorState.from_json(state.to_json()) == state
+
+
+def test_cursor_state_from_json_is_backward_compatible_with_old_cursors() -> None:
+    """A cursor written before `submitted_at`/`generation` existed has
+    neither key; both must default (`None`, `0`) rather than error."""
+    old_style_json = json.dumps(
+        {
+            "next_index": 2,
+            "attempt": 1,
+            "last_run_id": "2020-10-c00-a1",
+            "transform_requested": False,
+        }
+    )
+
+    state = CursorState.from_json(old_style_json)
+
+    assert state == CursorState(
+        next_index=2,
+        attempt=1,
+        last_run_id="2020-10-c00-a1",
+        generation=0,
+        submitted_at=None,
+    )
 
 
 # -- decide: the state machine ----------------------------------------------
@@ -158,12 +187,20 @@ def _state(**kwargs: object) -> CursorState:
     return CursorState(**defaults)  # type: ignore[arg-type]
 
 
+NOW = _naive_utc(2026, 1, 1, 0, 0)
+
+
 def test_decide_first_evaluation_submits_unit_zero() -> None:
     decision = decide(
-        _state(), n_units=5, last_run_status=None, slot_busy=False, blackout=False
+        _state(),
+        n_units=5,
+        last_run_status=None,
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
     )
 
-    assert decision == Submit(0, 1, _state())
+    assert decision == Submit(0, 1, _state(submitted_at=NOW.isoformat()))
 
 
 def test_decide_waits_when_a_run_is_in_flight_even_if_slot_is_not_busy() -> None:
@@ -171,39 +208,123 @@ def test_decide_waits_when_a_run_is_in_flight_even_if_slot_is_not_busy() -> None
 
     for status in ["QUEUED", "NOT_STARTED", "STARTING", "STARTED", "CANCELING", None]:
         decision = decide(
-            state, n_units=5, last_run_status=status, slot_busy=False, blackout=False
+            state,
+            n_units=5,
+            last_run_status=status,
+            slot_busy=False,
+            blackout=False,
+            now_utc=NOW,
         )
         assert decision == Wait("run in flight"), status
+
+
+def test_decide_not_found_within_timeout_still_waits() -> None:
+    """No `submitted_at` at all (an old-style cursor) never times out; a
+    `submitted_at` still inside the window waits too."""
+    state = _state(last_run_id="2020-09-c00-a1", submitted_at=None)
+    decision = decide(
+        state,
+        n_units=5,
+        last_run_status=None,
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
+    )
+    assert decision == Wait("run in flight")
+
+    state = _state(
+        last_run_id="2020-09-c00-a1",
+        submitted_at=(NOW - timedelta(seconds=10)).isoformat(),
+    )
+    decision = decide(
+        state,
+        n_units=5,
+        last_run_status=None,
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
+        not_found_timeout_s=900,
+    )
+    assert decision == Wait("run in flight")
+
+
+def test_decide_not_found_past_timeout_halts_with_explanation() -> None:
+    state = _state(
+        last_run_id="2020-09-c00-a1",
+        submitted_at=(NOW - timedelta(seconds=901)).isoformat(),
+    )
+
+    decision = decide(
+        state,
+        n_units=5,
+        last_run_status=None,
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
+        not_found_timeout_s=900,
+    )
+
+    assert isinstance(decision, Halt)
+    assert "2020-09-c00-a1" in decision.reason
+    assert "900" in decision.reason
+    assert "generation" in decision.reason
 
 
 def test_decide_advances_to_next_unit_after_success() -> None:
     state = _state(next_index=0, attempt=2, last_run_id="2020-09-c00-a2")
 
     decision = decide(
-        state, n_units=5, last_run_status="SUCCESS", slot_busy=False, blackout=False
+        state,
+        n_units=5,
+        last_run_status="SUCCESS",
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
     )
 
-    assert decision == Submit(1, 1, _state(next_index=1, attempt=1, last_run_id=None))
+    assert decision == Submit(
+        1,
+        1,
+        _state(next_index=1, attempt=1, last_run_id=None, submitted_at=NOW.isoformat()),
+    )
 
 
 def test_decide_retries_same_unit_after_failure() -> None:
     state = _state(next_index=2, attempt=1, last_run_id="2020-11-c00-a1")
 
     decision = decide(
-        state, n_units=5, last_run_status="FAILURE", slot_busy=False, blackout=False
+        state,
+        n_units=5,
+        last_run_status="FAILURE",
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
     )
 
-    assert decision == Submit(2, 2, _state(next_index=2, attempt=2, last_run_id=None))
+    assert decision == Submit(
+        2,
+        2,
+        _state(next_index=2, attempt=2, last_run_id=None, submitted_at=NOW.isoformat()),
+    )
 
 
 def test_decide_retries_same_unit_after_cancellation() -> None:
     state = _state(next_index=2, attempt=1, last_run_id="2020-11-c00-a1")
 
     decision = decide(
-        state, n_units=5, last_run_status="CANCELED", slot_busy=False, blackout=False
+        state,
+        n_units=5,
+        last_run_status="CANCELED",
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
     )
 
-    assert decision == Submit(2, 2, _state(next_index=2, attempt=2, last_run_id=None))
+    assert decision == Submit(
+        2,
+        2,
+        _state(next_index=2, attempt=2, last_run_id=None, submitted_at=NOW.isoformat()),
+    )
 
 
 def test_decide_halts_after_max_attempts_exceeded() -> None:
@@ -215,6 +336,7 @@ def test_decide_halts_after_max_attempts_exceeded() -> None:
         last_run_status="FAILURE",
         slot_busy=False,
         blackout=False,
+        now_utc=NOW,
         max_attempts=3,
     )
 
@@ -233,6 +355,7 @@ def test_decide_stays_halted_on_repeated_evaluation_with_the_same_cursor() -> No
         "last_run_status": "FAILURE",
         "slot_busy": False,
         "blackout": False,
+        "now_utc": NOW,
         "max_attempts": 3,
     }
 
@@ -245,7 +368,12 @@ def test_decide_stays_halted_on_repeated_evaluation_with_the_same_cursor() -> No
 
 def test_decide_waits_for_slot_when_units_remain() -> None:
     decision = decide(
-        _state(), n_units=5, last_run_status=None, slot_busy=True, blackout=False
+        _state(),
+        n_units=5,
+        last_run_status=None,
+        slot_busy=True,
+        blackout=False,
+        now_utc=NOW,
     )
 
     assert decision == Wait("slot busy")
@@ -253,7 +381,12 @@ def test_decide_waits_for_slot_when_units_remain() -> None:
 
 def test_decide_waits_for_blackout_when_units_remain() -> None:
     decision = decide(
-        _state(), n_units=5, last_run_status=None, slot_busy=False, blackout=True
+        _state(),
+        n_units=5,
+        last_run_status=None,
+        slot_busy=False,
+        blackout=True,
+        now_utc=NOW,
     )
 
     assert decision == Wait("blackout")
@@ -265,7 +398,12 @@ def test_decide_blackout_blocks_submit_but_still_books_a_success() -> None:
     state = _state(next_index=0, attempt=1, last_run_id="2020-09-c00-a1")
 
     decision = decide(
-        state, n_units=5, last_run_status="SUCCESS", slot_busy=False, blackout=True
+        state,
+        n_units=5,
+        last_run_status="SUCCESS",
+        slot_busy=False,
+        blackout=True,
+        now_utc=NOW,
     )
 
     assert decision == Wait("blackout")
@@ -275,11 +413,22 @@ def test_decide_requests_transform_only_after_every_unit_is_done() -> None:
     state = _state(next_index=2, attempt=1, last_run_id="2020-11-c00-a1")
 
     decision = decide(
-        state, n_units=3, last_run_status="SUCCESS", slot_busy=False, blackout=False
+        state,
+        n_units=3,
+        last_run_status="SUCCESS",
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
     )
 
     assert decision == SubmitTransform(
-        _state(next_index=3, attempt=1, last_run_id=None, transform_requested=True)
+        _state(
+            next_index=3,
+            attempt=1,
+            last_run_id=None,
+            transform_requested=True,
+            submitted_at=NOW.isoformat(),
+        )
     )
 
 
@@ -287,10 +436,20 @@ def test_decide_transform_request_respects_slot_busy_and_blackout() -> None:
     state = _state(next_index=3, attempt=1, last_run_id=None)
 
     assert decide(
-        state, n_units=3, last_run_status=None, slot_busy=True, blackout=False
+        state,
+        n_units=3,
+        last_run_status=None,
+        slot_busy=True,
+        blackout=False,
+        now_utc=NOW,
     ) == Wait("slot busy")
     assert decide(
-        state, n_units=3, last_run_status=None, slot_busy=False, blackout=True
+        state,
+        n_units=3,
+        last_run_status=None,
+        slot_busy=False,
+        blackout=True,
+        now_utc=NOW,
     ) == Wait("blackout")
 
 
@@ -300,7 +459,12 @@ def test_decide_done_after_transform_succeeds() -> None:
     )
 
     decision = decide(
-        state, n_units=3, last_run_status="SUCCESS", slot_busy=False, blackout=False
+        state,
+        n_units=3,
+        last_run_status="SUCCESS",
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
     )
 
     assert decision == Done()
@@ -312,7 +476,12 @@ def test_decide_halts_when_transform_fails() -> None:
     )
 
     decision = decide(
-        state, n_units=3, last_run_status="FAILURE", slot_busy=False, blackout=False
+        state,
+        n_units=3,
+        last_run_status="FAILURE",
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
     )
 
     assert isinstance(decision, Halt)
@@ -326,6 +495,29 @@ def test_decide_is_idempotent_given_identical_inputs() -> None:
         "last_run_status": None,
         "slot_busy": False,
         "blackout": False,
+        "now_utc": NOW,
     }
 
     assert decide(state, **kwargs) == decide(state, **kwargs)
+
+
+def test_decide_carries_a_bumped_generation_through_to_the_next_submit() -> None:
+    """A human reset bumps `generation` (and clears `last_run_id`) to force
+    a fresh run_key; `decide` never touches `generation` itself, but must
+    carry it through into the next `Submit`'s state untouched."""
+    state = _state(next_index=1, attempt=1, last_run_id=None, generation=1)
+
+    decision = decide(
+        state,
+        n_units=5,
+        last_run_status=None,
+        slot_busy=False,
+        blackout=False,
+        now_utc=NOW,
+    )
+
+    assert decision == Submit(
+        1,
+        1,
+        _state(next_index=1, attempt=1, generation=1, submitted_at=NOW.isoformat()),
+    )

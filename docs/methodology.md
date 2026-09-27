@@ -757,6 +757,20 @@ The transform job (`dbt build`, run once after every ingest unit succeeds)
 follows the same shape: its `FAILURE` halts, its `SUCCESS` completes the
 backfill.
 
+A submitted run that never appears at all (`last_run_status` reads `None`
+-- no run tagged with this unit/attempt/generation exists yet) also halts,
+but only after `not_found_timeout_s` (15 minutes) has passed since
+`submitted_at`, not immediately: a run can legitimately take a moment to
+show up. Dagster's sensor daemon dedupes `RunRequest`s by `run_key`, scoped
+to the sensor (`dagster/_daemon/sensor.py`'s `fetch_existing_runs` and
+`_get_or_create_sensor_run`): once a run_key has been used, the daemon will
+never mint a *second* run under it, even if the first one never actually
+launched (a daemon crash between building the `RunRequest` and creating the
+run, for instance). Without the timeout, a cursor stuck on a never-created
+run would `Wait("run in flight")` forever, silently, with no run to look
+at and no way to tell the difference from a normal in-progress run. The
+halt message says so explicitly and points at the fix (below).
+
 ### The frozen plan end
 
 `plan_units`'s `end` argument -- "yesterday" at the sensor's first
@@ -778,14 +792,45 @@ Sensors) or `dagster sensor start national_backfill_sensor`. Stopping it
 the cursor is untouched, so starting it again resumes exactly where it
 left off, including replaying an unresolved `Wait` or a `Halt`.
 
-To reset a halted (or otherwise stuck) backfill, delete the sensor's
-cursor from the Dagster UI (the sensor's page has a "Reset cursor" action)
-or via `dagster instance` tooling. The next evaluation then starts over
-from a fresh cursor: a newly frozen plan end, unit 0, attempt 1. A partial
-reset -- editing the cursor JSON by hand to skip past a specific bad unit
--- is possible (the envelope is `{"plan_end": ..., "state": {"next_index",
-"attempt", "last_run_id", "transform_requested"}}`) but is a deliberate,
-manual override; the sensor itself never does this on its own.
+To reset a halted (or otherwise stuck) backfill entirely, delete the
+sensor's cursor from the Dagster UI (the sensor's page has a "Reset
+cursor" action) or via `dagster instance` tooling. The next evaluation
+then starts over from a fresh cursor: a newly frozen plan end, unit 0,
+attempt 1, generation 0.
+
+To retry a specific halted unit/attempt *without* restarting the whole
+backfill, edit the cursor JSON by hand (the envelope is `{"plan_end": ...,
+"state": {"next_index", "attempt", "last_run_id", "transform_requested",
+"submitted_at", "generation"}}`): keep `next_index` and `attempt` as they
+are, set `last_run_id` and `submitted_at` to `null`, and **increment
+`generation`**. The generation bump is not optional -- because the sensor
+daemon dedupes by `run_key` (`f"{unit_id}-a{attempt}-g{generation}"`,
+`f"transform-g{generation}"` for the transform), clearing `last_run_id`
+alone would make the next tick recompute the *identical* run_key the
+backfill was already stuck on, and the daemon would just find (or silently
+skip past) that same never-materialized run again. This is a deliberate,
+manual override; the sensor itself never bumps `generation` on its own.
+
+### Risk: the transform run may exceed the 600s cap
+
+`transform_job` is a full `dbt build` over the whole raw archive (D4), and
+it runs under the same `dagster/max_runtime: "600"` tag as every other job
+here -- run monitoring kills it at 600s exactly like an ingest unit. That
+budget was sized against ingest (`~12s/station-month`, chunked to fit), not
+against a `dbt build` over six years of national data on rammingspeed's
+no-AVX2 host; at that scale it may legitimately take longer than 600s,
+and there is currently no measurement of its actual duration to say
+otherwise. If the transform run is killed for exceeding the cap, the
+sensor halts (per the transform's own `FAILURE`/`CANCELED` rule above) --
+it does not retry, because a killed `dbt build` is exactly the kind of
+failure worth a human look, not a blind resubmission.
+
+The transform job's duration at national scale is not yet known; issue #11
+asks for it to be recorded once the backfill actually reaches that step.
+Until then, treat a transform halt as expected rather than surprising, and
+run it by hand instead (`dagster job execute -j transform_job`, or `wfa`'s
+own `dbt build` invocation) **outside the blackout window**, since a
+manual run occupies the same shared slot the sensor is respecting.
 
 ## Published numbers
 
