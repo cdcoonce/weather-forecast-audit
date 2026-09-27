@@ -444,6 +444,48 @@ def test_resolve_observed_one_missing_synoptic_report_falls_back_to_none() -> No
     assert result.periods_found == 2
 
 
+# The two sources' coverage must be tested independently. Every other case
+# varies them together (both complete or both empty), which leaves a hourly
+# fallback, or an extra hourly-coverage condition, invisible to the suite.
+
+
+def test_resolve_observed_untiled_stays_unscorable_despite_full_hourly() -> None:
+    window = resolve_window(date(2024, 1, 1), "max")
+    hourly = [
+        (window.start_utc + timedelta(hours=h, minutes=51), 100.0 + h, None, None)
+        for h in range(18)
+    ]
+    h1, h2, _h3 = six_hour_periods(window)
+    six_hour = [
+        (h1 - timedelta(minutes=9), None, 106.0, None),
+        (h2 - timedelta(minutes=9), None, 112.0, None),
+    ]
+    result = resolve_observed(window, "max", hourly + six_hour)
+
+    assert result.hourly_value_f == 117.0  # the hourly side is complete
+    assert result.extreme_source == "none"
+    assert result.scorable is False
+    assert result.value_f is None
+
+
+def test_resolve_observed_tiled_is_scorable_despite_sparse_hourly() -> None:
+    window = resolve_window(date(2024, 1, 1), "min")
+    h1, h2, h3 = six_hour_periods(window)
+    # Only the three synoptic reports: 3 of 18 hours covered, far below the
+    # hourly threshold, but the 6-hour groups tile the window.
+    reports = [
+        (h1 - timedelta(minutes=9), 40.0, None, 35.0),
+        (h2 - timedelta(minutes=9), 38.0, None, 31.5),
+        (h3 - timedelta(minutes=9), 45.0, None, 33.0),
+    ]
+    result = resolve_observed(window, "min", reports)
+
+    assert result.hourly_value_f is None  # the hourly side fails its threshold
+    assert result.extreme_source == "metar_6h"
+    assert result.scorable is True
+    assert result.value_f == 31.5
+
+
 def test_resolve_observed_recovers_peak_hourly_misses() -> None:
     """issue #6's core case: metar_6h finds a peak between hourly readings."""
     window = resolve_window(date(2024, 1, 1), "max")
