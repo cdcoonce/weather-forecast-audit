@@ -344,6 +344,78 @@ verification rows**: the persistence of the daily cross-station mean
 error, by variable and lead. That measurement is a follow-up issue and
 blocks the public launch.
 
+## Walk-forward evaluation
+
+`weather_forecast_audit.walkforward` (issue #17) is the harness a
+bias-correction model is judged by: it walks a `Model` (a `fit`/`predict`
+pair) forward through issuance dates and returns one row per prediction,
+never letting the model see a verification outcome before that outcome
+actually existed. It is a pure function over `fct_forecast_verification`
+rows -- no I/O, no DuckDB, no dbt -- unit-tested against synthetic fixtures
+(`tests/unit/test_walkforward.py`).
+
+### The leak a run-date cutoff misses
+
+The obvious cutoff -- train on every run issued before the run being
+evaluated -- leaks. NBS carries lead 1-3 in one guidance run, so a single
+run at issuance time *T* reports a `max`/`min` for several different
+future weather days at once. Concretely, run *t-1*'s lead-3 `min` (target
+`t+2`) verifies the *same weather day* as run *t*'s own lead-2 pair
+(target `t+2`). If training data is sliced by `run_date < t`, that lead-3
+row from run *t-1* is already in scope once run *t* is evaluated, even
+though nothing about its outcome was actually known until its verification
+window closed on `t+2` -- days after `t`'s own issuance. A model that
+merely memorizes observed values it has trained on looks skillful for
+exactly this reason, not because it corrects anything.
+
+### The correct cutoff: the verification window's close time
+
+The training set for the run issued at time *T* is exactly the pairs with
+`scorable = true` and `window_end_utc < T` (strict), across every lead,
+variable and station -- never `run_date` or `target_date`. Sorting the
+scorable pairs once by `(window_end_utc, station, runtime_utc, lead_day,
+variable)` turns this into a single `searchsorted` prefix slice per run
+(O(N log N) overall), instead of re-filtering the full pairs table at
+every issuance date.
+
+`predict` is restricted to an allow-list of guidance-side columns
+(`station, run_date, runtime_utc, cycle_hour, lead_day, variable,
+target_date, forecast_f, spread_f, window_start_utc, window_end_utc`) and
+never sees `observed_f`, `error_f`, or any other verification-derived
+column -- those are the answers a model is being scored against.
+
+### Measured: the cheat has teeth, and the guard closes it
+
+`test_cheating_model_gains_nothing_but_leaky_cutoff_helps` builds a
+`CheatingModel` that memorizes `observed_f` keyed by `(station,
+target_date, variable)` from its training pairs and predicts the
+memorized value when the key is present, else falls back to raw guidance.
+On 60 days of synthetic multi-station, multi-lead data:
+
+- Under the evaluator's `window_end_utc < T` cutoff, the cheat's
+  predictions are bit-identical to `RawNbmModel`'s on every row (MAE
+  1.302°F both), because no training pair's target date ever reaches as
+  far forward as anything the model is asked to predict.
+- Under a deliberately wrong `run_date < current run_date` cutoff (built
+  independently in the test, not part of the evaluator), the same cheat's
+  MAE drops to 0.529°F on the identical data -- a real, substantial
+  reduction, confirming the leak is not merely theoretical.
+
+### Retraining and `trained_through`
+
+`retrain="daily"` refits before every evaluated run date; `retrain
+="monthly"` refits only on the first evaluated run date of each calendar
+month (including the first evaluated date overall, even if it falls
+mid-month). Between refits, the model fitted at the last retrain
+continues to predict; `fit` is called exactly once per retrain date, using
+that date's own cutoff. Each output row's `retrained_on` names the run
+date whose fit produced it, and `trained_through` is the maximum
+`window_end_utc` in that fit's training set (null if the training set was
+empty, which is always true on the first evaluated date given no earlier
+history). `trained_through < runtime_utc` holds for every non-null
+prediction by construction of the cutoff, not as a separately-imposed
+constraint.
+
 ## Regime boundaries
 
 Every `fct_forecast_verification` row is tagged with two independent
