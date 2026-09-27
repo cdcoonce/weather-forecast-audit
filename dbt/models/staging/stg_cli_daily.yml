@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: stg_cli_daily
+    description: >
+      NWS CLI daily high/low reports, one row per (station, local_date).
+      `warehouse.load_cli` delete-then-inserts per (station, local-date
+      range) (issue #11), so a killed and re-run backfill unit must never
+      leave two rows for the same (station, local_date).
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - station
+              - local_date
