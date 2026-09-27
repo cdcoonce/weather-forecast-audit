@@ -83,7 +83,10 @@ unit_tests:
       (v4.1 -> v4.2, SCN 24-41, 2024-05-15 1200 UTC) gets the correct
       nbm_version tag. Both runs fall in the same (single, whole-archive)
       cycle regime, so cycle_regime is asserted equal on both to prove the
-      two joins are independent.
+      two joins are independent. A third run mocked at the exact boundary
+      timestamp (2024-05-15 12:00:00, the first v4.2 run per SCN 24-41)
+      proves the boundary is half-open: it must land in v4.2, not v4.1,
+      and must match exactly one version row, not both.
     model: fct_forecast_verification
     given:
       - input: ref('int_window_matched_pairs')
@@ -124,6 +127,24 @@ unit_tests:
             periods_found: 3
             hourly_observed_f: 72.5
             cli_f: 73.0
+          - station: KDEN
+            runtime_utc: "2024-05-15 12:00:00"
+            lead_day: 1
+            variable: min
+            cycle_hour: 12
+            target_date: "2024-05-16"
+            forecast_f: 71.0
+            spread_f: 3.0
+            observed_f: 72.0
+            window_start_utc: "2024-05-15 11:00:00"
+            window_end_utc: "2024-05-16 05:00:00"
+            n_obs: 3
+            hours_covered: 18
+            scorable: true
+            extreme_source: metar_6h
+            periods_found: 3
+            hourly_observed_f: 71.5
+            cli_f: 72.0
       - input: ref('nbm_versions')
         rows:
           - nbm_version: v4.1
@@ -156,6 +177,10 @@ unit_tests:
           runtime_utc: "2024-05-15 13:00:00"
           nbm_version: v4.2
           cycle_regime: iem_01_07_13_19
+        - station: KDEN
+          runtime_utc: "2024-05-15 12:00:00"
+          nbm_version: v4.2
+          cycle_regime: iem_01_07_13_19
 
   - name: test_cycle_regime_boundary_tagged_correctly
     description: >
@@ -163,7 +188,13 @@ unit_tests:
       archived-cycle changeover (nbs_cycle_regimes.csv, probed per issue #7)
       gets the correct cycle_regime tag. Both runs fall under NBM v4.3
       (valid until 2026-04-30 1300 UTC, after the 1200/1300 UTC runs mocked
-      here), so nbm_version is asserted equal on both.
+      here), so nbm_version is asserted equal on both. A third run (2026-04-29
+      13Z, lead_day 1, so target_date 2026-04-30) proves cycle_regime keys
+      off run_date, not target_date: it must stay in the run_date's regime
+      even though its target_date falls in the newer one. A fourth run
+      (2026-05-01, under the still-open v5.0) proves the open-ended
+      (valid_to null) branch of the nbm_version join still matches the
+      current version.
     model: fct_forecast_verification
     given:
       - input: ref('int_window_matched_pairs')
@@ -204,6 +235,42 @@ unit_tests:
             periods_found: 3
             hourly_observed_f: 42.5
             cli_f: 43.0
+          - station: KDEN
+            runtime_utc: "2026-04-29 13:00:00"
+            lead_day: 1
+            variable: max
+            cycle_hour: 13
+            target_date: "2026-04-30"
+            forecast_f: 68.0
+            spread_f: 3.0
+            observed_f: 69.0
+            window_start_utc: "2026-04-29 12:00:00"
+            window_end_utc: "2026-04-30 06:00:00"
+            n_obs: 3
+            hours_covered: 18
+            scorable: true
+            extreme_source: metar_6h
+            periods_found: 3
+            hourly_observed_f: 68.5
+            cli_f: 69.0
+          - station: KDEN
+            runtime_utc: "2026-05-01 00:00:00"
+            lead_day: 1
+            variable: max
+            cycle_hour: 0
+            target_date: "2026-05-02"
+            forecast_f: 55.0
+            spread_f: 3.0
+            observed_f: 56.0
+            window_start_utc: "2026-04-30 23:00:00"
+            window_end_utc: "2026-05-01 17:00:00"
+            n_obs: 3
+            hours_covered: 18
+            scorable: true
+            extreme_source: metar_6h
+            periods_found: 3
+            hourly_observed_f: 55.5
+            cli_f: 56.0
       - input: ref('nbm_versions')
         rows:
           - nbm_version: v4.3
@@ -211,6 +278,12 @@ unit_tests:
             valid_to_utc: "2026-04-30 13:00:00"
             verified: true
             source_url: https://example.test/v4.3
+            note: fixture
+          - nbm_version: v5.0
+            valid_from_utc: "2026-04-30 13:00:00"
+            valid_to_utc: null
+            verified: true
+            source_url: https://example.test/v5.0
             note: fixture
       - input: ref('nbs_cycle_regimes')
         rows:
@@ -235,4 +308,12 @@ unit_tests:
         - station: KDEN
           runtime_utc: "2026-04-30 12:00:00"
           nbm_version: v4.3
+          cycle_regime: iem_hourly_then_00_06_12_18
+        - station: KDEN
+          runtime_utc: "2026-04-29 13:00:00"
+          nbm_version: v4.3
+          cycle_regime: iem_01_07_13_19
+        - station: KDEN
+          runtime_utc: "2026-05-01 00:00:00"
+          nbm_version: v5.0
           cycle_regime: iem_hourly_then_00_06_12_18
