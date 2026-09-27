@@ -6,8 +6,8 @@ Do not hand-edit; re-run the script to regenerate.
 ## Provenance
 
 - Extract (`verification_rows.parquet`) SHA-256: `4c184de4c632f229fc22009303c8ab3ea6d94180df751cf0cc91a23ccf2e6082`
-- `analyze.py` SHA-256: `ec45fb248c90262a8638e3e95f45b0905c4f04fd5b975c8c641d35611525f805`
-- Git HEAD: `a4ee1553458cc0ac75db4fbe7ce26f0c072e1ba8`
+- `analyze.py` SHA-256: `56ceb65341c9dc58340e893149064de9f79ae1818ebfa863f4f45753daf0f95e`
+- Git HEAD: `2c7067c2e6f53b8fb3d4ccbd96ff317428aa50f2`
 
 ## Per-series estimates
 
@@ -83,6 +83,27 @@ Do not hand-edit; re-run the script to regenerate.
 | KSEA | min | 3 | 364 | False | 7.1455071336688905 | False |
 | KSFO | min | 3 | 363 | False | 11.991171403817592 | False |
 | KSLC | min | 3 | 334 | False | 8.467357266550211 | True |
+
+## Autocorrelation of the pooled series (secondary, not binding)
+
+Lag-k sample autocorrelation of each pooled (variable, lead) series; the band is +/-1.96/sqrt(n).
+
+| lag | max 1 | max 2 | min 1 | min 2 | min 3 | band |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.511 | 0.539 | 0.234 | 0.311 | 0.294 | 0.103 |
+| 2 | 0.293 | 0.366 | 0.089 | 0.187 | 0.161 | 0.103 |
+| 3 | 0.230 | 0.281 | 0.120 | 0.111 | 0.125 | 0.103 |
+| 4 | 0.191 | 0.217 | 0.104 | 0.135 | 0.140 | 0.103 |
+| 5 | 0.183 | 0.181 | 0.087 | 0.093 | 0.094 | 0.103 |
+| 6 | 0.084 | 0.068 | 0.030 | 0.014 | -0.043 | 0.103 |
+| 7 | 0.055 | 0.040 | -0.026 | -0.003 | -0.036 | 0.103 |
+| 8 | 0.009 | 0.006 | -0.038 | -0.056 | -0.025 | 0.103 |
+| 9 | -0.060 | -0.015 | 0.018 | 0.020 | 0.054 | 0.103 |
+| 10 | -0.029 | -0.010 | -0.096 | -0.119 | -0.099 | 0.103 |
+| 11 | -0.034 | -0.006 | -0.050 | -0.058 | -0.103 | 0.103 |
+| 12 | 0.023 | 0.043 | -0.072 | -0.067 | -0.060 | 0.103 |
+| 13 | 0.062 | 0.069 | 0.008 | -0.037 | -0.027 | 0.103 |
+| 14 | 0.017 | 0.019 | 0.045 | 0.024 | 0.028 | 0.103 |
 
 ## Coverage replay
 

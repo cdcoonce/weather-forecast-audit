@@ -433,6 +433,7 @@ def cmd_analyze(data_path: Path, out_dir: Path) -> None:
         data_path=data_path,
         estimates_rows=estimates_rows,
         station_estimates_rows=station_estimates_rows,
+        acf_rows=acf_rows,
         coverage_rows=coverage_rows,
         choice=choice,
         outcome=outcome,
@@ -450,6 +451,7 @@ def _write_results_md(
     data_path: Path,
     estimates_rows: list[dict[str, object]],
     station_estimates_rows: list[dict[str, object]],
+    acf_rows: list[dict[str, object]],
     coverage_rows: list[dict[str, object]],
     choice: BlockChoice,
     outcome: str,
@@ -496,6 +498,25 @@ def _write_results_md(
             f"{row['n_dates']} | {row['excluded_from_median']} | "
             f"{row['b_station']} | {row['is_upper_median']} |"
         )
+    lines.append("")
+    lines.append("## Autocorrelation of the pooled series (secondary, not binding)")
+    lines.append("")
+    lines.append(
+        "Lag-k sample autocorrelation of each pooled (variable, lead) series; "
+        "the band is +/-1.96/sqrt(n)."
+    )
+    lines.append("")
+    acf_keys = list(dict.fromkeys((r["variable"], r["lead_day"]) for r in acf_rows))
+    lines.append(
+        "| lag | " + " | ".join(f"{v} {lead}" for v, lead in acf_keys) + " | band |"
+    )
+    lines.append("| --- " * (len(acf_keys) + 2) + "|")
+    lags = sorted({int(r["lag"]) for r in acf_rows})
+    by_key_lag = {(r["variable"], r["lead_day"], r["lag"]): r for r in acf_rows}
+    for lag in lags:
+        cells = [f"{by_key_lag[(v, lead, lag)]['acf']:.3f}" for v, lead in acf_keys]
+        band = by_key_lag[(*acf_keys[0], lag)]["band"]
+        lines.append(f"| {lag} | " + " | ".join(cells) + f" | {band:.3f} |")
     lines.append("")
     lines.append("## Coverage replay")
     lines.append("")
