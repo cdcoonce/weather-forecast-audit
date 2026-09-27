@@ -130,6 +130,24 @@ def test_dropping_a_required_field_fails_validation(
         city_validator.validate(broken_city)
 
 
+@pytest.mark.parametrize(
+    "bad",
+    ["yesterday", "2026-09-27", "2026-09-27 15:41:55", "2026-09-27T15:41:55+02:00"],
+)
+def test_malformed_generated_at_fails_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: str
+) -> None:
+    # `format: date-time` is a no-op under plain jsonschema (it needs the
+    # optional rfc3339-validator), so the contract pins the UTC shape with a
+    # pattern instead; this proves the guard is not decorative.
+    out_dir = _run_export(tmp_path, monkeypatch)
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    validator = _validator_for(export.schema_files()["manifest.schema.json"])
+    manifest["generated_at"] = bad
+    with pytest.raises(ValidationError):
+        validator.validate(manifest)
+
+
 def test_site_fixture_export_matches_a_fresh_export(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

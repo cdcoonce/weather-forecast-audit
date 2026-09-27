@@ -20,7 +20,8 @@
     "generated_at": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO 8601 UTC timestamp the export was generated at."
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "UTC timestamp the export was generated at, as YYYY-MM-DDTHH:MM:SSZ. The pattern enforces the shape: plain jsonschema treats format: date-time as an annotation unless rfc3339-validator is installed."
     },
     "data_through": {
       "type": ["string", "null"],
