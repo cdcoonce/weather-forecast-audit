@@ -742,3 +742,59 @@ def test_frame_for_raises_for_unmapped_duckdb_type(
 
     with pytest.raises(ValueError, match="d"):
         warehouse._frame_for(conn, "raw.scratch_x", ["d"], records)
+
+
+def test_load_hourly_accepts_six_hour_group_after_100_rows_without_one(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """Production shape behind the 2026-09-27 halt: `tmpf` is always a
+    Python float (parsers never emit int), but `max_6h_f` is `None` on 100+
+    consecutive rows with no METAR 6-hour group, then a real float once one
+    arrives. That Null-led column, not an Int64-led one, is what actually
+    broke `load_hourly` (#41)."""
+    base = _utc("2023-07-14 00:00:00")
+    rows = [
+        HourlyObservation(
+            "KPHX", base + timedelta(hours=i), 60.1, max_6h_f=None, min_6h_f=None
+        )
+        for i in range(100)
+    ]
+    rows.append(
+        HourlyObservation(
+            "KPHX",
+            base + timedelta(hours=100),
+            60.1,
+            max_6h_f=62.96,
+            min_6h_f=None,
+        )
+    )
+
+    warehouse.load_hourly(conn, "KPHX", date(2023, 7, 14), date(2023, 7, 19), rows)
+
+    assert conn.execute("select count(*) from raw.asos_hourly").fetchone() == (101,)
+    last_max_6h_f = conn.execute(
+        "select max_6h_f from raw.asos_hourly order by valid_utc desc limit 1"
+    ).fetchone()
+    assert last_max_6h_f == (62.96,)
+
+
+def test_frame_for_rejects_value_of_wrong_type(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """Construction stays strict: a value that doesn't fit the table's
+    declared dtype must raise, not get silently nulled by `strict=False`."""
+    columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
+    records = [
+        {
+            "station": "KPHX",
+            "valid_utc": _utc("2023-07-14 00:00:00").replace(tzinfo=None),
+            "tmpf": "sixty",
+            "max_6h_f": None,
+            "min_6h_f": None,
+        }
+    ]
+
+    with pytest.raises(
+        pl.exceptions.ComputeError, match=r'could not append value: "sixty"'
+    ):
+        warehouse._frame_for(conn, "raw.asos_hourly", columns, records)
