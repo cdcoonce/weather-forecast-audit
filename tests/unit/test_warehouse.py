@@ -781,8 +781,10 @@ def test_load_hourly_accepts_six_hour_group_after_100_rows_without_one(
 def test_frame_for_rejects_value_of_wrong_type(
     conn: duckdb.DuckDBPyConnection,
 ) -> None:
-    """Construction stays strict: a value that doesn't fit the table's
-    declared dtype must raise, not get silently nulled by `strict=False`."""
+    """A value that doesn't fit the table's declared dtype must raise.
+
+    This does not guard `strict=False`: for row-oriented dict input polars
+    1.44 raises either way (teeth spec `frame_for-strict-disabled`)."""
     columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
     records = [
         {
