@@ -17,9 +17,19 @@ from dagster._core.storage.tags import (
 )
 
 from weather_forecast_audit import sensors as sensors_module
-from weather_forecast_audit.jobs import ingest_job, transform_job
+from weather_forecast_audit.jobs import (
+    MAX_RUNTIME_SECONDS,
+    OBSERVED_SECONDS_PER_STATION,
+    OBSERVED_STALL_SECONDS,
+    RUNTIME_BUDGET_FRACTION,
+    STALLS_TOLERATED,
+    ingest_job,
+    transform_job,
+    unit_runtime_budget_s,
+)
 from weather_forecast_audit.sensors import (
     ATTEMPT_TAG,
+    BACKFILL_CHUNK_SIZE,
     GENERATION_TAG,
     TRANSFORM_UNIT_ID,
     UNIT_TAG,
@@ -28,7 +38,7 @@ from weather_forecast_audit.sensors import (
 
 pytestmark = [pytest.mark.dagster, pytest.mark.io]
 
-# Sorted: KORD, KPHX. Both fit in one BACKFILL_CHUNK_SIZE=30 chunk, so every
+# Sorted: KORD, KPHX. Both fit in one BACKFILL_CHUNK_SIZE chunk, so every
 # calendar month in the plan is exactly one unit.
 STATIONS = ["KPHX", "KORD"]
 
@@ -376,3 +386,35 @@ def test_done_once_the_transform_succeeds(monkeypatch: pytest.MonkeyPatch) -> No
 
         assert result.run_requests is None or result.run_requests == []
         assert result.skip_reason.skip_message == "national backfill complete"
+
+
+# -- unit runtime budget -------------------------------------------------
+# The run cap is enforced by a polling monitor, so a unit that lands near it
+# survives by timing luck. A unit must fit its baseline plus tolerated
+# request stalls inside a fraction of the cap; these pin that model so the
+# constants cannot be quietly loosened to make a bigger chunk pass.
+
+
+def test_unit_runtime_budget_fits_under_the_cap_with_margin() -> None:
+    assert (
+        unit_runtime_budget_s(BACKFILL_CHUNK_SIZE)
+        <= RUNTIME_BUDGET_FRACTION * MAX_RUNTIME_SECONDS
+    )
+
+
+def test_unit_runtime_budget_rejects_the_old_chunk_size() -> None:
+    # 30 stations x 17s + 2 x 82s = 674s: measured units at 30 did hit 605s.
+    assert unit_runtime_budget_s(30) > RUNTIME_BUDGET_FRACTION * MAX_RUNTIME_SECONDS
+
+
+def test_unit_runtime_budget_is_linear_in_chunk_size() -> None:
+    assert unit_runtime_budget_s(20) == 504.0
+    assert unit_runtime_budget_s(30) == 674.0
+
+
+def test_unit_runtime_budget_constants_match_the_measurements() -> None:
+    assert OBSERVED_SECONDS_PER_STATION == 17.0
+    assert OBSERVED_STALL_SECONDS == 82.0
+    assert STALLS_TOLERATED == 2
+    assert RUNTIME_BUDGET_FRACTION == 0.95
+    assert MAX_RUNTIME_SECONDS == 600

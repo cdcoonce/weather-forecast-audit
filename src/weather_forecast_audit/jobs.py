@@ -23,6 +23,32 @@ from weather_forecast_audit.dbt_assets import dbt_transform_assets
 # max runtime: a hung run would otherwise block oura and waga indefinitely.
 MAX_RUNTIME_SECONDS = 600
 
+# Run-time model for one national-backfill unit (one month x a chunk of
+# stations, `sensors.BACKFILL_CHUNK_SIZE`). Measured on the live backfill:
+# ~17s per station across the four ingest steps (raw__asos_hourly ~8s,
+# raw__nbs_guidance ~7.6s, cli ~1.2s, resolved ~0.2s). Slow units carry an
+# extra stall of ~60-82s (one request hits the HTTP client's 60s timeout,
+# then backoff and a retry). The cap is enforced by a polling monitor, so a
+# unit that only just fits survives by timing luck; a unit must therefore
+# fit its baseline PLUS two stalls inside 95% of the cap. Never raise
+# MAX_RUNTIME_SECONDS to make a bigger chunk fit: it protects a run slot
+# shared with other tenants. The guard is a test (tests/dagster/
+# test_sensors.py), deliberately not an import-time assertion.
+OBSERVED_SECONDS_PER_STATION = 17.0
+OBSERVED_STALL_SECONDS = 82.0
+STALLS_TOLERATED = 2
+RUNTIME_BUDGET_FRACTION = 0.95
+
+
+def unit_runtime_budget_s(chunk_size: int) -> float:
+    """Modelled worst-case seconds for a unit of `chunk_size` stations:
+    the per-station baseline plus `STALLS_TOLERATED` request stalls."""
+    return (
+        chunk_size * OBSERVED_SECONDS_PER_STATION
+        + STALLS_TOLERATED * OBSERVED_STALL_SECONDS
+    )
+
+
 # D6: the four partitioned raw assets, batched into one job so a run
 # materializes guidance/asos/cli/resolved together for the same partitions.
 # AssetSelection.assets(...) pulls in every check on those assets by
