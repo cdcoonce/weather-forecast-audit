@@ -801,9 +801,14 @@ attempt 1, generation 0.
 To retry a specific halted unit/attempt *without* restarting the whole
 backfill, edit the cursor JSON by hand (the envelope is `{"plan_end": ...,
 "state": {"next_index", "attempt", "last_run_id", "transform_requested",
-"submitted_at", "generation"}}`): keep `next_index` and `attempt` as they
-are, set `last_run_id` and `submitted_at` to `null`, and **increment
-`generation`**. The generation bump is not optional -- because the sensor
+"submitted_at", "generation"}}`): keep `next_index`, set `attempt` to `1`,
+set `last_run_id` and `submitted_at` to `null`, and **increment
+`generation`**. Set `attempt` back to 1 when the halt was a bug that has
+since been fixed and deployed: the unit then gets its normal three tries,
+whereas leaving it at 3 gives it one. (The sensor evaluates once a minute,
+so the last tick can still show the old `HALTED` message for up to a minute
+after the edit; check that the newest tick names the new generation before
+concluding the edit did nothing.) The generation bump is not optional -- because the sensor
 daemon dedupes by `run_key` (`f"{unit_id}-a{attempt}-g{generation}"`,
 `f"transform-g{generation}"` for the transform), clearing `last_run_id`
 alone would make the next tick recompute the *identical* run_key the
