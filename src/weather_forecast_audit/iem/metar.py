@@ -8,9 +8,9 @@ group -- is excluded because it does not fit the anchored 5-character
 pattern, not because it is matched by name.
 
 `s` (the sign digit) is 0 for positive and 1 for negative; `TTT` is tenths of
-degrees Celsius. A group never guesses: if the same group (max or min)
-appears twice in one report's remarks, parsing raises rather than picking
-one of them.
+degrees Celsius. A group never guesses: if a group (max or min) appears
+more than once in one report's remarks, identical repeats collapse to the one
+value they share, but differing tokens raise rather than picking one of them.
 """
 
 import re
@@ -40,9 +40,10 @@ def parse_six_hour_groups(metar: str) -> SixHourGroups:
     Only whitespace-delimited tokens after the first `RMK` token are
     considered; a report with no `RMK` section (including an empty or `M`
     report) yields `None` for both fields, as does one with no matching
-    group. If more than one token matches a group's pattern, the report is
-    ambiguous and this raises `ValueError` rather than guessing which one is
-    authoritative.
+    group. Identical repeated tokens collapse to one, since they leave nothing
+    to choose between. If more than one distinct token matches a group's
+    pattern, the report is ambiguous and this raises `ValueError` rather than
+    guessing which one is authoritative.
     """
     tokens = metar.split()
     try:
@@ -51,8 +52,12 @@ def parse_six_hour_groups(metar: str) -> SixHourGroups:
         return SixHourGroups(max_c=None, min_c=None)
 
     remarks = tokens[rmk_index + 1 :]
-    max_matches = [token for token in remarks if _MAX_GROUP.match(token)]
-    min_matches = [token for token in remarks if _MIN_GROUP.match(token)]
+    max_matches = list(
+        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))
+    )
+    min_matches = list(
+        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))
+    )
 
     if len(max_matches) > 1:
         msg = (
