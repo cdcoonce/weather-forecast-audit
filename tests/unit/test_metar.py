@@ -114,6 +114,56 @@ def test_duplicate_min_group_raises() -> None:
         parse_six_hour_groups(metar)
 
 
+# -- repeated groups: identical collapse, differing still raise -----------
+
+
+def test_identical_duplicate_max_group_returns_the_value() -> None:
+    metar = "KPHX 150551Z RMK AO2 T04110106 10206 10206 20344"
+    result = parse_six_hour_groups(metar)
+    assert result.max_c == 20.6
+    assert result.min_c == 34.4
+
+
+def test_identical_duplicate_min_group_returns_the_value() -> None:
+    metar = "KPHX 150551Z RMK AO2 T04110106 10206 20344 20344"
+    result = parse_six_hour_groups(metar)
+    assert result.max_c == 20.6
+    assert result.min_c == 34.4
+
+
+def test_both_groups_duplicated_identically_returns_both() -> None:
+    metar = "KPHX 150551Z RMK AO2 T04110106 10206 10206 20344 20344"
+    result = parse_six_hour_groups(metar)
+    assert result.max_c == 20.6
+    assert result.min_c == 34.4
+
+
+def test_differing_duplicate_max_group_still_raises_naming_distinct_tokens() -> None:
+    # Characterization: passes on the pre-fix code too.
+    metar = "KPHX 150551Z RMK AO2 T04110106 10461 10462 20344"
+    with pytest.raises(ValueError, match="expected at most 1") as excinfo:
+        parse_six_hour_groups(metar)
+    assert "2 6-hour max groups" in str(excinfo.value)
+    assert "['10461', '10462']" in str(excinfo.value)
+
+
+def test_differing_duplicate_min_group_still_raises_naming_distinct_tokens() -> None:
+    # Characterization: passes on the pre-fix code too.
+    metar = "KPHX 150551Z RMK AO2 T04110106 10461 20344 20345"
+    with pytest.raises(ValueError, match="expected at most 1") as excinfo:
+        parse_six_hour_groups(metar)
+    assert "2 6-hour min groups" in str(excinfo.value)
+    assert "['20344', '20345']" in str(excinfo.value)
+
+
+def test_identical_and_differing_mix_still_raises() -> None:
+    metar = "KPHX 150551Z RMK AO2 T04110106 10206 10206 10207 20344"
+    with pytest.raises(ValueError, match="expected at most 1") as excinfo:
+        parse_six_hour_groups(metar)
+    assert "2 6-hour max groups" in str(excinfo.value)
+    assert "['10206', '10207']" in str(excinfo.value)
+
+
 # -- empty / missing --------------------------------------------------------
 
 
