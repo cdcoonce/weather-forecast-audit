@@ -1,0 +1,276 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_metar.py",
+    "tests/unit/test_observation_client.py",
+    "tests/unit/test_resolver.py",
+    "tests/dagster/test_checks_wired.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_metar.py",
+    "tests/unit/test_observation_client.py",
+    "tests/unit/test_resolver.py",
+    "tests/dagster/test_checks_wired.py"
+  ],
+  "mutants": [
+    {
+      "label": "tolerant-ambiguous-max-also-nulls-clean-min",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    groups = SixHourGroups(\n        max_c=_value_or_none(max_matches), min_c=_value_or_none(min_matches)\n    )",
+      "replace": "    groups = SixHourGroups(\n        max_c=_value_or_none(max_matches),\n        min_c=None if \"max\" in ambiguous else _value_or_none(min_matches),\n    )"
+    },
+    {
+      "label": "tolerant-ambiguous-kind-returns-first-token",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    groups = SixHourGroups(\n        max_c=_value_or_none(max_matches), min_c=_value_or_none(min_matches)\n    )",
+      "replace": "    groups = SixHourGroups(\n        max_c=_group_value_c(max_matches[0]) if max_matches else None,\n        min_c=_group_value_c(min_matches[0]) if min_matches else None,\n    )"
+    },
+    {
+      "label": "tolerant-ambiguous-kind-returns-last-token",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    groups = SixHourGroups(\n        max_c=_value_or_none(max_matches), min_c=_value_or_none(min_matches)\n    )",
+      "replace": "    groups = SixHourGroups(\n        max_c=_group_value_c(max_matches[-1]) if max_matches else None,\n        min_c=_group_value_c(min_matches[-1]) if min_matches else None,\n    )"
+    },
+    {
+      "label": "tolerant-ambiguous-order-swapped-min-then-max",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "((\"max\", max_matches), (\"min\", min_matches))",
+      "replace": "((\"min\", min_matches), (\"max\", max_matches))"
+    },
+    {
+      "label": "shared-helper-dedupe-removed-both-kinds",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    max_matches = list(\n        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    )\n    min_matches = list(\n        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))\n    )",
+      "replace": "    max_matches = [token for token in remarks if _MAX_GROUP.match(token)]\n    min_matches = [token for token in remarks if _MIN_GROUP.match(token)]"
+    },
+    {
+      "label": "tolerant-zero-token-kind-reported-ambiguous",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "        if len(matches) > 1\n",
+      "replace": "        if len(matches) != 1\n"
+    },
+    {
+      "label": "strict-max-stops-raising-on-differing-tokens",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    if len(max_matches) > 1:\n",
+      "replace": "    if False:\n"
+    },
+    {
+      "label": "strict-min-stops-raising-on-differing-tokens",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    if len(min_matches) > 1:\n",
+      "replace": "    if False:\n"
+    },
+    {
+      "label": "strict-max-message-drops-distinct-tokens",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "f\"expected at most 1: {max_matches}\"",
+      "replace": "f\"expected at most 1\""
+    },
+    {
+      "label": "strict-min-message-drops-distinct-tokens",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "f\"expected at most 1: {min_matches}\"",
+      "replace": "f\"expected at most 1\""
+    },
+    {
+      "label": "fetch-hourly-no-gap-emitted-for-ambiguous-kind",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "        gaps.extend(ambiguous_gaps)\n",
+      "replace": "        gaps.extend([])\n"
+    },
+    {
+      "label": "fetch-hourly-gap-reason-kind-swapped",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "reason=f\"ambiguous_six_hour_{kind}@{valid:%H:%M}\"",
+      "replace": "reason=f\"ambiguous_six_hour_{'min' if kind == 'max' else 'max'}@{valid:%H:%M}\""
+    },
+    {
+      "label": "fetch-hourly-ambiguous-max-keeps-first-token-on-row",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            groups = tolerant.groups\n",
+      "replace": "            groups = tolerant.groups\n            if \"max\" in tolerant.ambiguous:\n                from weather_forecast_audit.iem.metar import _MAX_GROUP, _group_value_c\n                _t = [t for t in raw[\"metar\"].split() if _MAX_GROUP.match(t)]\n                groups = type(groups)(max_c=_group_value_c(_t[0]), min_c=groups.min_c)\n"
+    },
+    {
+      "label": "fetch-hourly-tmpf-nulled-on-ambiguous-row",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            groups = tolerant.groups\n",
+      "replace": "            groups = tolerant.groups\n            if tolerant.ambiguous:\n                tmpf = None\n"
+    },
+    {
+      "label": "fetch-hourly-ambiguous-max-nulls-clean-min-on-row",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            min_6h_f = _c_to_f(groups.min_c) if groups.min_c is not None else None",
+      "replace": "            min_6h_f = None if tolerant.ambiguous else (_c_to_f(groups.min_c) if groups.min_c is not None else None)"
+    },
+    {
+      "label": "gap-expected-full-timestamp-not-utc-date",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "        expected=valid.date().isoformat(),",
+      "replace": "        expected=valid.isoformat(),"
+    },
+    {
+      "label": "gap-reason-drops-hhmm-suffix",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "reason=f\"ambiguous_six_hour_{kind}@{valid:%H:%M}\"",
+      "replace": "reason=f\"ambiguous_six_hour_{kind}\""
+    },
+    {
+      "label": "gap-per-chunk-dedupe-removed",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                if gap not in ambiguous_gaps:\n                    ambiguous_gaps.append(gap)\n",
+      "replace": "                ambiguous_gaps.append(gap)\n"
+    },
+    {
+      "label": "gap-station-hardcoded-to-fixture-kcak",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "        station=icao,\n        source=\"asos\",\n        expected=valid.date().isoformat(),",
+      "replace": "        station=\"KCAK\",\n        source=\"asos\",\n        expected=valid.date().isoformat(),"
+    },
+    {
+      "label": "gap-source-nbs",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "        source=\"asos\",\n        expected=valid.date().isoformat(),",
+      "replace": "        source=\"nbs\",\n        expected=valid.date().isoformat(),"
+    },
+    {
+      "label": "gap-source-cli",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "        source=\"asos\",\n        expected=valid.date().isoformat(),",
+      "replace": "        source=\"cli\",\n        expected=valid.date().isoformat(),"
+    },
+    {
+      "label": "ambiguous-gap-suppresses-missing-day-gap",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            if day not in dates_with_data:\n",
+      "replace": "            if day not in dates_with_data and not any(g.expected == day.isoformat() for g in ambiguous_gaps):\n",
+      "expect": "survived",
+      "why": "KNOWN GAP, not inert (probe-verified: a 17:51 report with tmpf=M and an ambiguous max yields ambiguous+missing_observations; the mutant drops missing_observations). No test has a day whose only report is ambiguous AND lacks tmpf, so the interaction of the two gap kinds on one day is unpinned."
+    },
+    {
+      "label": "gap-hhmm-formatted-in-local-utc-minus-5",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "reason=f\"ambiguous_six_hour_{kind}@{valid:%H:%M}\"",
+      "replace": "reason=f\"ambiguous_six_hour_{kind}@{valid - timedelta(hours=5):%H:%M}\""
+    },
+    {
+      "label": "gap-expected-uses-local-utc-minus-7-date",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "        expected=valid.date().isoformat(),",
+      "replace": "        expected=(valid - timedelta(hours=7)).date().isoformat(),"
+    },
+    {
+      "label": "fetch-hourly-only-first-ambiguous-kind-gets-a-gap",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            for kind in tolerant.ambiguous:\n",
+      "replace": "            for kind in tolerant.ambiguous[:1]:\n"
+    },
+    {
+      "label": "resolver-none-max-report-shadows-older-clean-report",
+      "file": "../../../src/weather_forecast_audit/resolver.py",
+      "oracle": "real",
+      "find": "            if candidate is None:\n                continue\n",
+      "replace": "            if False:\n                continue\n",
+      "expect": "survived",
+      "why": "KNOWN GAP, not inert (probe-verified: an older clean 105.0 max plus a newer max=None report in one H-60min lookback resolves to 105.0/tiled on real code, None/untiled under the mutant). test_six_hour_extreme_ambiguous_none_group_leaves_window_untiled has no older clean report in the same lookback, so the fall-back-past-a-None-row semantics is unpinned."
+    },
+    {
+      "label": "gap-rate-counts-gap-rows-not-stations",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "        1\n        for gaps in gaps_by_station.values()\n        if any(start <= _gap_date(gap.expected) <= end for gap in gaps)",
+      "replace": "        len([g for g in gaps if start <= _gap_date(g.expected) <= end])\n        for gaps in gaps_by_station.values()"
+    },
+    {
+      "label": "resolver-none-max-group-treated-as-zero-not-missing",
+      "file": "../../../src/weather_forecast_audit/resolver.py",
+      "oracle": "real",
+      "find": "            if candidate is None:\n                continue\n",
+      "replace": "            if candidate is None:\n                candidate = 0.0\n"
+    },
+    {
+      "label": "fetch-hourly-gap-dedupe-key-is-date-and-kind-only",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                if gap not in ambiguous_gaps:\n",
+      "replace": "                if not any(g.expected == gap.expected and g.reason.split(\"@\")[0] == gap.reason.split(\"@\")[0] for g in ambiguous_gaps):\n"
+    },
+    {
+      "label": "fetch-hourly-ambiguous-gap-only-when-tmpf-present",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            for kind in tolerant.ambiguous:\n",
+      "replace": "            for kind in (tolerant.ambiguous if tmpf is not None else ()):\n",
+      "expect": "survived",
+      "why": "KNOWN GAP, not inert (probe-verified: tmpf=M with an ambiguous max yields the gap on real code, none under the mutant). Every ambiguous fixture carries a tmpf, so emission independent of tmpf is unpinned."
+    },
+    {
+      "label": "fetch-hourly-gap-expected-is-chunk-start-not-report-date",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                gap = _ambiguous_gap(icao, valid, kind)\n",
+      "replace": "                gap = _ambiguous_gap(icao, datetime.combine(chunk_start, valid.timetz()), kind)\n",
+      "expect": "survived",
+      "why": "KNOWN GAP, not inert (probe-verified: range 11-22..11-23 with the ambiguous report on 11-23 gives expected 2020-11-23 on real code, 2020-11-22 under the mutant). Every ambiguous fixture is on the range's first day, so the gap date being the report's own date, not the chunk start, is unpinned."
+    },
+    {
+      "label": "fetch-hourly-ambiguous-row-dropped-entirely",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            rows.append(\n                HourlyObservation(",
+      "replace": "            (rows.append if not tolerant.ambiguous else (lambda _x: None))(\n                HourlyObservation("
+    },
+    {
+      "label": "tolerant-ambiguity-threshold-needs-three-tokens",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "        if len(matches) > 1\n",
+      "replace": "        if len(matches) > 2\n"
+    },
+    {
+      "label": "[control] shared-helper-max-min-assignments-reordered",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    max_matches = list(\n        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    )\n    min_matches = list(\n        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))\n    )",
+      "replace": "    min_matches = list(\n        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))\n    )\n    max_matches = list(\n        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    )",
+      "expect": "survived",
+      "why": "max_matches and min_matches are built from the same read-only `remarks` list by pure generator expressions; neither reads the other, so the assignment order cannot change either result on any input."
+    }
+  ]
+}
