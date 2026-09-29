@@ -51,12 +51,23 @@ from weather_forecast_audit.jobs import MAX_RUNTIME_SECONDS, ingest_job, transfo
 from weather_forecast_audit.resources import StationsResource
 
 # D2's month-batched ingest already assumes a run receives at most one
-# month; the national backfill also chunks the (sorted) station list, so
-# each run's fetch volume (~12s/station-month, rate-limited to 1 req/s)
-# stays inside MAX_RUNTIME_SECONDS. 573 CONUS stations x 12s would be
-# ~6880s in one run -- far past the 600s cap -- so a month is split into
-# chunks of 30 stations (~360s), one ingest_job run per chunk.
-BACKFILL_CHUNK_SIZE = 30
+# month; the national backfill also chunks the (sorted) station list so each
+# run stays inside MAX_RUNTIME_SECONDS. Measured cost is ~17s per station
+# across the four ingest steps (see jobs.unit_runtime_budget_s), so 573 CONUS
+# stations in one run would be ~9700s -- far past the 600s cap -- and a month
+# is split into chunks, one ingest_job run per chunk.
+#
+# 30 stations was too many: the first 32 units had a median of 316s, but the
+# last four ran 512s, 605s, 510s and 604s, because a slow unit carries one
+# extra ~60-82s stall (a request hitting the HTTP client's 60s timeout plus
+# backoff and retry). The cap is enforced by a polling monitor, so those
+# survived by timing luck. A unit must survive its baseline plus two stalls
+# with margin: 20 x 17 + 2 x 82 = 504s <= 570s (95% of the cap), whereas
+# 30 x 17 + 164 = 674s does not (the largest size that passes is 23).
+# `test_unit_runtime_budget_*` in tests/dagster/test_sensors.py enforces
+# this. Changing this value mid-backfill needs a cursor remap and a
+# generation bump: see "Changing the chunk size" in docs/methodology.md.
+BACKFILL_CHUNK_SIZE = 20
 
 MAX_BACKFILL_ATTEMPTS = 3
 
