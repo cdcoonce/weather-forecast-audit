@@ -1,0 +1,200 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_metar.py",
+    "tests/unit/test_observation_client.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_metar.py",
+    "tests/unit/test_observation_client.py"
+  ],
+  "mutants": [
+    {
+      "label": "max-dedupe-removed",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    max_matches = list(\n        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    )",
+      "replace": "    max_matches = [token for token in remarks if _MAX_GROUP.match(token)]"
+    },
+    {
+      "label": "min-dedupe-removed",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    min_matches = list(\n        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))\n    )",
+      "replace": "    min_matches = [token for token in remarks if _MIN_GROUP.match(token)]"
+    },
+    {
+      "label": "max-dedupe-order-reversed-not-first-seen",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    max_matches = list(\n        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    )",
+      "replace": "    max_matches = sorted({token for token in remarks if _MAX_GROUP.match(token)}, reverse=True)"
+    },
+    {
+      "label": "min-dedupe-order-reversed-not-first-seen",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    min_matches = list(\n        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))\n    )",
+      "replace": "    min_matches = sorted({token for token in remarks if _MIN_GROUP.match(token)}, reverse=True)"
+    },
+    {
+      "label": "min-dedupe-sorted-ascending-loses-first-seen-order",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "KNOWN UNPINNED GAP, NOT an equivalent mutant: sorted(set(...)) returns the tokens in ascending order instead of first-seen report order. Every fixture in the suite lists its differing tokens already ascending (10461 10462; 20344 20345; 10206 10207), so sorted order and first-seen order coincide and no test can tell them apart -- verified: this row survives all 45 tests, while the reverse-sorted mutants above (which do reorder these fixtures) are killed. Only the order of tokens inside the raised ValueError text differs (a report with 10462 before 10461 would be listed 10461, 10462); the parsed values are unaffected. Deliberately declared so the ratchet trips if a descending-order test is ever added.",
+      "find": "    min_matches = list(\n        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))\n    )",
+      "replace": "    min_matches = sorted({token for token in remarks if _MIN_GROUP.match(token)})"
+    },
+    {
+      "label": "max-dedupe-key-first-4-chars",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    max_matches = list(\n        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    )",
+      "replace": "    max_matches = list(\n        {token[:4]: token for token in remarks if _MAX_GROUP.match(token)}.values()\n    )"
+    },
+    {
+      "label": "min-dedupe-key-first-4-chars",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    min_matches = list(\n        dict.fromkeys(token for token in remarks if _MIN_GROUP.match(token))\n    )",
+      "replace": "    min_matches = list(\n        {token[:4]: token for token in remarks if _MIN_GROUP.match(token)}.values()\n    )"
+    },
+    {
+      "label": "max-differing-duplicates-no-longer-raise",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    if len(max_matches) > 1:",
+      "replace": "    if False:"
+    },
+    {
+      "label": "min-differing-duplicates-no-longer-raise",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    if len(min_matches) > 1:",
+      "replace": "    if False:"
+    },
+    {
+      "label": "max-ambiguity-check-uses-raw-list-length",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    if len(max_matches) > 1:",
+      "replace": "    if len([t for t in remarks if _MAX_GROUP.match(t)]) > 1:"
+    },
+    {
+      "label": "min-ambiguity-check-uses-raw-list-length",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "find": "    if len(min_matches) > 1:",
+      "replace": "    if len([t for t in remarks if _MIN_GROUP.match(t)]) > 1:"
+    },
+    {
+      "label": "[control] max-dedupe-list-via-unpacking",
+      "file": "../../../src/weather_forecast_audit/iem/metar.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Control. `[*dict.fromkeys(gen)]` and `list(dict.fromkeys(gen))` both build a fresh list from the same insertion-ordered dict keys; the resulting list, its order, and every downstream use (len, index 0, the f-string repr in the error) are identical on every input. Verified: survives all 45 tests, proving the rig discriminates (the 20 real mutants above are killed).",
+      "find": "    max_matches = list(\n        dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    )",
+      "replace": "    max_matches = [\n        *dict.fromkeys(token for token in remarks if _MAX_GROUP.match(token))\n    ]"
+    },
+    {
+      "label": "wrapper-removed-bare-exception-escapes",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            try:\n                groups = parse_six_hour_groups(raw[\"metar\"])\n            except ValueError as exc:\n                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"\n                raise ValueError(msg) from exc",
+      "replace": "            groups = parse_six_hour_groups(raw[\"metar\"])"
+    },
+    {
+      "label": "wrapper-drops-from-exc-cause",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                raise ValueError(msg) from exc",
+      "replace": "                raise ValueError(msg)"
+    },
+    {
+      "label": "wrapper-station-is-3-letter-asos-code",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"",
+      "replace": "                msg = f\"{exc} (station={icao[1:]}, valid={raw['valid']})\""
+    },
+    {
+      "label": "wrapper-station-is-wrong-literal",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"",
+      "replace": "                msg = f\"{exc} (station=KXXX, valid={raw['valid']})\""
+    },
+    {
+      "label": "wrapper-station-hardcoded-to-fixture-literal",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "KNOWN UNPINNED GAP, NOT an equivalent mutant: hardcoding the station literal to 'KPHX' is indistinguishable from `{icao}` because the only station any observation-client test drives is KPHX (STATION = load_registry()['KPHX']); a wrong literal such as KXXX and the 3-letter ASOS code PHX are both killed by the station/time test, so the message does pin the value for KPHX. Verified: survives all 45 tests. A second-station fixture would close it.",
+      "find": "                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"",
+      "replace": "                msg = f\"{exc} (station=KPHX, valid={raw['valid']})\""
+    },
+    {
+      "label": "wrapper-omits-valid",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"",
+      "replace": "                msg = f\"{exc} (station={icao})\""
+    },
+    {
+      "label": "wrapper-reports-parsed-valid-datetime-not-raw-string",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"",
+      "replace": "                msg = f\"{exc} (station={icao}, valid={valid})\""
+    },
+    {
+      "label": "wrapper-drops-original-message",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"",
+      "replace": "                msg = f\"(station={icao}, valid={raw['valid']})\""
+    },
+    {
+      "label": "wrapper-raises-runtimeerror-not-valueerror",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "                raise ValueError(msg) from exc",
+      "replace": "                raise RuntimeError(msg) from exc"
+    },
+    {
+      "label": "wrapper-swallows-and-skips-row",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            try:\n                groups = parse_six_hour_groups(raw[\"metar\"])\n            except ValueError as exc:\n                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"\n                raise ValueError(msg) from exc",
+      "replace": "            try:\n                groups = parse_six_hour_groups(raw[\"metar\"])\n            except Exception:\n                continue"
+    },
+    {
+      "label": "wrapper-swallows-and-records-no-groups",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "find": "            try:\n                groups = parse_six_hour_groups(raw[\"metar\"])\n            except ValueError as exc:\n                msg = f\"{exc} (station={icao}, valid={raw['valid']})\"\n                raise ValueError(msg) from exc",
+      "replace": "            try:\n                groups = parse_six_hour_groups(raw[\"metar\"])\n            except ValueError:\n                groups = parse_six_hour_groups(\"\")"
+    },
+    {
+      "label": "wrapper-catches-Exception-not-ValueError",
+      "file": "../../../src/weather_forecast_audit/iem/observations.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "KNOWN UNPINNED GAP, NOT an equivalent mutant: widening `except ValueError` to `except Exception` re-wraps any other exception from the parse call as ValueError. parse_six_hour_groups itself only raises ValueError, so on every input the suite feeds the two are identical, but a CSV row shorter than the header (csv.DictReader gives raw['metar'] = None) raises AttributeError ('NoneType' object has no attribute 'split') from the unmutated code -- verified by hand -- and would become a ValueError with station/valid context under the mutant. No test feeds a short row, so this contract is unpinned. Verified: survives all 45 tests.",
+      "find": "            except ValueError as exc:\n                msg = f\"{exc} (station",
+      "replace": "            except Exception as exc:\n                msg = f\"{exc} (station"
+    }
+  ]
+}
