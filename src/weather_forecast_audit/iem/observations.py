@@ -129,7 +129,11 @@ def fetch_hourly(
         for raw in parse_asos_csv(response.body):
             valid = _parse_asos_valid(raw["valid"])
             tmpf = _parse_optional_float(raw["tmpf"])
-            groups = parse_six_hour_groups(raw["metar"])
+            try:
+                groups = parse_six_hour_groups(raw["metar"])
+            except ValueError as exc:
+                msg = f"{exc} (station={icao}, valid={raw['valid']})"
+                raise ValueError(msg) from exc
             max_6h_f = _c_to_f(groups.max_c) if groups.max_c is not None else None
             min_6h_f = _c_to_f(groups.min_c) if groups.min_c is not None else None
             rows.append(

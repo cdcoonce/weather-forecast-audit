@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from weather_forecast_audit.iem.http import FetchError, HttpResponse
-from weather_forecast_audit.iem.observations import fetch_cli, fetch_hourly
+from weather_forecast_audit.iem.observations import _c_to_f, fetch_cli, fetch_hourly
 from weather_forecast_audit.registry import load_registry
 
 pytestmark = pytest.mark.unit
@@ -96,6 +96,39 @@ def test_fetch_hourly_missing_metar_column_raises() -> None:
 
     with pytest.raises(ValueError, match="metar"):
         fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 13), fetcher)
+
+
+def test_fetch_hourly_names_station_and_time_when_metar_is_ambiguous() -> None:
+    body = (
+        b"station,valid,tmpf,metar\n"
+        b"PHX,2023-07-13 05:51,90.00,"
+        b"KPHX 130551Z RMK AO2 T04110106 10461 10462 20344\n"
+    )
+    fetcher = FakeFetcher([(lambda _u: True, HttpResponse(200, body))])
+
+    with pytest.raises(
+        ValueError, match=r"\(station=KPHX, valid=2023-07-13 05:51\)"
+    ) as excinfo:
+        fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 13), fetcher)
+
+    assert "expected at most 1" in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, ValueError)
+    assert "station=" not in str(excinfo.value.__cause__)
+
+
+def test_fetch_hourly_accepts_identically_duplicated_group() -> None:
+    body = (
+        b"station,valid,tmpf,metar\n"
+        b"PHX,2023-07-13 05:51,90.00,"
+        b"KPHX 130551Z RMK AO2 T04110106 10206 10206 20344\n"
+    )
+    fetcher = FakeFetcher([(lambda _u: True, HttpResponse(200, body))])
+
+    result = fetch_hourly(STATION, date(2023, 7, 13), date(2023, 7, 13), fetcher)
+
+    assert len(result.rows) == 1
+    assert result.rows[0].max_6h_f == _c_to_f(20.6)
+    assert result.rows[0].min_6h_f == _c_to_f(34.4)
 
 
 def test_fetch_hourly_missing_tmpf_parses_as_none() -> None:
