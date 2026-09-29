@@ -176,9 +176,7 @@
       "file": "../../../src/weather_forecast_audit/iem/observations.py",
       "oracle": "real",
       "find": "            if day not in dates_with_data:\n",
-      "replace": "            if day not in dates_with_data and not any(g.expected == day.isoformat() for g in ambiguous_gaps):\n",
-      "expect": "survived",
-      "why": "KNOWN GAP, not inert (probe-verified: a 17:51 report with tmpf=M and an ambiguous max yields ambiguous+missing_observations; the mutant drops missing_observations). No test has a day whose only report is ambiguous AND lacks tmpf, so the interaction of the two gap kinds on one day is unpinned."
+      "replace": "            if day not in dates_with_data and not any(g.expected == day.isoformat() for g in ambiguous_gaps):\n"
     },
     {
       "label": "gap-hhmm-formatted-in-local-utc-minus-5",
@@ -236,18 +234,14 @@
       "file": "../../../src/weather_forecast_audit/iem/observations.py",
       "oracle": "real",
       "find": "            for kind in tolerant.ambiguous:\n",
-      "replace": "            for kind in (tolerant.ambiguous if tmpf is not None else ()):\n",
-      "expect": "survived",
-      "why": "KNOWN GAP, not inert (probe-verified: tmpf=M with an ambiguous max yields the gap on real code, none under the mutant). Every ambiguous fixture carries a tmpf, so emission independent of tmpf is unpinned."
+      "replace": "            for kind in (tolerant.ambiguous if tmpf is not None else ()):\n"
     },
     {
       "label": "fetch-hourly-gap-expected-is-chunk-start-not-report-date",
       "file": "../../../src/weather_forecast_audit/iem/observations.py",
       "oracle": "real",
       "find": "                gap = _ambiguous_gap(icao, valid, kind)\n",
-      "replace": "                gap = _ambiguous_gap(icao, datetime.combine(chunk_start, valid.timetz()), kind)\n",
-      "expect": "survived",
-      "why": "KNOWN GAP, not inert (probe-verified: range 11-22..11-23 with the ambiguous report on 11-23 gives expected 2020-11-23 on real code, 2020-11-22 under the mutant). Every ambiguous fixture is on the range's first day, so the gap date being the report's own date, not the chunk start, is unpinned."
+      "replace": "                gap = _ambiguous_gap(icao, datetime.combine(chunk_start, valid.timetz()), kind)\n"
     },
     {
       "label": "fetch-hourly-ambiguous-row-dropped-entirely",

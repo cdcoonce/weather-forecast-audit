@@ -119,10 +119,10 @@ _KCAK_AMBIGUOUS_MAX = (
 
 
 def _kcak_fetch(
-    body: bytes, end: date = date(2020, 11, 23)
+    body: bytes, end: date = date(2020, 11, 23), start: date = date(2020, 11, 23)
 ) -> FetchResult[HourlyObservation]:
     fetcher = FakeFetcher([(lambda _u: True, HttpResponse(200, body))])
-    return fetch_hourly(KCAK, date(2020, 11, 23), end, fetcher)
+    return fetch_hourly(KCAK, start, end, fetcher)
 
 
 def test_fetch_hourly_ambiguous_max_drops_only_the_max_and_records_a_gap() -> None:
@@ -210,6 +210,83 @@ def test_fetch_hourly_ambiguous_gap_leaves_missing_day_gaps_untouched() -> None:
         GapRecord("KCAK", "asos", "2020-11-23", "ambiguous_six_hour_max@17:51"),
         GapRecord("KCAK", "asos", "2020-11-24", "missing_observations"),
         GapRecord("KCAK", "asos", "2020-11-25", "missing_observations"),
+    ]
+
+
+def test_fetch_hourly_ambiguous_only_report_without_tmpf_keeps_both_gaps() -> None:
+    # The day's only report is ambiguous and has no tmpf: the day still has
+    # zero non-missing readings, so it keeps its missing_observations gap next
+    # to the ambiguous one.
+    body = (
+        b"station,valid,tmpf,metar\n"
+        b"CAK,2020-11-23 17:51,M,KCAK 231751Z RMK AO2 10056 10083 20034\n"
+    )
+    result = _kcak_fetch(body)
+
+    (row,) = result.rows
+    assert row.tmpf is None
+    assert row.max_6h_f is None
+    assert result.gaps == [
+        GapRecord("KCAK", "asos", "2020-11-23", "ambiguous_six_hour_max@17:51"),
+        GapRecord("KCAK", "asos", "2020-11-23", "missing_observations"),
+    ]
+
+
+def test_fetch_hourly_ambiguous_gap_is_emitted_when_tmpf_is_missing() -> None:
+    # Another day has data, so the only gap is the ambiguous one, and it must
+    # not depend on the ambiguous report itself carrying a tmpf.
+    body = (
+        b"station,valid,tmpf,metar\n"
+        b"CAK,2020-11-23 05:51,40.00,M\n"
+        b"CAK,2020-11-23 17:51,M,KCAK 231751Z RMK AO2 10056 10083 20034\n"
+    )
+    result = _kcak_fetch(body)
+
+    assert [row.tmpf for row in result.rows] == [40.0, None]
+    assert result.gaps == [
+        GapRecord("KCAK", "asos", "2020-11-23", "ambiguous_six_hour_max@17:51")
+    ]
+
+
+def test_fetch_hourly_ambiguous_gap_expected_is_the_reports_own_date() -> None:
+    # The report is on the second day of the range, not its first.
+    body = (
+        b"station,valid,tmpf,metar\n"
+        b"CAK,2020-11-22 12:51,40.00,M\n"
+        b"CAK,2020-11-23 17:51,41.00,KCAK 231751Z RMK AO2 10056 10083 20034\n"
+    )
+    result = _kcak_fetch(body, start=date(2020, 11, 22))
+
+    assert result.gaps == [
+        GapRecord("KCAK", "asos", "2020-11-23", "ambiguous_six_hour_max@17:51")
+    ]
+
+
+def test_fetch_hourly_ambiguous_gap_expected_across_a_month_boundary() -> None:
+    # Two chunks (Oct 30-31, Nov 1-2); the report is in the second chunk and
+    # not on its first day, so neither chunk start nor range start is right.
+    october = (
+        b"station,valid,tmpf,metar\n"
+        b"CAK,2020-10-30 12:51,50.00,M\n"
+        b"CAK,2020-10-31 12:51,51.00,M\n"
+    )
+    november = (
+        b"station,valid,tmpf,metar\n"
+        b"CAK,2020-11-01 12:51,42.00,M\n"
+        b"CAK,2020-11-02 05:51,43.00,KCAK 020551Z RMK AO2 10056 10083 20034\n"
+    )
+    fetcher = FakeFetcher(
+        [
+            (lambda u: "sts=2020-10-30T" in u, HttpResponse(200, october)),
+            (lambda u: "sts=2020-11-01T" in u, HttpResponse(200, november)),
+        ]
+    )
+
+    result = fetch_hourly(KCAK, date(2020, 10, 30), date(2020, 11, 2), fetcher)
+
+    assert len(fetcher.requested_urls) == 2
+    assert result.gaps == [
+        GapRecord("KCAK", "asos", "2020-11-02", "ambiguous_six_hour_max@05:51")
     ]
 
 
