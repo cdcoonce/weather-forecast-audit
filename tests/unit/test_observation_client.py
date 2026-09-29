@@ -16,6 +16,7 @@ pytestmark = pytest.mark.unit
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "tests" / "fixtures" / "iem"
 STATION = load_registry()["KPHX"]
+SECOND_STATION = load_registry()["KSEA"]
 
 
 class FakeFetcher:
@@ -114,6 +115,22 @@ def test_fetch_hourly_names_station_and_time_when_metar_is_ambiguous() -> None:
     assert "expected at most 1" in str(excinfo.value)
     assert isinstance(excinfo.value.__cause__, ValueError)
     assert "station=" not in str(excinfo.value.__cause__)
+
+
+def test_fetch_hourly_ambiguous_metar_error_names_the_station_being_fetched() -> None:
+    # A second station, so the message cannot be satisfied by a hardcoded KPHX.
+    assert SECOND_STATION.icao != STATION.icao
+    body = (
+        b"station,valid,tmpf,metar\n"
+        b"SEA,2023-07-13 05:53,60.00,"
+        b"KSEA 130553Z RMK AO2 T01560106 10461 10462 20144\n"
+    )
+    fetcher = FakeFetcher([(lambda _u: True, HttpResponse(200, body))])
+
+    with pytest.raises(ValueError, match=r"\(station=KSEA, valid=") as excinfo:
+        fetch_hourly(SECOND_STATION, date(2023, 7, 13), date(2023, 7, 13), fetcher)
+
+    assert "KPHX" not in str(excinfo.value)
 
 
 def test_fetch_hourly_accepts_identically_duplicated_group() -> None:

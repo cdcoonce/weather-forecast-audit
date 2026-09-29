@@ -164,6 +164,24 @@ def test_identical_and_differing_mix_still_raises() -> None:
     assert "['10206', '10207']" in str(excinfo.value)
 
 
+def test_differing_max_groups_are_listed_in_first_seen_order() -> None:
+    # Deliberately non-ascending, so sorted or set order cannot pass.
+    metar = "KPHX 150551Z RMK AO2 T04110106 10344 10100 10250 10100 20344"
+    with pytest.raises(ValueError, match="expected at most 1") as excinfo:
+        parse_six_hour_groups(metar)
+    assert "3 6-hour max groups" in str(excinfo.value)
+    assert "['10344', '10100', '10250']" in str(excinfo.value)
+
+
+def test_differing_min_groups_are_listed_in_first_seen_order() -> None:
+    # Deliberately non-ascending, so sorted or set order cannot pass.
+    metar = "KPHX 150551Z RMK AO2 T04110106 10461 20344 20100 20250 20100"
+    with pytest.raises(ValueError, match="expected at most 1") as excinfo:
+        parse_six_hour_groups(metar)
+    assert "3 6-hour min groups" in str(excinfo.value)
+    assert "['20344', '20100', '20250']" in str(excinfo.value)
+
+
 # -- empty / missing --------------------------------------------------------
 
 
