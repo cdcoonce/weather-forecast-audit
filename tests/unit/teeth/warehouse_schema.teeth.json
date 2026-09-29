@@ -1,0 +1,74 @@
+{
+  "runner": "pytest",
+  "test_command": ["uv", "run", "pytest", "-q", "-p", "no:cacheprovider", "tests/unit/test_warehouse.py"],
+  "collect_command": ["uv", "run", "pytest", "--collect-only", "-q", "tests/unit/test_warehouse.py"],
+  "mutants": [
+    {
+      "label": "_replace-reverts-to-inferred-frame",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            frame = _frame_for(  # noqa: F841 (read by name via duckdb's scan)\n                conn, table, columns, records\n            )",
+      "replace": "            frame = pl.DataFrame(records)  # noqa: F841 (read by name via duckdb's scan)"
+    },
+    {
+      "label": "load_gaps-reverts-to-inferred-frame",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            frame = _frame_for(  # noqa: F841\n                conn, \"raw.ingest_gaps\", columns, records\n            )",
+      "replace": "            frame = pl.DataFrame(records)  # noqa: F841"
+    },
+    {
+      "label": "frame_for-strict-disabled",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "records is always a list of per-row dicts (orient=\"row\"), and for that input shape polars 1.44.2's DataFrame constructor ignores the `strict` flag entirely -- it goes through an append-based row builder, not the cast path `strict` documents (\"cast to that data type or, if casting is not possible, set to null\"). Verified empirically with strict=True vs strict=False side by side across 10 dtype/value combinations spanning every dtype _DUCKDB_TO_POLARS_DTYPE can produce: a bare string into Float64/Int64/Boolean/Datetime columns, an out-of-range int into Int32, a fractional float into Int32, a python int into a String column, a list into Float64, and an epoch int into Date -- every pair raised (or silently truncated) identically regardless of strict. `pl.DataFrame(records, schema=schema, strict=False)` therefore behaves byte-for-byte like the unmutated `pl.DataFrame(records, schema=schema)` for every record this warehouse ever builds, so test_frame_for_rejects_value_of_wrong_type cannot distinguish the two: the raise it asserts on comes from the row-builder rejecting an unappendable value, a behavior `strict` does not gate on this call shape. (Column-oriented input -- pl.DataFrame({\"x\": [\"sixty\"]}, schema=..., strict=False) -- does silently null instead of raising, confirming strict is live in general; it just never reaches that code path here.)",
+      "find": "    return pl.DataFrame(records, schema=schema)",
+      "replace": "    return pl.DataFrame(records, schema=schema, strict=False)"
+    },
+    {
+      "label": "frame_for-uses-inference-not-table-schema",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    return pl.DataFrame(records, schema=schema)",
+      "replace": "    return pl.DataFrame(records, infer_schema_length=None)"
+    },
+    {
+      "label": "missing-column-check-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        if column not in duckdb_types:\n            msg = f\"{table}.{column}: no such column\"\n            raise ValueError(msg)\n        data_type = duckdb_types[column]",
+      "replace": "        data_type = duckdb_types[column]"
+    },
+    {
+      "label": "unmapped-type-defaults-silently",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        polars_dtype = _DUCKDB_TO_POLARS_DTYPE.get(data_type)\n        if polars_dtype is None:\n            msg = f\"{table}.{column}: unmapped DuckDB type {data_type!r}\"\n            raise ValueError(msg)\n        schema[column] = polars_dtype",
+      "replace": "        polars_dtype = _DUCKDB_TO_POLARS_DTYPE.get(data_type, pl.Float64)\n        schema[column] = polars_dtype"
+    },
+    {
+      "label": "double-mapped-to-int64",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"DOUBLE\": pl.Float64,",
+      "replace": "    \"DOUBLE\": pl.Int64,"
+    },
+    {
+      "label": "schema-lookup-ignores-table_schema",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Every table _frame_for is ever called against lives in the `raw` schema (raw.asos_hourly, raw.resolved_windows, raw.ingest_gaps, and the scratch table the unmapped-type test creates are all `create table raw.x`), and the test database has no second schema defining a same-named table -- DuckDB's own `information_schema`/`pg_catalog`/`main` schemas don't declare tables named asos_hourly, resolved_windows, ingest_gaps, or scratch_x. Dropping the `table_schema = ?` predicate therefore returns the identical single-row-per-column result set in every test this suite runs. Verified empirically: the full suite stays green under this mutation.",
+      "find": "            \"select column_name, data_type from information_schema.columns \"\n            \"where table_schema = ? and table_name = ?\",\n            [table_schema, table_name],",
+      "replace": "            \"select column_name, data_type from information_schema.columns \"\n            \"where table_name = ?\",\n            [table_name],"
+    },
+    {
+      "label": "timestamp-mapped-to-nanosecond-unit",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"TIMESTAMP\": pl.Datetime(\"us\"),",
+      "replace": "    \"TIMESTAMP\": pl.Datetime(\"ns\"),"
+    }
+  ]
+}

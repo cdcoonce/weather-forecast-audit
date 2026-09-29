@@ -1,6 +1,6 @@
 """Raw warehouse DDL and idempotent loaders."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -538,3 +538,265 @@ def test_load_predictions_stamps_generated_at(
         "select generated_at from raw.model_predictions"
     ).fetchone()
     assert generated_at == (now,)
+
+
+# -- explicit-schema loader frames (issue #41) --------------------------------
+#
+# `pl.DataFrame(records)` infers each column's dtype from (by default) its
+# first 100 rows. A column that is whole-valued across that sample infers as
+# Int64/Null; a later row that doesn't fit that dtype either gets silently
+# truncated (Int64 <- float) or raises a `ComputeError` "could not append
+# value ... to the builder" (Null <- non-null), depending on the transition.
+# Both are reproduced here against the unmodified loaders before `_frame_for`
+# is introduced.
+
+
+def test_load_hourly_accepts_float_after_100_integral_readings(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """100 whole-degree tmpf readings as Python int must not poison the
+    101st, fractional reading's dtype (#41)."""
+    base = _utc("2023-07-14 00:00:00")
+    rows = [
+        HourlyObservation(
+            "KPHX", base + timedelta(hours=i), 62, max_6h_f=None, min_6h_f=None
+        )
+        for i in range(100)
+    ]
+    rows.append(
+        HourlyObservation(
+            "KPHX", base + timedelta(hours=100), 62.96, max_6h_f=None, min_6h_f=None
+        )
+    )
+
+    warehouse.load_hourly(conn, "KPHX", date(2023, 7, 14), date(2023, 7, 19), rows)
+
+    assert conn.execute("select count(*) from raw.asos_hourly").fetchone() == (101,)
+    last_tmpf = conn.execute(
+        "select tmpf from raw.asos_hourly order by valid_utc desc limit 1"
+    ).fetchone()
+    assert last_tmpf == (62.96,)
+
+
+def _resolved_window_row(
+    i: int, observed_f: float, base: datetime
+) -> ResolvedWindowRow:
+    runtime = base + timedelta(hours=i)
+    return ResolvedWindowRow(
+        station="KPHX",
+        runtime_utc=runtime,
+        ftime_utc=runtime + timedelta(hours=12),
+        variable="max",
+        target_date=date(2023, 7, 15),
+        lead_day=1,
+        window_start_utc=runtime,
+        window_end_utc=runtime + timedelta(hours=6),
+        observed_f=observed_f,
+        n_obs=1,
+        hours_covered=1,
+        hours_expected=1,
+        scorable=True,
+        extreme_source="metar_6h",
+        periods_found=1,
+        hourly_observed_f=observed_f,
+    )
+
+
+def test_load_resolved_windows_accepts_float_after_100_integral_readings(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """Same shape as the tmpf case, on `observed_f` (#41)."""
+    base = _utc("2023-07-14 00:00:00")
+    rows = [_resolved_window_row(i, 100, base) for i in range(100)]
+    rows.append(_resolved_window_row(100, 100.5, base))
+
+    warehouse.load_resolved_windows(
+        conn, "KPHX", date(2023, 7, 14), date(2023, 7, 19), rows
+    )
+
+    count = conn.execute("select count(*) from raw.resolved_windows").fetchone()
+    assert count == (101,)
+    last_observed_f = conn.execute(
+        "select observed_f from raw.resolved_windows order by runtime_utc desc limit 1"
+    ).fetchone()
+    assert last_observed_f == (100.5,)
+
+
+def test_load_gaps_accepts_new_first_seen_after_many_null_first_seen(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """A pre-#10 database has 100+ gaps on file with a NULL `first_seen`
+    (predating that column). Re-running `load_gaps` over that slice plus one
+    brand-new gap must not choke on the None-inferred-Null column meeting a
+    real datetime for the new gap's `first_seen` (#41)."""
+    start = date(2023, 7, 1)
+    existing_gaps = [
+        GapRecord(
+            "KPHX",
+            "nbs",
+            f"{(start + timedelta(days=i)).isoformat()}T00:00Z",
+            "missing_run",
+        )
+        for i in range(100)
+    ]
+    new_date = start + timedelta(days=100)
+    new_gap = GapRecord("KPHX", "nbs", f"{new_date.isoformat()}T00:00Z", "missing_run")
+    end = start + timedelta(days=110)
+
+    conn.executemany(
+        "insert into raw.ingest_gaps (station, source, expected, reason, first_seen) "
+        "values (?, ?, ?, ?, NULL)",
+        [(g.station, g.source, g.expected, g.reason) for g in existing_gaps],
+    )
+    now = _naive_now("2024-01-01 00:00:00")
+
+    warehouse.load_gaps(
+        conn, "KPHX", "nbs", start, end, [*existing_gaps, new_gap], now=now
+    )
+
+    assert conn.execute("select count(*) from raw.ingest_gaps").fetchone() == (101,)
+    preserved_null = conn.execute(
+        "select first_seen from raw.ingest_gaps where expected = ?",
+        [existing_gaps[0].expected],
+    ).fetchone()
+    assert preserved_null == (None,)
+    new_first_seen = conn.execute(
+        "select first_seen from raw.ingest_gaps where expected = ?",
+        [new_gap.expected],
+    ).fetchone()
+    assert new_first_seen == (now,)
+
+
+def test_frame_for_yields_same_schema_for_integral_and_mixed_batches(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """`_frame_for` reads its schema from the table, not from the sampled
+    records, so an all-integral batch and a mixed int/float batch for the
+    same columns must produce identical dtypes -- the table's own dtypes."""
+    columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
+    all_int_records = [
+        {
+            "station": "KPHX",
+            "valid_utc": _utc("2023-07-14 00:00:00").replace(tzinfo=None),
+            "tmpf": 62,
+            "max_6h_f": 62,
+            "min_6h_f": 62,
+        }
+        for _ in range(3)
+    ]
+    mixed_records = [
+        {
+            "station": "KPHX",
+            "valid_utc": _utc("2023-07-14 00:00:00").replace(tzinfo=None),
+            "tmpf": 62,
+            "max_6h_f": 62.96,
+            "min_6h_f": None,
+        },
+        {
+            "station": "KPHX",
+            "valid_utc": _utc("2023-07-14 01:00:00").replace(tzinfo=None),
+            "tmpf": 62.96,
+            "max_6h_f": None,
+            "min_6h_f": 62,
+        },
+    ]
+
+    all_int_frame = warehouse._frame_for(
+        conn, "raw.asos_hourly", columns, all_int_records
+    )
+    mixed_frame = warehouse._frame_for(conn, "raw.asos_hourly", columns, mixed_records)
+
+    expected_schema = {
+        "station": pl.String,
+        "valid_utc": pl.Datetime("us"),
+        "tmpf": pl.Float64,
+        "max_6h_f": pl.Float64,
+        "min_6h_f": pl.Float64,
+    }
+    assert dict(all_int_frame.schema) == expected_schema
+    assert dict(mixed_frame.schema) == expected_schema
+
+
+def test_frame_for_raises_for_column_absent_from_table(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    columns = ["station", "valid_utc", "tmpf", "not_a_real_column"]
+    records = [
+        {
+            "station": "KPHX",
+            "valid_utc": _utc("2023-07-14 00:00:00").replace(tzinfo=None),
+            "tmpf": 62.0,
+            "not_a_real_column": 1,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="not_a_real_column"):
+        warehouse._frame_for(conn, "raw.asos_hourly", columns, records)
+
+
+def test_frame_for_raises_for_unmapped_duckdb_type(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    conn.execute("create table raw.scratch_x (d decimal(5, 2))")
+    records = [{"d": 1.5}]
+
+    with pytest.raises(ValueError, match="d"):
+        warehouse._frame_for(conn, "raw.scratch_x", ["d"], records)
+
+
+def test_load_hourly_accepts_six_hour_group_after_100_rows_without_one(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """Production shape behind the 2026-09-27 halt: `tmpf` is always a
+    Python float (parsers never emit int), but `max_6h_f` is `None` on 100+
+    consecutive rows with no METAR 6-hour group, then a real float once one
+    arrives. That Null-led column, not an Int64-led one, is what actually
+    broke `load_hourly` (#41)."""
+    base = _utc("2023-07-14 00:00:00")
+    rows = [
+        HourlyObservation(
+            "KPHX", base + timedelta(hours=i), 60.1, max_6h_f=None, min_6h_f=None
+        )
+        for i in range(100)
+    ]
+    rows.append(
+        HourlyObservation(
+            "KPHX",
+            base + timedelta(hours=100),
+            60.1,
+            max_6h_f=62.96,
+            min_6h_f=None,
+        )
+    )
+
+    warehouse.load_hourly(conn, "KPHX", date(2023, 7, 14), date(2023, 7, 19), rows)
+
+    assert conn.execute("select count(*) from raw.asos_hourly").fetchone() == (101,)
+    last_max_6h_f = conn.execute(
+        "select max_6h_f from raw.asos_hourly order by valid_utc desc limit 1"
+    ).fetchone()
+    assert last_max_6h_f == (62.96,)
+
+
+def test_frame_for_rejects_value_of_wrong_type(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """A value that doesn't fit the table's declared dtype must raise.
+
+    This does not guard `strict=False`: for row-oriented dict input polars
+    1.44 raises either way (teeth spec `frame_for-strict-disabled`)."""
+    columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
+    records = [
+        {
+            "station": "KPHX",
+            "valid_utc": _utc("2023-07-14 00:00:00").replace(tzinfo=None),
+            "tmpf": "sixty",
+            "max_6h_f": None,
+            "min_6h_f": None,
+        }
+    ]
+
+    with pytest.raises(
+        pl.exceptions.ComputeError, match=r'could not append value: "sixty"'
+    ):
+        warehouse._frame_for(conn, "raw.asos_hourly", columns, records)

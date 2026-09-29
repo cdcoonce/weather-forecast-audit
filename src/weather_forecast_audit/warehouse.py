@@ -151,6 +151,60 @@ def _naive(value: datetime) -> datetime:
     return value.replace(tzinfo=None)
 
 
+# DuckDB `information_schema.columns.data_type` -> polars dtype. Only the
+# types this warehouse's DDL actually uses are mapped; anything else is a
+# schema surprise `_frame_for` should refuse rather than guess about.
+_DUCKDB_TO_POLARS_DTYPE: dict[str, pl.DataType] = {
+    "VARCHAR": pl.String,
+    "DOUBLE": pl.Float64,
+    "INTEGER": pl.Int32,
+    "BIGINT": pl.Int64,
+    "BOOLEAN": pl.Boolean,
+    "DATE": pl.Date,
+    "TIMESTAMP": pl.Datetime("us"),
+}
+
+
+def _frame_for(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    columns: list[str],
+    records: list[dict[str, object]],
+) -> pl.DataFrame:
+    """Build a loader's insert frame with `table`'s own column types.
+
+    `pl.DataFrame(records)` alone infers each column's dtype from a sample
+    of the rows, not from the destination table; a column that is
+    whole-valued across that sample can infer as an integer (or, once every
+    sampled value is `None`, as `Null`), and a later row that doesn't fit --
+    a fractional reading, a real timestamp -- then either gets silently
+    truncated or raises a `ComputeError` while appending (issue #41).
+    Reading the schema from `table` at call time instead of a second,
+    hand-kept constant means the `alter table ... add column` upgrades in
+    `init_db` stay covered automatically, with no second place to update.
+    """
+    table_schema, table_name = table.split(".", 1)
+    duckdb_types = dict(
+        conn.execute(
+            "select column_name, data_type from information_schema.columns "
+            "where table_schema = ? and table_name = ?",
+            [table_schema, table_name],
+        ).fetchall()
+    )
+    schema: dict[str, pl.DataType] = {}
+    for column in columns:
+        if column not in duckdb_types:
+            msg = f"{table}.{column}: no such column"
+            raise ValueError(msg)
+        data_type = duckdb_types[column]
+        polars_dtype = _DUCKDB_TO_POLARS_DTYPE.get(data_type)
+        if polars_dtype is None:
+            msg = f"{table}.{column}: unmapped DuckDB type {data_type!r}"
+            raise ValueError(msg)
+        schema[column] = polars_dtype
+    return pl.DataFrame(records, schema=schema)
+
+
 def _replace(
     conn: duckdb.DuckDBPyConnection,
     table: str,
@@ -169,7 +223,9 @@ def _replace(
             [station, start, end],
         )
         if records:
-            frame = pl.DataFrame(records)  # noqa: F841 (read by name via duckdb's scan)
+            frame = _frame_for(  # noqa: F841 (read by name via duckdb's scan)
+                conn, table, columns, records
+            )
             column_list = ", ".join(columns)
             conn.execute(
                 f"insert into {table} ({column_list}) select {column_list} from frame"
@@ -308,7 +364,10 @@ def load_gaps(
                 }
                 for gap in gaps
             ]
-            frame = pl.DataFrame(records)  # noqa: F841
+            columns = ["station", "source", "expected", "reason", "first_seen"]
+            frame = _frame_for(  # noqa: F841
+                conn, "raw.ingest_gaps", columns, records
+            )
             conn.execute(
                 "insert into raw.ingest_gaps "
                 "(station, source, expected, reason, first_seen) "
