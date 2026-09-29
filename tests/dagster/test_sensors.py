@@ -418,3 +418,52 @@ def test_unit_runtime_budget_constants_match_the_measurements() -> None:
     assert STALLS_TOLERATED == 2
     assert RUNTIME_BUDGET_FRACTION == 0.95
     assert MAX_RUNTIME_SECONDS == 600
+
+
+# -- the sensor plans with BACKFILL_CHUNK_SIZE -----------------------------
+# Every other sensor test uses two stations, which is one chunk under any
+# chunk size, so they cannot see which size the sensor plans with. With more
+# stations than a chunk holds, unit membership identifies the size in use.
+
+
+def test_sensor_chunks_the_stations_by_backfill_chunk_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extra = 5
+    stations = [f"K{i:03d}" for i in range(BACKFILL_CHUNK_SIZE + extra)]
+    # Reversed on purpose: chunk membership is over the SORTED list.
+    monkeypatch.setattr(
+        sensors_module, "_all_station_icaos", lambda: list(reversed(stations))
+    )
+    _set_now(monkeypatch, "2020-09-30T12:00:00")  # plan is the single day 09-29
+
+    with DagsterInstance.ephemeral() as instance:
+        context = build_sensor_context(instance=instance, cursor=None)
+        result = national_backfill_sensor(context)
+
+        [first] = result.run_requests
+        assert first.tags[UNIT_TAG] == "2020-09-c00"
+        assert (
+            first.run_config["resources"]["stations"]["config"]["only"]
+            == (stations[:BACKFILL_CHUNK_SIZE])
+        )
+
+        # Unit 0 succeeds: the next evaluation moves to the second chunk of
+        # the same month, holding exactly the leftover stations.
+        _record_run(
+            instance,
+            tags={UNIT_TAG: "2020-09-c00", ATTEMPT_TAG: "1", GENERATION_TAG: "0"},
+            status=DagsterRunStatus.SUCCESS,
+        )
+        context = build_sensor_context(instance=instance, cursor=context.cursor)
+        result = national_backfill_sensor(context)
+
+        [second] = result.run_requests
+        assert second.run_key == "2020-09-c01-a1-g0"
+        assert second.tags[UNIT_TAG] == "2020-09-c01"
+        assert second.tags[ASSET_PARTITION_RANGE_START_TAG] == "2020-09-29"
+        assert (
+            second.run_config["resources"]["stations"]["config"]["only"]
+            == (stations[BACKFILL_CHUNK_SIZE:])
+        )
+        assert _cursor_state(context.cursor)["state"]["next_index"] == 1

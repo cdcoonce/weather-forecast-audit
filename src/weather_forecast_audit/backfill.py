@@ -123,10 +123,11 @@ def remap_plan_index(
     """Convert a `next_index` from one chunking of the plan to another.
 
     The plan is month-major, chunk-minor, with `ceil(n_stations / chunk_size)`
-    chunks per month. `old_index` is split into its month and its chunk within
-    that month; the chunk implies `min(c * old_chunk_size, n_stations)`
-    stations already done that month, and the new chunk is that count
-    floor-divided by `new_chunk_size`.
+    chunks per month. `old_index` is split into its month and its chunk `c`
+    within that month; the chunk implies `c * old_chunk_size` stations already
+    done that month, and the new chunk is that count floor-divided by
+    `new_chunk_size`. Because `c < chunks_per_month_old`, that count always
+    stays below `n_stations`, so it needs no cap.
 
     The division is a FLOOR on purpose: when the old boundary falls inside a
     new chunk, the new chunk starts at or before the first undone station, so
@@ -156,7 +157,7 @@ def remap_plan_index(
     chunks_per_month_old = -(-n_stations // old_chunk_size)
     chunks_per_month_new = -(-n_stations // new_chunk_size)
     month, old_chunk = divmod(old_index, chunks_per_month_old)
-    stations_done = min(old_chunk * old_chunk_size, n_stations)
+    stations_done = old_chunk * old_chunk_size
     return month * chunks_per_month_new + stations_done // new_chunk_size
 
 

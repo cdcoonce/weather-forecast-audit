@@ -681,3 +681,55 @@ def test_remap_with_unchanged_chunk_size_is_the_identity(old_index: int) -> None
 def test_remap_rejects_bad_inputs(kwargs: dict[str, int], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         remap_plan_index(**kwargs)
+
+
+# Each parameter's lowest legal value (1) is accepted, with literal outputs.
+
+
+def test_remap_accepts_an_old_chunk_size_of_one() -> None:
+    # 573 chunks per month under the old plan: index 1150 is month 2, chunk
+    # 4 (4 stations done) -> new chunk 4 // 20 = 0 of 29 -> 2 * 29 + 0.
+    assert (
+        remap_plan_index(1150, old_chunk_size=1, new_chunk_size=20, n_stations=N_CONUS)
+        == 58
+    )
+    # Month 2, chunk 100 (100 stations done) -> 100 // 20 = 5 -> 58 + 5.
+    assert (
+        remap_plan_index(1246, old_chunk_size=1, new_chunk_size=20, n_stations=N_CONUS)
+        == 63
+    )
+
+
+def test_remap_accepts_a_new_chunk_size_of_one() -> None:
+    # Month 1, chunk 1 of 20: 30 stations done -> new chunk 30 of 573 -> 573 + 30.
+    assert (
+        remap_plan_index(21, old_chunk_size=30, new_chunk_size=1, n_stations=N_CONUS)
+        == 603
+    )
+    # Month 0, chunk 19: 570 stations done -> new chunk 570.
+    assert (
+        remap_plan_index(19, old_chunk_size=30, new_chunk_size=1, n_stations=N_CONUS)
+        == 570
+    )
+
+
+def test_remap_accepts_a_single_station_plan() -> None:
+    # One chunk per month at any size, so the index is the month, unchanged.
+    for old_index in (0, 1, 7):
+        assert (
+            remap_plan_index(
+                old_index, old_chunk_size=30, new_chunk_size=20, n_stations=1
+            )
+            == old_index
+        )
+    assert remap_plan_index(3, old_chunk_size=1, new_chunk_size=1, n_stations=1) == 3
+
+
+def test_remap_with_one_station_chunks_on_both_sides_is_the_identity() -> None:
+    for old_index in (0, 1, 572, 573, 1000):
+        assert (
+            remap_plan_index(
+                old_index, old_chunk_size=1, new_chunk_size=1, n_stations=N_CONUS
+            )
+            == old_index
+        )

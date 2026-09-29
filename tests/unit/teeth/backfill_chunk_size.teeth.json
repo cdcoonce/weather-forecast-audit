@@ -45,17 +45,8 @@
       "label": "remap-stations-done-uses-new-chunk-size",
       "file": "../../../src/weather_forecast_audit/backfill.py",
       "oracle": "real",
-      "find": "stations_done = min(old_chunk * old_chunk_size, n_stations)",
-      "replace": "stations_done = min(old_chunk * new_chunk_size, n_stations)"
-    },
-    {
-      "label": "remap-min-cap-at-n-stations-removed",
-      "file": "../../../src/weather_forecast_audit/backfill.py",
-      "oracle": "real",
-      "expect": "survived",
-      "why": "Control (equivalent mutant). divmod(old_index, chunks_per_month_old) bounds old_chunk to 0..chunks_per_month_old-1, and (chunks_per_month_old-1)*old_chunk_size < n_stations by the definition of the ceiling, so old_chunk*old_chunk_size < n_stations always and min(..., n_stations) never binds. Verified exhaustively: 6,980,092 (n_stations 1..79, old_chunk_size 1..89, new_chunk_size 1..89, old_index 0..4*chunks_per_month_old) cases, 0 where the cap changes the value. Scope: holds for every old_index >= 0; the cap is dead defensive code, and the docstring's 'min(c * old_chunk_size, n_stations)' overstates it.",
-      "find": "stations_done = min(old_chunk * old_chunk_size, n_stations)",
-      "replace": "stations_done = old_chunk * old_chunk_size"
+      "find": "stations_done = old_chunk * old_chunk_size",
+      "replace": "stations_done = old_chunk * new_chunk_size"
     },
     {
       "label": "remap-old-chunk-size-check-removed",
@@ -147,8 +138,6 @@
       "label": "remap-old-chunk-size-check-off-by-one-rejects-1",
       "file": "../../../src/weather_forecast_audit/backfill.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN UNPINNED GAP, NOT an equivalent mutant: the check now also rejects the value 1, which is a legal input (one-station chunks; a one-station plan). test_remap_rejects_bad_inputs only feeds 0 (and -1 for old_index) and no remap test uses a size or n_stations of 1, so the lower boundary of the valid range is unpinned. Verified: survives all tests.",
       "find": "    if old_chunk_size < 1:",
       "replace": "    if old_chunk_size < 2:"
     },
@@ -156,8 +145,6 @@
       "label": "remap-new-chunk-size-check-off-by-one-rejects-1",
       "file": "../../../src/weather_forecast_audit/backfill.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN UNPINNED GAP, NOT an equivalent mutant: the check now also rejects the value 1, which is a legal input (one-station chunks; a one-station plan). test_remap_rejects_bad_inputs only feeds 0 (and -1 for old_index) and no remap test uses a size or n_stations of 1, so the lower boundary of the valid range is unpinned. Verified: survives all tests.",
       "find": "    if new_chunk_size < 1:",
       "replace": "    if new_chunk_size < 2:"
     },
@@ -165,8 +152,6 @@
       "label": "remap-n-stations-check-off-by-one-rejects-1",
       "file": "../../../src/weather_forecast_audit/backfill.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN UNPINNED GAP, NOT an equivalent mutant: the check now also rejects the value 1, which is a legal input (one-station chunks; a one-station plan). test_remap_rejects_bad_inputs only feeds 0 (and -1 for old_index) and no remap test uses a size or n_stations of 1, so the lower boundary of the valid range is unpinned. Verified: survives all tests.",
       "find": "    if n_stations < 1:",
       "replace": "    if n_stations < 2:"
     },
@@ -181,8 +166,8 @@
       "label": "remap-stations-done-uses-index-not-chunk",
       "file": "../../../src/weather_forecast_audit/backfill.py",
       "oracle": "real",
-      "find": "stations_done = min(old_chunk * old_chunk_size, n_stations)",
-      "replace": "stations_done = min(old_index * old_chunk_size, n_stations)"
+      "find": "stations_done = old_chunk * old_chunk_size",
+      "replace": "stations_done = old_index * old_chunk_size"
     },
     {
       "label": "remap-chunks-per-month-new-floor-not-ceil",
@@ -223,10 +208,22 @@
       "label": "sensor-plans-with-hardcoded-30-not-BACKFILL_CHUNK_SIZE",
       "file": "../../../src/weather_forecast_audit/sensors.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN UNPINNED GAP, NOT an equivalent mutant: sensors.py plans with a literal 30 instead of BACKFILL_CHUNK_SIZE. The runtime-budget guard checks the constant, but every sensor test uses a 2-station list that yields one chunk per month under any chunk size >= 2, so nothing asserts that the sensor actually plans with BACKFILL_CHUNK_SIZE. The guard would stay green while the deployed plan used 30 stations per unit. Verified: survives all tests.",
       "find": "_all_station_icaos(), BACKFILL_CHUNK_SIZE",
       "replace": "_all_station_icaos(), 30"
+    },
+    {
+      "label": "sensor-plans-with-chunk-size-15",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "_all_station_icaos(), BACKFILL_CHUNK_SIZE",
+      "replace": "_all_station_icaos(), 15"
+    },
+    {
+      "label": "sensor-plans-with-chunk-size-1000-one-chunk-per-month",
+      "file": "../../../src/weather_forecast_audit/sensors.py",
+      "oracle": "real",
+      "find": "_all_station_icaos(), BACKFILL_CHUNK_SIZE",
+      "replace": "_all_station_icaos(), 1000"
     }
   ]
 }
