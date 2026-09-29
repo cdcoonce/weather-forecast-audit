@@ -20,6 +20,7 @@ from weather_forecast_audit.backfill import (
     decide,
     in_blackout,
     plan_units,
+    remap_plan_index,
 )
 
 pytestmark = pytest.mark.unit
@@ -560,3 +561,123 @@ def test_decide_carries_a_bumped_generation_through_to_the_next_submit() -> None
         1,
         _state(next_index=1, attempt=1, generation=1, submitted_at=NOW.isoformat()),
     )
+
+
+# -- remap_plan_index ----------------------------------------------------
+
+# The national plan at the time the chunk size shrank from 30 to 20.
+N_CONUS = 573
+
+
+@pytest.mark.parametrize(
+    ("old_index", "expected"),
+    [
+        (0, 0),  # first unit of the first month
+        (19, 28),  # last Sept chunk: 570 stations done -> 570 // 20 = 28
+        (20, 29),  # Oct c0: month 1 starts at 1 * 29
+        (36, 53),  # Oct c16: 480 done -> chunk 24 -> 29 + 24
+        (37, 54),  # Oct c17: 510 done -> floor(25.5) = 25, redoes 10 stations
+        (40, 58),  # Nov c0 (third month): 2 * 29 + 0
+        (45, 65),  # Nov c5: 150 done -> chunk 7 -> 58 + 7 (month boundary held)
+        (59, 86),  # Nov c19: 570 done -> chunk 28 -> 58 + 28
+    ],
+)
+def test_remap_plan_index_shrinking_30_to_20(old_index: int, expected: int) -> None:
+    assert (
+        remap_plan_index(
+            old_index, old_chunk_size=30, new_chunk_size=20, n_stations=N_CONUS
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("old_size", "new_size", "n_stations"),
+    [(30, 20, 573), (20, 30, 573), (30, 30, 573), (7, 3, 20), (3, 7, 20), (5, 5, 5)],
+)
+def test_remap_never_skips_an_undone_station(
+    old_size: int, new_size: int, n_stations: int
+) -> None:
+    stations = [f"K{i:04d}" for i in range(n_stations)]
+    start, end = date(2020, 9, 1), date(2021, 2, 28)  # six months
+    old_plan = plan_units(start, end, stations, old_size)
+    new_plan = plan_units(start, end, stations, new_size)
+
+    for unit in old_plan:
+        remapped = remap_plan_index(
+            unit.index,
+            old_chunk_size=old_size,
+            new_chunk_size=new_size,
+            n_stations=n_stations,
+        )
+        new_unit = new_plan[remapped]
+        first_new = stations.index(new_unit.stations[0])
+        done_under_old = stations.index(unit.stations[0])
+        assert new_unit.start == unit.start
+        assert first_new <= done_under_old
+        # Floor, not ceil: at most new_size - 1 done stations are redone.
+        assert done_under_old - first_new < new_size
+
+    # Everything done under the old plan is everything done under the new.
+    assert remap_plan_index(
+        len(old_plan),
+        old_chunk_size=old_size,
+        new_chunk_size=new_size,
+        n_stations=n_stations,
+    ) == len(new_plan)
+
+
+@pytest.mark.parametrize("old_index", range(0, 120))
+def test_remap_with_unchanged_chunk_size_is_the_identity(old_index: int) -> None:
+    assert (
+        remap_plan_index(
+            old_index, old_chunk_size=30, new_chunk_size=30, n_stations=N_CONUS
+        )
+        == old_index
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        (
+            {
+                "old_index": 0,
+                "old_chunk_size": 0,
+                "new_chunk_size": 20,
+                "n_stations": 5,
+            },
+            "old_chunk_size must be >= 1",
+        ),
+        (
+            {
+                "old_index": 0,
+                "old_chunk_size": 30,
+                "new_chunk_size": 0,
+                "n_stations": 5,
+            },
+            "new_chunk_size must be >= 1",
+        ),
+        (
+            {
+                "old_index": 0,
+                "old_chunk_size": 30,
+                "new_chunk_size": 20,
+                "n_stations": 0,
+            },
+            "n_stations must be >= 1",
+        ),
+        (
+            {
+                "old_index": -1,
+                "old_chunk_size": 30,
+                "new_chunk_size": 20,
+                "n_stations": 5,
+            },
+            "old_index must be >= 0",
+        ),
+    ],
+)
+def test_remap_rejects_bad_inputs(kwargs: dict[str, int], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        remap_plan_index(**kwargs)

@@ -113,6 +113,53 @@ def plan_units(
     return units
 
 
+def remap_plan_index(
+    old_index: int,
+    *,
+    old_chunk_size: int,
+    new_chunk_size: int,
+    n_stations: int,
+) -> int:
+    """Convert a `next_index` from one chunking of the plan to another.
+
+    The plan is month-major, chunk-minor, with `ceil(n_stations / chunk_size)`
+    chunks per month. `old_index` is split into its month and its chunk within
+    that month; the chunk implies `min(c * old_chunk_size, n_stations)`
+    stations already done that month, and the new chunk is that count
+    floor-divided by `new_chunk_size`.
+
+    The division is a FLOOR on purpose: when the old boundary falls inside a
+    new chunk, the new chunk starts at or before the first undone station, so
+    up to `new_chunk_size - 1` already-done stations are redone. That is safe
+    because the loaders are idempotent replace-by-station-and-date. Rounding
+    up would instead skip undone stations, which is never acceptable.
+
+    Use this together with a `generation` bump on the cursor: unit ids embed
+    the chunk index (`2020-10-c15` names different stations after the chunk
+    size changes), and Dagster's sensor daemon silently drops a reused
+    run_key, so an unchanged generation could collide with a run submitted
+    under the old chunking.
+    """
+    if old_chunk_size < 1:
+        msg = f"old_chunk_size must be >= 1, got {old_chunk_size}"
+        raise ValueError(msg)
+    if new_chunk_size < 1:
+        msg = f"new_chunk_size must be >= 1, got {new_chunk_size}"
+        raise ValueError(msg)
+    if n_stations < 1:
+        msg = f"n_stations must be >= 1, got {n_stations}"
+        raise ValueError(msg)
+    if old_index < 0:
+        msg = f"old_index must be >= 0, got {old_index}"
+        raise ValueError(msg)
+
+    chunks_per_month_old = -(-n_stations // old_chunk_size)
+    chunks_per_month_new = -(-n_stations // new_chunk_size)
+    month, old_chunk = divmod(old_index, chunks_per_month_old)
+    stations_done = min(old_chunk * old_chunk_size, n_stations)
+    return month * chunks_per_month_new + stations_done // new_chunk_size
+
+
 def in_blackout(now_utc: datetime, horizon_s: int) -> bool:
     """True if `[now_utc, now_utc + horizon_s]` intersects a blackout window
     on any local (America/Phoenix) date it touches.
