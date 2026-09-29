@@ -13,7 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from weather_forecast_audit.iem.metar import SixHourGroups, parse_six_hour_groups
+from weather_forecast_audit.iem.metar import (
+    SixHourGroups,
+    parse_six_hour_groups,
+    parse_six_hour_groups_tolerant,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -196,3 +200,59 @@ def test_missing_marker_metar_gives_none() -> None:
 def test_no_rmk_section_gives_none() -> None:
     metar = "KPHX 150051Z 30006G15KT 10SM FEW120 42/14 A2976"
     assert parse_six_hour_groups(metar) == SixHourGroups(max_c=None, min_c=None)
+
+
+# -- tolerant parser: ambiguity is reported, never raised -------------------
+
+
+def test_tolerant_differing_max_groups_null_max_and_report_ambiguous_max() -> None:
+    metar = "KCAK 231751Z RMK AO2 T04110106 10056 10083 20034"
+    result = parse_six_hour_groups_tolerant(metar)
+    assert result.groups.max_c is None
+    assert result.groups.min_c == 3.4
+    assert result.ambiguous == ("max",)
+
+
+def test_tolerant_differing_min_groups_null_min_and_report_ambiguous_min() -> None:
+    metar = "KCAK 231751Z RMK AO2 T04110106 10056 20034 20012"
+    result = parse_six_hour_groups_tolerant(metar)
+    assert result.groups.max_c == 5.6
+    assert result.groups.min_c is None
+    assert result.ambiguous == ("min",)
+
+
+def test_tolerant_both_kinds_differing_reports_max_then_min() -> None:
+    metar = "KCAK 231751Z RMK AO2 10056 10083 20034 20012"
+    result = parse_six_hour_groups_tolerant(metar)
+    assert result.groups == SixHourGroups(max_c=None, min_c=None)
+    assert result.ambiguous == ("max", "min")
+
+
+def test_tolerant_identical_duplicates_collapse_and_are_not_ambiguous() -> None:
+    metar = "KPHX 150551Z RMK AO2 T04110106 10206 10206 20344 20344"
+    result = parse_six_hour_groups_tolerant(metar)
+    assert result.groups == SixHourGroups(max_c=20.6, min_c=34.4)
+    assert result.ambiguous == ()
+
+
+@pytest.mark.parametrize("metar", ["", "M", "KPHX 150051Z 42/14 A2976", "KPHX RMK AO2"])
+def test_tolerant_no_groups_gives_none_and_not_ambiguous(metar: str) -> None:
+    result = parse_six_hour_groups_tolerant(metar)
+    assert result.groups == SixHourGroups(max_c=None, min_c=None)
+    assert result.ambiguous == ()
+
+
+def test_tolerant_ambiguity_does_not_depend_on_token_order() -> None:
+    # Non-ascending, with an interleaved repeat: still ambiguous either way.
+    for tokens in ("10344 10100 10250 10100", "10100 10250 10344", "10083 10056"):
+        result = parse_six_hour_groups_tolerant(f"KPHX RMK AO2 {tokens} 20344")
+        assert result.groups.max_c is None
+        assert result.groups.min_c == 34.4
+        assert result.ambiguous == ("max",)
+
+
+def test_tolerant_clean_single_groups_match_the_strict_parser() -> None:
+    metar = METARS["2023-07-15 23:51"]
+    result = parse_six_hour_groups_tolerant(metar)
+    assert result.groups == parse_six_hour_groups(metar)
+    assert result.ambiguous == ()
