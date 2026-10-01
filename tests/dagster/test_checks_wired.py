@@ -134,3 +134,27 @@ def test_gap_rate_check_passes_when_no_stations_have_a_gap(tmp_path: Path) -> No
     passed, severity = evaluations["guidance_gap_rate"]
     assert passed is True
     assert severity == "WARN"
+
+
+def test_gap_rate_counts_ambiguous_gap_once_per_station_under_warn() -> None:
+    # Characterization: the check counts stations with any gap in the window,
+    # so an ambiguous 6-hour group marks its station once (however many
+    # gaps it has) and a lone one among 40 stations does not trip WARN.
+    from datetime import date
+
+    from weather_forecast_audit.assets import _gap_rate_check_result
+    from weather_forecast_audit.gaps import GapRecord
+
+    day = date(2020, 11, 23)
+    gaps_by_station = {f"K{i:03d}": [] for i in range(39)}
+    gaps_by_station["KCAK"] = [
+        GapRecord("KCAK", "asos", "2020-11-23", "ambiguous_six_hour_max@05:51"),
+        GapRecord("KCAK", "asos", "2020-11-23", "ambiguous_six_hour_max@17:51"),
+        GapRecord("KCAK", "asos", "2020-11-23", "missing_observations"),
+    ]
+
+    result = _gap_rate_check_result("asos_gap_rate", gaps_by_station, day, day)
+
+    assert result.passed is True
+    assert result.metadata["stations_with_gap"].value == 1
+    assert result.metadata["stations_total"].value == 40
