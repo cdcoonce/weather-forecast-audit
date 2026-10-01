@@ -1,0 +1,203 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_http_fetcher.py",
+    "tests/unit/test_observation_client.py",
+    "tests/unit/test_guidance_client.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_http_fetcher.py",
+    "tests/unit/test_observation_client.py",
+    "tests/unit/test_guidance_client.py"
+  ],
+  "mutants": [
+    {
+      "label": "1 new clause removed entirely",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n                # Raised while reading the body (IncompleteRead, connection\n                # resets, TLS errors) or by a dropped connection\n                # (RemoteDisconnected). Named by class, not str(exc): the text\n                # carries varying byte counts and the reason keys the\n                # ingest-gaps ledger. Programming errors are not caught.\n                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n",
+      "replace": ""
+    },
+    {
+      "label": "2 new clause catches only HTTPException (OSError dropped)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except http.client.HTTPException as exc:\n"
+    },
+    {
+      "label": "3 new clause catches only OSError (HTTPException dropped)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except OSError as exc:\n"
+    },
+    {
+      "label": "4 reason uses str(exc) not class name",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "reason=f\"http_error:{type(exc).__name__}\"",
+      "replace": "reason=f\"http_error:{exc}\""
+    },
+    {
+      "label": "5 reason is a constant http_error:read",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "reason=f\"http_error:{type(exc).__name__}\"",
+      "replace": "reason=\"http_error:read\""
+    },
+    {
+      "label": "6 no re-raise at max_retries for the new clause",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n",
+      "replace": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n"
+    },
+    {
+      "label": "7 backoff sleep skipped for the new clause (continue)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n            self._sleep(self.backoff_s * (2**attempt))\n",
+      "replace": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n                continue\n            self._sleep(self.backoff_s * (2**attempt))\n"
+    },
+    {
+      "label": "8 new clause catches Exception (programming errors retried)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except Exception as exc:\n"
+    },
+    {
+      "label": "9 new clause moved before the urllib.error.HTTPError clause",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except urllib.error.HTTPError as exc:\n",
+      "replace": "            except (http.client.HTTPException, OSError) as exc:\n                # Raised while reading the body (IncompleteRead, connection\n                # resets, TLS errors) or by a dropped connection\n                # (RemoteDisconnected). Named by class, not str(exc): the text\n                # carries varying byte counts and the reason keys the\n                # ingest-gaps ledger. Programming errors are not caught.\n                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n            except urllib.error.HTTPError as exc:\n"
+    },
+    {
+      "label": "10 new clause moved before the (TimeoutError, URLError) clause",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (TimeoutError, urllib.error.URLError) as exc:\n",
+      "replace": "            except (http.client.HTTPException, OSError) as exc:\n                # Raised while reading the body (IncompleteRead, connection\n                # resets, TLS errors) or by a dropped connection\n                # (RemoteDisconnected). Named by class, not str(exc): the text\n                # carries varying byte counts and the reason keys the\n                # ingest-gaps ledger. Programming errors are not caught.\n                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n            except (TimeoutError, urllib.error.URLError) as exc:\n"
+    },
+    {
+      "label": "11 from exc dropped on the new FetchError",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n",
+      "replace": "type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error\n"
+    },
+    {
+      "label": "12 status=0 instead of None",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "status=None, reason=f\"http_error:{type(exc).__name__}\"",
+      "replace": "status=0, reason=f\"http_error:{type(exc).__name__}\""
+    },
+    {
+      "label": "13 off-by-one: new clause re-raises at attempt >= max_retries - 1",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n",
+      "replace": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt >= self.max_retries - 1:\n                    raise error from exc\n"
+    },
+    {
+      "label": "14a shared sleep exponent wrong: backoff_s * attempt",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self._sleep(self.backoff_s * (2**attempt))\n",
+      "replace": "            self._sleep(self.backoff_s * attempt)\n"
+    },
+    {
+      "label": "14b shared sleep exponent wrong: 2**(attempt+1)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self._sleep(self.backoff_s * (2**attempt))\n",
+      "replace": "            self._sleep(self.backoff_s * (2 ** (attempt + 1)))\n"
+    },
+    {
+      "label": "14c shared sleep linear: backoff_s * (attempt + 1)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self._sleep(self.backoff_s * (2**attempt))\n",
+      "replace": "            self._sleep(self.backoff_s * (attempt + 1))\n"
+    },
+    {
+      "label": "15 new clause catches BaseException",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except BaseException as exc:\n"
+    },
+    {
+      "label": "16 OSError narrowed to ConnectionError (SSLError not caught)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except (http.client.HTTPException, ConnectionError) as exc:\n"
+    },
+    {
+      "label": "17 reason prefix changed to network_error:",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "reason=f\"http_error:{type(exc).__name__}\"",
+      "replace": "reason=f\"network_error:{type(exc).__name__}\""
+    },
+    {
+      "label": "18 new clause raises on first attempt (never retries)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n",
+      "replace": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                raise error from exc\n"
+    },
+    {
+      "label": "19 re-raise condition never true (> max_retries)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:\n                    raise error from exc\n",
+      "replace": "                error = FetchError(\n                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt > self.max_retries:\n                    raise error from exc\n"
+    },
+    {
+      "label": "20 new clause also swallows ValueError",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except (http.client.HTTPException, OSError, ValueError) as exc:\n"
+    },
+    {
+      "label": "21 new clause also swallows TypeError and AttributeError",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except (http.client.HTTPException, OSError, TypeError, AttributeError) as exc:\n"
+    },
+    {
+      "label": "21b new clause also swallows KeyError",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except (http.client.HTTPException, OSError, KeyError) as exc:\n"
+    },
+    {
+      "label": "[control] reason uses __qualname__ instead of __name__",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "type(exc).__name__}\"",
+      "replace": "type(exc).__qualname__}\"",
+      "expect": "survived",
+      "why": "__qualname__ differs from __name__ only for nested classes; every exception this clause can see (http.client.*, OSError and its builtin/ssl subclasses) is a module-level class, so both give the same string on every path the suite reaches. Would differ for a nested exception class, which none of these are."
+    }
+  ]
+}

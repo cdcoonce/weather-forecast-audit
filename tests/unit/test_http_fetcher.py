@@ -4,6 +4,9 @@ No real sleeping, no real sockets: `time.sleep`/`time.monotonic` are injected
 as fakes and `urllib.request.urlopen` is monkeypatched.
 """
 
+import http.client
+import ssl
+import urllib.error
 from typing import BinaryIO
 
 import pytest
@@ -86,6 +89,23 @@ class _FakeTricklingResponse:
         return self._chunks.pop(0)
 
     def __enter__(self) -> "_FakeTricklingResponse":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
+class _FakeFailingReadResponse:
+    """A response whose `read()` raises `exc`: the connection dies mid-body."""
+
+    def __init__(self, exc: BaseException) -> None:
+        self.status = 200
+        self._exc = exc
+
+    def read(self, size: int | None = None) -> bytes:
+        raise self._exc
+
+    def __enter__(self) -> "_FakeFailingReadResponse":
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -252,3 +272,146 @@ def test_default_user_agent_is_sent(monkeypatch: pytest.MonkeyPatch) -> None:
     fetcher.get("https://example.test/data")
 
     assert "weather-forecast-audit" in seen_headers.get("User-agent", "")
+
+
+def _assert_retries_once_after_read_error(
+    monkeypatch: pytest.MonkeyPatch, exc: BaseException
+) -> None:
+    fake_urlopen, calls = _urlopen_sequence(
+        [_FakeFailingReadResponse(exc), _FakeHttpResponse(200, b"ok")]
+    )
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    sleep = FakeSleep()
+    fetcher = UrllibFetcher(
+        sleep=sleep, clock=FakeClock(), max_retries=3, backoff_s=2.0, min_interval_s=0
+    )
+
+    response = fetcher.get("https://example.test/data")
+
+    assert response == HttpResponse(status=200, body=b"ok")
+    assert len(calls) == 2
+    assert sleep.calls == [2.0 * 1]
+
+
+def test_get_retries_after_an_incomplete_read_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_retries_once_after_read_error(
+        monkeypatch, http.client.IncompleteRead(b"partial", 10)
+    )
+
+
+def test_get_retries_after_a_connection_reset_while_reading_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_retries_once_after_read_error(
+        monkeypatch, ConnectionResetError("reset by peer")
+    )
+
+
+def test_get_retries_after_an_ssl_error_while_reading_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_retries_once_after_read_error(monkeypatch, ssl.SSLError("bad record mac"))
+
+
+def test_get_retries_after_a_remote_disconnect_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_urlopen, calls = _urlopen_sequence(
+        [
+            http.client.RemoteDisconnected("closed without response"),
+            _FakeHttpResponse(200, b"ok"),
+        ]
+    )
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    sleep = FakeSleep()
+    fetcher = UrllibFetcher(
+        sleep=sleep, clock=FakeClock(), max_retries=3, backoff_s=2.0, min_interval_s=0
+    )
+
+    response = fetcher.get("https://example.test/data")
+
+    assert response.body == b"ok"
+    assert len(calls) == 2
+    assert sleep.calls == [2.0 * 1]
+
+
+def test_incomplete_read_exhausts_retries_raises_fetch_error_named_by_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    incomplete = http.client.IncompleteRead(b"x" * 55935, 70000)
+    calls: list[str] = []
+
+    def always_incomplete(request: object, timeout: float) -> BinaryIO:
+        calls.append(request.full_url)  # type: ignore[attr-defined]
+        return _FakeFailingReadResponse(incomplete)  # type: ignore[return-value]
+
+    monkeypatch.setattr("urllib.request.urlopen", always_incomplete)
+    sleep = FakeSleep()
+    fetcher = UrllibFetcher(
+        sleep=sleep, clock=FakeClock(), max_retries=3, backoff_s=2.0, min_interval_s=0
+    )
+
+    with pytest.raises(FetchError) as excinfo:
+        fetcher.get("https://example.test/data")
+
+    assert excinfo.value.status is None
+    # Named by class: the exception text carries a varying byte count, and the
+    # reason ends up in the ingest-gaps ledger key.
+    assert excinfo.value.reason == "http_error:IncompleteRead"
+    assert "55935" not in excinfo.value.reason
+    assert excinfo.value.__cause__ is incomplete
+    assert len(calls) == 4
+    assert sleep.calls == [2.0 * 2**0, 2.0 * 2**1, 2.0 * 2**2]
+
+
+@pytest.mark.parametrize("exc_type", [ValueError, TypeError, AttributeError, KeyError])
+def test_a_programming_error_while_reading_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, exc_type: type[Exception]
+) -> None:
+    calls: list[str] = []
+    bug = exc_type("bug")
+
+    def bad_read(request: object, timeout: float) -> BinaryIO:
+        calls.append(request.full_url)  # type: ignore[attr-defined]
+        return _FakeFailingReadResponse(bug)  # type: ignore[return-value]
+
+    monkeypatch.setattr("urllib.request.urlopen", bad_read)
+    sleep = FakeSleep()
+    fetcher = UrllibFetcher(sleep=sleep, clock=FakeClock(), max_retries=3)
+
+    with pytest.raises(exc_type) as excinfo:
+        fetcher.get("https://example.test/data")
+
+    assert excinfo.value is bug
+    assert len(calls) == 1
+    assert sleep.calls == []
+
+
+def test_url_error_exhausts_retries_with_its_reason_text_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refused = urllib.error.URLError("connection refused")
+    calls: list[str] = []
+
+    def always_refused(request: object, timeout: float) -> BinaryIO:
+        calls.append(request.full_url)  # type: ignore[attr-defined]
+        raise refused
+
+    monkeypatch.setattr("urllib.request.urlopen", always_refused)
+    sleep = FakeSleep()
+    fetcher = UrllibFetcher(
+        sleep=sleep, clock=FakeClock(), max_retries=3, backoff_s=2.0, min_interval_s=0
+    )
+
+    with pytest.raises(FetchError) as excinfo:
+        fetcher.get("https://example.test/data")
+
+    assert excinfo.value.status is None
+    # The URLError clause keeps its own reason (the wrapped reason text), not
+    # the class name the read-phase clause uses.
+    assert excinfo.value.reason == "http_error:connection refused"
+    assert excinfo.value.__cause__ is refused
+    assert len(calls) == 4
+    assert sleep.calls == [2.0 * 2**0, 2.0 * 2**1, 2.0 * 2**2]
