@@ -344,6 +344,29 @@ def test_six_hour_extreme_one_missing_period_not_tiled() -> None:
     assert result.periods_found == 2
 
 
+def test_six_hour_extreme_ambiguous_none_group_leaves_window_untiled() -> None:
+    # An ambiguous 6-hour max is ingested as a report whose max_6h_f is None
+    # (its tmpf and min are kept). Unlike a report that is absent, the row is
+    # present in the lookback but carries no max, so it must not qualify.
+    window = resolve_window(date(2023, 7, 15), "max")
+    h1, h2, h3 = six_hour_periods(window)
+    reports = [
+        (h1 - timedelta(minutes=9), 100.0, 60.0),
+        (h2 - timedelta(minutes=9), 100.0, 60.0),
+        (h3 - timedelta(minutes=9), None, 60.0),  # ambiguous max, clean min
+    ]
+    max_result = six_hour_extreme(window, "max", reports)
+    assert max_result.tiled is False
+    assert max_result.value_f is None
+    assert max_result.periods_found == 2
+
+    # Independence: the clean min still tiles the min window over the same rows.
+    min_window = resolve_window(date(2023, 7, 15), "min")
+    m1, m2, m3 = six_hour_periods(min_window)
+    min_reports = [(m - timedelta(minutes=9), None, 60.0) for m in (m1, m2, m3)]
+    assert six_hour_extreme(min_window, "min", min_reports).tiled is True
+
+
 # -- synthetic: an extreme between hourly readings (issue #6's core case) ----
 
 

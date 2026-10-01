@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 from weather_forecast_audit.gaps import FetchResult, GapRecord
 from weather_forecast_audit.iem._chunking import date_range, month_chunks
 from weather_forecast_audit.iem.http import Fetcher, FetchError
-from weather_forecast_audit.iem.metar import parse_six_hour_groups
+from weather_forecast_audit.iem.metar import parse_six_hour_groups_tolerant
 from weather_forecast_audit.registry import Station
 
 ASOS_URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py"
@@ -79,6 +79,22 @@ def _asos_url(icao: str, chunk_start: date, chunk_end: date) -> str:
     )
 
 
+def _ambiguous_gap(icao: str, valid: datetime, kind: str) -> GapRecord:
+    """The ingest gap for a report whose 6-hour `kind` group is ambiguous.
+
+    `expected` is the report's UTC date, and the report's UTC time rides in
+    the reason. A timestamp-shaped `expected` would collapse to its date in
+    `gap_ledger`, whose (station, kind, gap_date, reason) key is tested
+    unique, so two ambiguous reports of one kind on one day would collide.
+    """
+    return GapRecord(
+        station=icao,
+        source="asos",
+        expected=valid.date().isoformat(),
+        reason=f"ambiguous_six_hour_{kind}@{valid:%H:%M}",
+    )
+
+
 def parse_asos_csv(body: bytes) -> list[dict[str, str]]:
     """Parse an IEM asos.py onlycomma body into header-keyed rows.
 
@@ -102,6 +118,9 @@ def fetch_hourly(
 
     One request per calendar-month chunk. A `missing_observations` gap is
     emitted for every UTC date in range with zero non-missing tmpf readings.
+    A report carrying two different 6-hour max (or min) groups keeps its
+    tmpf but gets no value for that kind, and one
+    `ambiguous_six_hour_<kind>@HH:MM` gap is emitted for it.
     """
     icao = station.icao
     rows: list[HourlyObservation] = []
@@ -126,14 +145,16 @@ def fetch_hourly(
             continue
 
         dates_with_data: set[date] = set()
+        ambiguous_gaps: list[GapRecord] = []
         for raw in parse_asos_csv(response.body):
             valid = _parse_asos_valid(raw["valid"])
             tmpf = _parse_optional_float(raw["tmpf"])
-            try:
-                groups = parse_six_hour_groups(raw["metar"])
-            except ValueError as exc:
-                msg = f"{exc} (station={icao}, valid={raw['valid']})"
-                raise ValueError(msg) from exc
+            tolerant = parse_six_hour_groups_tolerant(raw["metar"])
+            groups = tolerant.groups
+            for kind in tolerant.ambiguous:
+                gap = _ambiguous_gap(icao, valid, kind)
+                if gap not in ambiguous_gaps:
+                    ambiguous_gaps.append(gap)
             max_6h_f = _c_to_f(groups.max_c) if groups.max_c is not None else None
             min_6h_f = _c_to_f(groups.min_c) if groups.min_c is not None else None
             rows.append(
@@ -148,6 +169,7 @@ def fetch_hourly(
             if tmpf is not None:
                 dates_with_data.add(valid.date())
 
+        gaps.extend(ambiguous_gaps)
         for day in date_range(chunk_start, chunk_end):
             if day not in dates_with_data:
                 gaps.append(
