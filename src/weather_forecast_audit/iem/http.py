@@ -2,10 +2,13 @@
 
 IEM's cgi-bin services are a shared community resource with no published
 rate limit; `UrllibFetcher` enforces a minimum interval between requests and
-retries transient failures with exponential backoff, so a multi-month
-backfill behaves like a careful human, not a scraper.
+retries transient failures (retryable HTTP statuses, timeouts, and network
+errors raised while connecting or reading the body, such as a truncated
+response) with exponential backoff, so a multi-month backfill behaves like a
+careful human, not a scraper.
 """
 
+import http.client
 import time
 import urllib.error
 import urllib.request
@@ -114,6 +117,17 @@ class UrllibFetcher:
             except (TimeoutError, urllib.error.URLError) as exc:
                 reason = getattr(exc, "reason", exc)
                 error = FetchError(status=None, reason=f"http_error:{reason}")
+                if attempt == self.max_retries:
+                    raise error from exc
+            except (http.client.HTTPException, OSError) as exc:
+                # Raised while reading the body (IncompleteRead, connection
+                # resets, TLS errors) or by a dropped connection
+                # (RemoteDisconnected). Named by class, not str(exc): the text
+                # carries varying byte counts and the reason keys the
+                # ingest-gaps ledger. Programming errors are not caught.
+                error = FetchError(
+                    status=None, reason=f"http_error:{type(exc).__name__}"
+                )
                 if attempt == self.max_retries:
                     raise error from exc
             self._sleep(self.backoff_s * (2**attempt))
