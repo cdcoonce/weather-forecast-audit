@@ -6,6 +6,7 @@ as fakes and `urllib.request.urlopen` is monkeypatched.
 
 import http.client
 import ssl
+import urllib.error
 from typing import BinaryIO
 
 import pytest
@@ -365,18 +366,52 @@ def test_incomplete_read_exhausts_retries_raises_fetch_error_named_by_class(
     assert sleep.calls == [2.0 * 2**0, 2.0 * 2**1, 2.0 * 2**2]
 
 
+@pytest.mark.parametrize("exc_type", [ValueError, TypeError, AttributeError, KeyError])
 def test_a_programming_error_while_reading_is_not_retried(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, exc_type: type[Exception]
 ) -> None:
     calls: list[str] = []
+    bug = exc_type("bug")
 
     def bad_read(request: object, timeout: float) -> BinaryIO:
         calls.append(request.full_url)  # type: ignore[attr-defined]
-        return _FakeFailingReadResponse(ValueError("bug"))  # type: ignore[return-value]
+        return _FakeFailingReadResponse(bug)  # type: ignore[return-value]
 
     monkeypatch.setattr("urllib.request.urlopen", bad_read)
-    fetcher = UrllibFetcher(sleep=lambda _s: None, clock=FakeClock(), max_retries=3)
+    sleep = FakeSleep()
+    fetcher = UrllibFetcher(sleep=sleep, clock=FakeClock(), max_retries=3)
 
-    with pytest.raises(ValueError, match="bug"):
+    with pytest.raises(exc_type) as excinfo:
         fetcher.get("https://example.test/data")
+
+    assert excinfo.value is bug
     assert len(calls) == 1
+    assert sleep.calls == []
+
+
+def test_url_error_exhausts_retries_with_its_reason_text_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refused = urllib.error.URLError("connection refused")
+    calls: list[str] = []
+
+    def always_refused(request: object, timeout: float) -> BinaryIO:
+        calls.append(request.full_url)  # type: ignore[attr-defined]
+        raise refused
+
+    monkeypatch.setattr("urllib.request.urlopen", always_refused)
+    sleep = FakeSleep()
+    fetcher = UrllibFetcher(
+        sleep=sleep, clock=FakeClock(), max_retries=3, backoff_s=2.0, min_interval_s=0
+    )
+
+    with pytest.raises(FetchError) as excinfo:
+        fetcher.get("https://example.test/data")
+
+    assert excinfo.value.status is None
+    # The URLError clause keeps its own reason (the wrapped reason text), not
+    # the class name the read-phase clause uses.
+    assert excinfo.value.reason == "http_error:connection refused"
+    assert excinfo.value.__cause__ is refused
+    assert len(calls) == 4
+    assert sleep.calls == [2.0 * 2**0, 2.0 * 2**1, 2.0 * 2**2]

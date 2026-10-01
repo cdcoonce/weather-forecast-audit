@@ -181,9 +181,14 @@
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "find": "            except (http.client.HTTPException, OSError) as exc:\n",
-      "replace": "            except (http.client.HTTPException, OSError, TypeError, AttributeError) as exc:\n",
-      "expect": "survived",
-      "why": "KNOWN GAP, not inert (probe-verified: the clause swallows and retries a TypeError/AttributeError raised while reading, then raises FetchError instead of the bug). The only pinned programming error is ValueError (test_a_programming_error_while_reading_is_not_retried); widening to Exception/BaseException/ValueError dies, but widening the tuple by a different named class survives. Narrow: an exact-tuple mutant, not a catch-all."
+      "replace": "            except (http.client.HTTPException, OSError, TypeError, AttributeError) as exc:\n"
+    },
+    {
+      "label": "21b new clause also swallows KeyError",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            except (http.client.HTTPException, OSError) as exc:\n",
+      "replace": "            except (http.client.HTTPException, OSError, KeyError) as exc:\n"
     },
     {
       "label": "[control] reason uses __qualname__ instead of __name__",
