@@ -700,3 +700,157 @@ def test_as_metadata_keys_and_rounding() -> None:
     ):
         assert type(metadata[f"http_{key}"]) is float
     assert type(metadata["http_slowest_attempt_url"]) is str
+
+
+def test_stats_are_independent_per_fetcher(monkeypatch: pytest.MonkeyPatch) -> None:
+    from weather_forecast_audit.iem.http import FetchStats
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(clock, [(2.0, _FakeHttpResponse(200, b"ok"))]),
+    )
+    driven = _stats_fetcher(clock)
+    untouched = _stats_fetcher(clock)
+
+    driven.get("https://example.test/data")
+
+    assert driven.stats.attempts == 1
+    # Asserted on its own (not via a count that test order could disturb): a
+    # fetcher that was never driven reports all-zero stats, on its own object.
+    assert untouched.stats == FetchStats()
+    assert untouched.stats is not driven.stats
+
+
+def test_stats_count_a_plain_500_as_a_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock, [(0.0, _http_error(500)), (0.0, _FakeHttpResponse(200, b"ok"))]
+        ),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/data")
+
+    assert fetcher.stats.server_errors_5xx == 1
+    assert fetcher.stats.throttled_429 == 0
+    assert fetcher.stats.retries == 1
+
+
+def test_stats_count_a_404_as_neither_throttling_nor_a_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen", _timed_urlopen(clock, [(0.0, _http_error(404))])
+    )
+    fetcher = _stats_fetcher(clock)
+
+    with pytest.raises(FetchError) as excinfo:
+        fetcher.get("https://example.test/data")
+
+    assert excinfo.value.status == 404
+    stats = fetcher.stats
+    assert (stats.attempts, stats.retries) == (1, 0)
+    assert (stats.throttled_429, stats.server_errors_5xx) == (0, 0)
+
+
+def test_stats_count_a_501_as_a_server_error_without_retrying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 501 is a real 5xx but not in RETRYABLE_STATUSES: counted, raised at once.
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen", _timed_urlopen(clock, [(0.0, _http_error(501))])
+    )
+    fetcher = _stats_fetcher(clock)
+
+    with pytest.raises(FetchError) as excinfo:
+        fetcher.get("https://example.test/data")
+
+    assert excinfo.value.status == 501
+    stats = fetcher.stats
+    assert (stats.attempts, stats.retries) == (1, 0)
+    assert stats.server_errors_5xx == 1
+    assert stats.throttled_429 == 0
+
+
+def test_stats_throttling_records_the_actual_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [(0.0, _FakeHttpResponse(200, b"a")), (0.0, _FakeHttpResponse(200, b"b"))],
+        ),
+    )
+    sleep = FakeSleep(clock)
+    fetcher = UrllibFetcher(sleep=sleep, clock=clock, min_interval_s=1.0)
+
+    fetcher.get("https://example.test/1")
+    clock.now += 0.4  # only 0.4s since the last request: 0.6s of the 1.0s remains
+    fetcher.get("https://example.test/2")
+
+    assert sleep.calls == [pytest.approx(0.6)]
+    assert fetcher.stats.seconds_throttling == pytest.approx(0.6)
+
+
+def test_stats_throttling_stays_zero_when_the_gap_is_long_enough(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [(0.0, _FakeHttpResponse(200, b"x")) for _ in range(3)],
+        ),
+    )
+    sleep = FakeSleep(clock)
+    fetcher = UrllibFetcher(sleep=sleep, clock=clock, min_interval_s=1.0)
+
+    fetcher.get("https://example.test/1")
+    clock.now += 1.5  # longer than the minimum interval: no wait at all
+    fetcher.get("https://example.test/2")
+    clock.now += 1.0  # exactly the minimum interval: a wait of 0, still no sleep
+    fetcher.get("https://example.test/3")
+
+    assert sleep.calls == []
+    assert fetcher.stats.seconds_throttling == 0.0
+
+
+def test_stats_attempt_time_excludes_the_throttle_sleep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Intended definition: an attempt's time is request time only (from just
+    # after the politeness throttle to the response or error), so the
+    # throttle sleep is reported separately in `seconds_throttling` and is
+    # never part of `seconds_in_attempts` or the slowest attempt.
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [(3.0, _FakeHttpResponse(200, b"a")), (2.5, _FakeHttpResponse(200, b"b"))],
+        ),
+    )
+    # The first attempt takes 3s of a 5s minimum interval, so the second
+    # request waits the remaining 2s before it is sent.
+    fetcher = UrllibFetcher(
+        sleep=FakeSleep(clock), clock=clock, min_interval_s=5.0, backoff_s=2.0
+    )
+
+    fetcher.get("https://example.test/first")
+    fetcher.get("https://example.test/second")
+
+    stats = fetcher.stats
+    assert stats.seconds_throttling == pytest.approx(2.0)
+    assert stats.seconds_in_attempts == pytest.approx(3.0 + 2.5)
+    assert stats.slowest_attempt_seconds == pytest.approx(3.0)
+    assert stats.slowest_attempt_url == "https://example.test/first"

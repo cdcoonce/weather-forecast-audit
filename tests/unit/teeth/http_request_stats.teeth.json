@@ -68,8 +68,6 @@
       "label": "05a 5xx range off by one at the low end (500 < status)",
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): no stats test drives a status of exactly 500; 500 is in RETRYABLE_STATUSES and is a real 5xx, so server_errors_5xx would silently miss every plain 500.",
       "find": "elif 500 <= status < 600:",
       "replace": "elif 500 < status < 600:"
     },
@@ -78,7 +76,7 @@
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "expect": "survived",
-      "why": "Inert for every real HTTP status (valid statuses stop at 599; no test or server emits 600). Not a defect worth a test; empirically verified to survive.",
+      "why": "CONTROL: Inert for every real HTTP status (valid statuses stop at 599; no test or server emits 600). Not a defect worth a test; empirically verified to survive.",
       "find": "elif 500 <= status < 600:",
       "replace": "elif 500 <= status <= 600:"
     },
@@ -86,8 +84,6 @@
       "label": "05c 5xx range widened to every 4xx and 5xx",
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): no stats test drives a non-retryable 4xx (404) and asserts server_errors_5xx stays 0, so a 404 miscounted as a server error is not caught.",
       "find": "elif 500 <= status < 600:",
       "replace": "elif 400 <= status < 600:"
     },
@@ -95,8 +91,6 @@
       "label": "05d 5xx counts only retryable statuses (status in RETRYABLE_STATUSES)",
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "Inert in practice: after the 429 branch the only differing statuses are 501/505-599 (non-retryable 5xx). KNOWN GAP (empirically verified): no stats test drives a non-retryable 5xx such as 501.",
       "find": "elif 500 <= status < 600:",
       "replace": "elif status in RETRYABLE_STATUSES:"
     },
@@ -175,18 +169,14 @@
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "find": "            if wait > 0:\n                self.stats.seconds_throttling += wait\n                self._sleep(wait)\n",
-      "replace": "            self.stats.seconds_throttling += wait\n            if wait > 0:\n                self._sleep(wait)\n",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified, found by this spec): no test pins that seconds_throttling is untouched when no throttle sleep happens. The only throttling test has one positive wait; a mutant that adds a negative or zero wait on every attempt survives."
+      "replace": "            self.stats.seconds_throttling += wait\n            if wait > 0:\n                self._sleep(wait)\n"
     },
     {
       "label": "09b seconds_throttling records min_interval_s instead of the actual wait",
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "find": "                self.stats.seconds_throttling += wait\n",
-      "replace": "                self.stats.seconds_throttling += self.min_interval_s\n",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified, found by this spec): the only throttling test (test_stats_separate_throttle_sleep_from_backoff_sleep) uses 0-second attempts so the actual wait equals min_interval_s (1.0); recording min_interval_s instead of the actual wait is indistinguishable."
+      "replace": "                self.stats.seconds_throttling += self.min_interval_s\n"
     },
     {
       "label": "10a slowest never updates (comparison inverted)",
@@ -207,7 +197,7 @@
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): ties between equal-duration attempts are not pinned. >= makes the LAST of equal attempts win and also records a url for an all-zero-duration run; > leaves slowest_attempt_url as the empty string there (log prints n/a).",
+      "why": "KNOWN GAP: ties between equal-duration attempts are not pinned (deliberately skipped). >= makes the LAST of equal attempts win and also records a url for an all-zero-duration run; > leaves slowest_attempt_url as the empty string there (the log prints n/a).",
       "find": "if elapsed > stats.slowest_attempt_seconds:",
       "replace": "if elapsed >= stats.slowest_attempt_seconds:"
     },
@@ -243,8 +233,6 @@
       "label": "12 started_at taken before the throttle sleep (throttle wait counted as attempt time)",
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): no test pins whether throttle sleep time is inside an attempt's wall time. The only test that throttles (test_stats_separate_throttle_sleep_from_backoff_sleep) has 0-second attempts and asserts nothing about seconds_in_attempts or the slowest attempt.",
       "find": "            self._throttle()\n            self.stats.attempts += 1\n            if attempt > 0:\n                self.stats.retries += 1\n            started_at = self._clock()\n",
       "replace": "            started_at = self._clock()\n            self._throttle()\n            self.stats.attempts += 1\n            if attempt > 0:\n                self.stats.retries += 1\n"
     },
@@ -399,8 +387,6 @@
       "label": "14i isinstance check removed (any non-None stats attribute accepted)",
       "file": "../../../src/weather_forecast_audit/assets.py",
       "oracle": "real",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): the only no-stats fixture has no stats attribute at all (getattr gives None), so None-check and isinstance behave identically. No test attaches a bogus non-FetchStats `stats` object to a fetcher, so the isinstance guard the docstring describes is unpinned.",
       "find": "    return stats.as_metadata() if isinstance(stats, FetchStats) else {}",
       "replace": "    return stats.as_metadata() if stats is not None else {}"
     },
@@ -409,27 +395,21 @@
       "file": "../../../src/weather_forecast_audit/assets.py",
       "oracle": "real",
       "find": "    stats = getattr(fetcher, \"stats\", None)\n    if not isinstance(stats, FetchStats):\n        return \"\"\n",
-      "replace": "    return \"\"\n",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): the slowest-attempt log suffix is asserted nowhere (no caplog or log-text test); returning an empty string survives."
+      "replace": "    return \"\"\n"
     },
     {
       "label": "14k _slowest_attempt_log fallback 'n/a' removed",
       "file": "../../../src/weather_forecast_audit/assets.py",
       "oracle": "real",
       "find": "{stats.slowest_attempt_url or 'n/a'}",
-      "replace": "{stats.slowest_attempt_url}",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): the log suffix and its 'n/a' fallback are asserted nowhere."
+      "replace": "{stats.slowest_attempt_url}"
     },
     {
       "label": "14l _slowest_attempt_log drops the url",
       "file": "../../../src/weather_forecast_audit/assets.py",
       "oracle": "real",
       "find": "f\"({stats.slowest_attempt_url or 'n/a'})\"",
-      "replace": "\"\"",
-      "expect": "survived",
-      "why": "KNOWN GAP (empirically verified): the log suffix is asserted nowhere; dropping the URL from it survives."
+      "replace": "\"\""
     },
     {
       "label": "15a backoff sleep removed",
@@ -480,7 +460,7 @@
       "find": "reason=f\"http_error:{status}\"",
       "replace": "reason=f\"http_status:{status}\"",
       "expect": "survived",
-      "why": "KNOWN GAP in PRE-EXISTING tests (empirically verified): test_503_exhausts_retries_raises_fetch_error only asserts '503' in reason, so changing http_error:503 to http_status:503 passes. The reason keys the ingest-gaps ledger but its prefix is unpinned for HTTP status errors."
+      "why": "KNOWN GAP in PRE-EXISTING tests (not this change): test_503_exhausts_retries_raises_fetch_error only asserts '503' in reason, so changing http_error:503 to http_status:503 passes. The reason keys the ingest-gaps ledger but its prefix is unpinned for HTTP status errors."
     },
     {
       "label": "15h URLError/timeout FetchError reason changed",
@@ -503,7 +483,7 @@
       "find": "attempt == self.max_retries:\n                    raise error from exc\n            except (TimeoutError",
       "replace": "attempt == self.max_retries:\n                    raise error\n            except (TimeoutError",
       "expect": "survived",
-      "why": "KNOWN GAP in PRE-EXISTING tests (empirically verified): no test asserts __cause__ on a FetchError raised from an HTTPError (only the URLError path asserts it), so dropping 'from exc' on that branch survives."
+      "why": "KNOWN GAP in PRE-EXISTING tests (not this change): no test asserts __cause__ on a FetchError raised from an HTTPError (only the URLError path asserts it), so dropping 'from exc' on that branch survives."
     },
     {
       "label": "15k non-retryable HTTP error is retried (404 no longer raised)",
@@ -513,7 +493,7 @@
       "replace": "if attempt == self.max_retries:"
     },
     {
-      "label": "16a stats shared across all fetchers (killed only by cross-test pollution, see report)",
+      "label": "16a stats shared across all fetchers (module-level shared instance)",
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "find": "        self.stats = FetchStats()\n",
@@ -527,11 +507,11 @@
       "replace": "    def get(self, url: str) -> HttpResponse:\n        self.stats = FetchStats()\n"
     },
     {
-      "label": "16c stats replaced by a fresh FetchStats in _throttle",
+      "label": "[control] 16c self.stats rebound to itself in _throttle (constant-False guard)",
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "expect": "survived",
-      "why": "Semantically inert: the conditional is constant-False (`and False`), so self.stats is rebound to itself on every call. Control proving the rig discriminates; holds over every input.",
+      "why": "CONTROL: Semantically inert: the conditional is constant-False (`and False`), so self.stats is rebound to itself on every call. Control proving the rig discriminates; holds over every input.",
       "find": "        now = self._clock()\n        if self._last_request_at is not None:",
       "replace": "        self.stats = FetchStats() if self._last_request_at is None and False else self.stats\n        now = self._clock()\n        if self._last_request_at is not None:"
     },
@@ -561,7 +541,7 @@
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "expect": "survived",
-      "why": "Inert for all inputs: the 429 branch and the [500,600) range are disjoint, so whether the second test is an elif or an independent if cannot change which counters move.",
+      "why": "CONTROL: Inert for all inputs: the 429 branch and the [500,600) range are disjoint, so whether the second test is an elif or an independent if cannot change which counters move.",
       "find": "                elif 500 <= status < 600:",
       "replace": "                if 500 <= status < 600:"
     },
@@ -570,9 +550,30 @@
       "file": "../../../src/weather_forecast_audit/iem/http.py",
       "oracle": "real",
       "expect": "survived",
-      "why": "Inert: _throttle never reads stats.attempts and attempts is not read between the two lines. Holds over every input; would differ only if _throttle raised, which it cannot (injected clock/sleep only).",
+      "why": "CONTROL: Inert: _throttle never reads stats.attempts and attempts is not read between the two lines. Holds over every input; would differ only if _throttle raised, which it cannot (injected clock/sleep only).",
       "find": "            self._throttle()\n            self.stats.attempts += 1\n",
       "replace": "            self.stats.attempts += 1\n            self._throttle()\n"
+    },
+    {
+      "label": "14m nbs_guidance log line drops the slowest-attempt suffix",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "\"raw/nbs_guidance %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        _slowest_attempt_log(fetcher),\n",
+      "replace": "\"raw/nbs_guidance %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        \"\",\n"
+    },
+    {
+      "label": "14m asos_hourly log line drops the slowest-attempt suffix",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "\"raw/asos_hourly %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        _slowest_attempt_log(fetcher),\n",
+      "replace": "\"raw/asos_hourly %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        \"\",\n"
+    },
+    {
+      "label": "14m cli_daily log line drops the slowest-attempt suffix",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "\"raw/cli_daily %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        _slowest_attempt_log(fetcher),\n",
+      "replace": "\"raw/cli_daily %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        \"\",\n"
     }
   ]
 }
