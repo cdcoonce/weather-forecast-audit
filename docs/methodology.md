@@ -709,16 +709,50 @@ without a human launching each run by hand.
 
 The archive is planned (`backfill.plan_units`) into calendar-month x
 station-chunk units: each unit is one `ingest_job` run over a whole
-calendar month (clipped to the archive/end bounds) for 30 stations
+calendar month (clipped to the archive/end bounds) for 20 stations
 (`BACKFILL_CHUNK_SIZE`) sorted from the registry. A month matches D2's
 existing ingest batching (a run already receives up to a month and fetches
-each station once over the whole range); the 30-station chunk exists
-because the archive has ~573 stations and ingest costs ~12s/station-month
-(IEM's rate limit is 1 req/s) -- a national month in one run would take
-over 6800s, and `MAX_RUNTIME_SECONDS` (600) caps every run at 600s. 30
-stations keeps a unit's ingest under ~360s, leaving headroom under the cap.
-Units are submitted in month-major, chunk-minor order, so every station
-gets a given month before the backfill moves on to the next.
+each station once over the whole range); the chunk exists because the
+archive has ~573 stations and ingest costs a measured ~17s/station-month
+across the four ingest steps (raw__asos_hourly ~8s, raw__nbs_guidance
+~7.6s, cli ~1.2s, resolved ~0.2s) -- a national month in one run would take
+~9700s, and `MAX_RUNTIME_SECONDS` (600) caps every run at 600s, a cap that
+protects a run slot shared with other tenants and is never raised to fit a
+bigger chunk. Units are submitted in month-major, chunk-minor order, so
+every station gets a given month before the backfill moves on to the next.
+
+Why 20 and not 30. At 30 stations the first 32 units had a median of 316s
+(max 401s), but the last four ran 512s, 605s, 510s and 604s: a slow unit
+carries one extra ~60-82s stall (one request hitting the HTTP client's 60s
+timeout, then backoff and a retry). Those units succeeded over the cap only
+because run monitoring polls, so they survived by timing luck. The budget
+rule is that a unit must survive its baseline plus two stalls with margin:
+`chunk_size x 17s + 2 x 82s` must be `<=` 95% of the cap (570s).
+`jobs.unit_runtime_budget_s` encodes it and
+`test_unit_runtime_budget_*` (`tests/dagster/test_sensors.py`) enforces it:
+20 stations is 504s (passes); 30 is 674s (fails); the largest passing size
+is 23.
+
+#### Changing the chunk size
+
+Unit ids embed the chunk index (`2020-10-c15`), so a new chunk size makes
+the same id name different stations, and Dagster silently drops a reused
+`run_key`. Changing the size mid-backfill therefore takes a cursor reset:
+
+1. Change `BACKFILL_CHUNK_SIZE` (shrink it; never raise the cap).
+2. Stop the sensor, wait for the in-flight run to finish, and deploy wfa
+   only.
+3. Compute the new `next_index` with `backfill.remap_plan_index(old_index,
+   old_chunk_size=..., new_chunk_size=..., n_stations=...)`. It floors, so
+   it may redo up to `new_chunk_size - 1` already-done stations (loaders
+   are idempotent replace-by-station-and-date) but never skips an undone
+   one.
+4. Set the cursor with the remapped `next_index`, `attempt` 1,
+   `last_run_id` and `submitted_at` null, and `generation` incremented.
+5. Start the sensor.
+
+Unit ids mean different stations before and after the change, so
+`wfa/backfill_unit` tags are only comparable within one chunk size.
 
 ### The blackout window, and why the 600s cap is what makes it safe
 
@@ -816,7 +850,7 @@ manual override; the sensor itself never bumps `generation` on its own.
 `transform_job` is a full `dbt build` over the whole raw archive (D4), and
 it runs under the same `dagster/max_runtime: "600"` tag as every other job
 here -- run monitoring kills it at 600s exactly like an ingest unit. That
-budget was sized against ingest (`~12s/station-month`, chunked to fit), not
+budget was sized against ingest (`~17s/station-month`, chunked to fit), not
 against a `dbt build` over six years of national data on rammingspeed's
 no-AVX2 host; at that scale it may legitimately take longer than 600s,
 and there is currently no measurement of its actual duration to say
