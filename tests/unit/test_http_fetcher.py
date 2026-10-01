@@ -415,3 +415,288 @@ def test_url_error_exhausts_retries_with_its_reason_text_unchanged(
     assert excinfo.value.__cause__ is refused
     assert len(calls) == 4
     assert sleep.calls == [2.0 * 2**0, 2.0 * 2**1, 2.0 * 2**2]
+
+
+# --- request statistics (`UrllibFetcher.stats`) -----------------------------
+#
+# Diagnostics only: they record what `get` did without changing it. Time is
+# controlled by advancing the fake clock inside the fake urlopen (step=0 so
+# the clock only moves when a test says so).
+
+
+def _timed_urlopen(clock: FakeClock, outcomes: list[tuple[float, object]]) -> object:
+    """A fake urlopen whose each call takes `duration` fake seconds."""
+    remaining = list(outcomes)
+
+    def fake_urlopen(request: object, timeout: float) -> BinaryIO:
+        duration, outcome = remaining.pop(0)
+        clock.now += duration
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome  # type: ignore[return-value]
+
+    return fake_urlopen
+
+
+def _http_error(status: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("https://example.test", status, "x", {}, None)
+
+
+def _stats_fetcher(clock: FakeClock, **kwargs: float) -> UrllibFetcher:
+    return UrllibFetcher(
+        sleep=FakeSleep(), clock=clock, min_interval_s=0, backoff_s=2.0, **kwargs
+    )
+
+
+def test_stats_count_a_clean_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(clock, [(3.0, _FakeHttpResponse(200, b"ok"))]),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/data")
+
+    stats = fetcher.stats
+    assert (stats.attempts, stats.retries) == (1, 0)
+    assert (stats.timeouts, stats.read_errors, stats.url_errors) == (0, 0, 0)
+    assert (stats.throttled_429, stats.server_errors_5xx) == (0, 0)
+    assert stats.seconds_in_attempts == pytest.approx(3.0)
+    assert stats.slowest_attempt_seconds == pytest.approx(3.0)
+    assert stats.slowest_attempt_url == "https://example.test/data"
+
+
+def test_stats_count_a_503_then_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock, [(1.0, _http_error(503)), (1.0, _FakeHttpResponse(200, b"ok"))]
+        ),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/data")
+
+    stats = fetcher.stats
+    assert (stats.attempts, stats.retries) == (2, 1)
+    assert stats.server_errors_5xx == 1
+    assert stats.throttled_429 == 0
+    assert stats.seconds_backing_off == pytest.approx(2.0 * 1)
+
+
+def test_stats_count_a_429(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock, [(0.0, _http_error(429)), (0.0, _FakeHttpResponse(200, b"ok"))]
+        ),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/data")
+
+    assert fetcher.stats.throttled_429 == 1
+    assert fetcher.stats.server_errors_5xx == 0
+    assert fetcher.stats.retries == 1
+
+
+def test_stats_count_a_timeout_then_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [(60.0, TimeoutError("timed out")), (1.0, _FakeHttpResponse(200, b"ok"))],
+        ),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/data")
+
+    stats = fetcher.stats
+    assert stats.timeouts == 1
+    assert (stats.read_errors, stats.url_errors) == (0, 0)
+    assert stats.retries == 1
+    assert stats.slowest_attempt_seconds == pytest.approx(60.0)
+
+
+def test_stats_count_an_incomplete_read_as_a_read_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [
+                (
+                    0.0,
+                    _FakeFailingReadResponse(http.client.IncompleteRead(b"p", 10)),
+                ),
+                (0.0, _FakeHttpResponse(200, b"ok")),
+            ],
+        ),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/data")
+
+    stats = fetcher.stats
+    assert stats.read_errors == 1
+    assert (stats.timeouts, stats.url_errors) == (0, 0)
+    assert stats.retries == 1
+
+
+def test_stats_count_a_url_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [
+                (0.0, urllib.error.URLError("connection refused")),
+                (0.0, _FakeHttpResponse(200, b"ok")),
+            ],
+        ),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/data")
+
+    stats = fetcher.stats
+    assert stats.url_errors == 1
+    assert (stats.timeouts, stats.read_errors) == (0, 0)
+
+
+def test_stats_track_the_slowest_attempt_and_its_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    long_url = "https://example.test/" + "x" * 300
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [
+                (1.5, _FakeHttpResponse(200, b"a")),
+                (7.25, _FakeHttpResponse(200, b"b")),
+                (2.0, _FakeHttpResponse(200, b"c")),
+            ],
+        ),
+    )
+    fetcher = _stats_fetcher(clock)
+
+    fetcher.get("https://example.test/first")
+    fetcher.get(long_url)
+    fetcher.get("https://example.test/third")
+
+    stats = fetcher.stats
+    assert stats.attempts == 3
+    assert stats.seconds_in_attempts == pytest.approx(1.5 + 7.25 + 2.0)
+    assert stats.slowest_attempt_seconds == pytest.approx(7.25)
+    assert stats.slowest_attempt_url == long_url[:200]
+    assert len(stats.slowest_attempt_url) == 200
+
+
+def test_stats_separate_throttle_sleep_from_backoff_sleep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(
+            clock,
+            [(0.0, _FakeHttpResponse(200, b"a")), (0.0, _FakeHttpResponse(200, b"b"))],
+        ),
+    )
+    fetcher = UrllibFetcher(
+        sleep=FakeSleep(clock), clock=clock, min_interval_s=1.0, backoff_s=2.0
+    )
+
+    fetcher.get("https://example.test/1")
+    fetcher.get("https://example.test/2")
+
+    assert fetcher.stats.seconds_throttling == pytest.approx(1.0)
+    assert fetcher.stats.seconds_backing_off == 0
+
+
+def test_stats_exhausted_retries_still_counted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        _timed_urlopen(clock, [(1.0, _http_error(503)) for _ in range(3)]),
+    )
+    fetcher = _stats_fetcher(clock, max_retries=2)
+
+    with pytest.raises(FetchError):
+        fetcher.get("https://example.test/data")
+
+    stats = fetcher.stats
+    assert (stats.attempts, stats.retries) == (3, 2)
+    assert stats.server_errors_5xx == 3
+    assert stats.seconds_in_attempts == pytest.approx(3.0)
+    # Backoff sleeps happen only between attempts: 2.0 * (1 + 2).
+    assert stats.seconds_backing_off == pytest.approx(2.0 * 1 + 2.0 * 2)
+
+
+def test_as_metadata_keys_and_rounding() -> None:
+    from weather_forecast_audit.iem.http import FetchStats
+
+    stats = FetchStats(
+        attempts=5,
+        retries=2,
+        timeouts=1,
+        read_errors=3,
+        url_errors=4,
+        throttled_429=6,
+        server_errors_5xx=7,
+        seconds_in_attempts=12.34,
+        seconds_backing_off=6.06,
+        seconds_throttling=0.04,
+        slowest_attempt_seconds=60.05,
+        slowest_attempt_url="https://example.test/x",
+    )
+
+    metadata = stats.as_metadata()
+
+    assert sorted(metadata) == [
+        "http_attempts",
+        "http_read_errors",
+        "http_retries",
+        "http_seconds_backing_off",
+        "http_seconds_in_attempts",
+        "http_seconds_throttling",
+        "http_server_errors_5xx",
+        "http_slowest_attempt_seconds",
+        "http_slowest_attempt_url",
+        "http_throttled_429",
+        "http_timeouts",
+        "http_url_errors",
+    ]
+    assert metadata["http_attempts"] == 5
+    assert metadata["http_retries"] == 2
+    assert metadata["http_timeouts"] == 1
+    assert metadata["http_read_errors"] == 3
+    assert metadata["http_url_errors"] == 4
+    assert metadata["http_throttled_429"] == 6
+    assert metadata["http_server_errors_5xx"] == 7
+    assert metadata["http_seconds_in_attempts"] == 12.3
+    assert metadata["http_seconds_backing_off"] == 6.1
+    assert metadata["http_seconds_throttling"] == 0.0
+    assert metadata["http_slowest_attempt_seconds"] == 60.0
+    assert metadata["http_slowest_attempt_url"] == "https://example.test/x"
+    for key in ("attempts", "retries", "timeouts", "read_errors", "url_errors"):
+        assert type(metadata[f"http_{key}"]) is int
+    for key in (
+        "seconds_in_attempts",
+        "seconds_backing_off",
+        "seconds_throttling",
+        "slowest_attempt_seconds",
+    ):
+        assert type(metadata[f"http_{key}"]) is float
+    assert type(metadata["http_slowest_attempt_url"]) is str
