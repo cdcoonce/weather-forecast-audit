@@ -850,6 +850,36 @@ backfill was already stuck on, and the daemon would just find (or silently
 skip past) that same never-materialized run again. This is a deliberate,
 manual override; the sensor itself never bumps `generation` on its own.
 
+### Reading a slow unit: the HTTP statistics
+
+A unit once ran 701s and was killed by the cap because `raw__asos_hourly`
+alone took 650.7s, with nothing in the logs to say why: `request_count` in
+the raw assets' metadata is the *planned* request count (a formula), not a
+measurement. `raw__asos_hourly`, `raw__nbs_guidance` and `raw__cli_daily`
+therefore also record what the HTTP client actually did, as `http_*`
+materialization metadata (`FetchStats.as_metadata` in `iem/http.py`):
+`http_attempts`, `http_retries`, `http_timeouts`, `http_read_errors`,
+`http_url_errors`, `http_throttled_429`, `http_server_errors_5xx`,
+`http_seconds_in_attempts`, `http_seconds_backing_off`,
+`http_seconds_throttling`, `http_slowest_attempt_seconds` and
+`http_slowest_attempt_url`. The run log line for each asset also names its
+slowest attempt. How to read them:
+
+- A high `http_timeouts` with `http_slowest_attempt_seconds` near 60 means
+  IEM hangs until the client's 60s timeout; each such stall also adds
+  backoff, visible in `http_seconds_backing_off`.
+- A high `http_throttled_429` means IEM is rate limiting the client.
+- `http_server_errors_5xx`, `http_read_errors` and `http_url_errors` count
+  server failures, truncated or dropped responses, and connection failures.
+- A high `http_seconds_throttling` is the client's own 1s minimum interval
+  between requests (politeness), not a fault.
+- `http_slowest_attempt_url` names the single slowest request (a bad
+  station shows up here), truncated to 200 characters.
+
+These are additive diagnostics: they record what already happens and change
+no retry, backoff, timeout or request behaviour. Fetchers that do not record
+statistics (test fixtures) leave the metadata exactly as it was.
+
 ### Risk: the transform run may exceed the 600s cap
 
 `transform_job` is a full `dbt build` over the whole raw archive (D4), and

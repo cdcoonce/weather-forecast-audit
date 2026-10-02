@@ -44,6 +44,7 @@ from weather_forecast_audit.checks import (
 from weather_forecast_audit.gaps import GapRecord
 from weather_forecast_audit.iem._chunking import month_chunks
 from weather_forecast_audit.iem.guidance import fetch_guidance
+from weather_forecast_audit.iem.http import FetchStats
 from weather_forecast_audit.iem.observations import fetch_cli, fetch_hourly
 from weather_forecast_audit.pipeline import (
     OBS_LOOKAHEAD_DAYS,
@@ -75,6 +76,28 @@ RAW_ASOS_HOURLY_KEY = dg.AssetKey(["raw", "asos_hourly"])
 RAW_CLI_DAILY_KEY = dg.AssetKey(["raw", "cli_daily"])
 RAW_RESOLVED_WINDOWS_KEY = dg.AssetKey(["raw", "resolved_windows"])
 RAW_INGEST_GAPS_KEY = dg.AssetKey(["raw", "ingest_gaps"])
+
+
+def _http_stats_metadata(fetcher: object) -> dict[str, int | float | str]:
+    """Measured request statistics, when the fetcher records them.
+
+    `Fetcher` stays a Protocol with no stats member: only a fetcher whose
+    `stats` is a `FetchStats` (the real `UrllibFetcher`) contributes keys, so
+    fixture fetchers are untouched.
+    """
+    stats = getattr(fetcher, "stats", None)
+    return stats.as_metadata() if isinstance(stats, FetchStats) else {}
+
+
+def _slowest_attempt_log(fetcher: object) -> str:
+    """A log-line suffix naming the slowest HTTP attempt ('' without stats)."""
+    stats = getattr(fetcher, "stats", None)
+    if not isinstance(stats, FetchStats):
+        return ""
+    return (
+        f"; slowest attempt {stats.slowest_attempt_seconds:.1f}s "
+        f"({stats.slowest_attempt_url or 'n/a'})"
+    )
 
 
 def _partition_date_range(context: dg.AssetExecutionContext) -> tuple[date, date]:
@@ -175,14 +198,19 @@ def raw_nbs_guidance(
             gaps_by_station[station.icao] = result.gaps
 
     context.log.info(
-        "raw/nbs_guidance %s..%s: %d stations, %d requests",
+        "raw/nbs_guidance %s..%s: %d stations, %d requests%s",
         start,
         end,
         len(station_list),
         request_count,
+        _slowest_attempt_log(fetcher),
     )
     return dg.MaterializeResult(
-        metadata={"station_count": len(station_list), "request_count": request_count},
+        metadata={
+            "station_count": len(station_list),
+            "request_count": request_count,
+            **_http_stats_metadata(fetcher),
+        },
         check_results=[
             _gap_rate_check_result("guidance_gap_rate", gaps_by_station, start, end)
         ],
@@ -226,14 +254,19 @@ def raw_asos_hourly(
             gaps_by_station[station.icao] = result.gaps
 
     context.log.info(
-        "raw/asos_hourly %s..%s: %d stations, %d requests",
+        "raw/asos_hourly %s..%s: %d stations, %d requests%s",
         start,
         end,
         len(station_list),
         request_count,
+        _slowest_attempt_log(fetcher),
     )
     return dg.MaterializeResult(
-        metadata={"station_count": len(station_list), "request_count": request_count},
+        metadata={
+            "station_count": len(station_list),
+            "request_count": request_count,
+            **_http_stats_metadata(fetcher),
+        },
         check_results=[
             _gap_rate_check_result("asos_gap_rate", gaps_by_station, start, end)
         ],
@@ -274,14 +307,19 @@ def raw_cli_daily(
             )
 
     context.log.info(
-        "raw/cli_daily %s..%s: %d stations, %d requests",
+        "raw/cli_daily %s..%s: %d stations, %d requests%s",
         start,
         end,
         len(station_list),
         request_count,
+        _slowest_attempt_log(fetcher),
     )
     return dg.MaterializeResult(
-        metadata={"station_count": len(station_list), "request_count": request_count}
+        metadata={
+            "station_count": len(station_list),
+            "request_count": request_count,
+            **_http_stats_metadata(fetcher),
+        }
     )
 
 

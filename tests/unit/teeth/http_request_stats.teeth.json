@@ -1,0 +1,579 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_http_fetcher.py",
+    "tests/dagster/test_ingest_http_stats.py",
+    "tests/dagster/test_ingest_materialize.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_http_fetcher.py",
+    "tests/dagster/test_ingest_http_stats.py",
+    "tests/dagster/test_ingest_materialize.py"
+  ],
+  "mutants": [
+    {
+      "label": "01 attempts never incremented",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self.stats.attempts += 1\n",
+      "replace": "            pass\n"
+    },
+    {
+      "label": "02 retries incremented on every attempt",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            if attempt > 0:\n                self.stats.retries += 1\n",
+      "replace": "            self.stats.retries += 1\n"
+    },
+    {
+      "label": "02b retries threshold shifted (attempt > 1)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            if attempt > 0:\n",
+      "replace": "            if attempt > 1:\n"
+    },
+    {
+      "label": "03 timeouts and url_errors swapped (isinstance inverted)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "if isinstance(exc, TimeoutError):",
+      "replace": "if not isinstance(exc, TimeoutError):"
+    },
+    {
+      "label": "04 429 counted into server_errors_5xx instead",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                    self.stats.throttled_429 += 1\n",
+      "replace": "                    self.stats.server_errors_5xx += 1\n"
+    },
+    {
+      "label": "04b 429 not counted at all",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                    self.stats.throttled_429 += 1\n",
+      "replace": "                    pass\n"
+    },
+    {
+      "label": "05a 5xx range off by one at the low end (500 < status)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "elif 500 <= status < 600:",
+      "replace": "elif 500 < status < 600:"
+    },
+    {
+      "label": "05b 5xx range off by one at the high end (<= 600)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "CONTROL: Inert for every real HTTP status (valid statuses stop at 599; no test or server emits 600). Not a defect worth a test; empirically verified to survive.",
+      "find": "elif 500 <= status < 600:",
+      "replace": "elif 500 <= status <= 600:"
+    },
+    {
+      "label": "05c 5xx range widened to every 4xx and 5xx",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "elif 500 <= status < 600:",
+      "replace": "elif 400 <= status < 600:"
+    },
+    {
+      "label": "05d 5xx counts only retryable statuses (status in RETRYABLE_STATUSES)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "elif 500 <= status < 600:",
+      "replace": "elif status in RETRYABLE_STATUSES:"
+    },
+    {
+      "label": "06 read_errors also counted for URLError",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                    self.stats.url_errors += 1\n",
+      "replace": "                    self.stats.url_errors += 1\n                    self.stats.read_errors += 1\n"
+    },
+    {
+      "label": "06b read_errors also counted for TimeoutError",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                    self.stats.timeouts += 1\n",
+      "replace": "                    self.stats.timeouts += 1\n                    self.stats.read_errors += 1\n"
+    },
+    {
+      "label": "06c read_errors never incremented",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                self.stats.read_errors += 1\n",
+      "replace": "                pass\n"
+    },
+    {
+      "label": "06d read_errors counted twice",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                self.stats.read_errors += 1\n",
+      "replace": "                self.stats.read_errors += 2\n"
+    },
+    {
+      "label": "07a seconds_in_attempts double counts (record_attempt twice)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                self._record_attempt(url, started_at)\n",
+      "replace": "                self._record_attempt(url, started_at)\n                self._record_attempt(url, started_at)\n"
+    },
+    {
+      "label": "07b seconds_in_attempts skips successful attempts",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                    return HttpResponse(status=response.status, body=body)\n",
+      "replace": "                    self.stats.seconds_in_attempts -= self._clock() - started_at\n                    return HttpResponse(status=response.status, body=body)\n"
+    },
+    {
+      "label": "07c record_attempt skips failed attempts (only the success path records)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            finally:\n                self._record_attempt(url, started_at)\n",
+      "replace": "            finally:\n                pass\n"
+    },
+    {
+      "label": "07d elapsed not measured from started_at",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "elapsed = self._clock() - started_at",
+      "replace": "elapsed = self._clock()"
+    },
+    {
+      "label": "08a backoff recorded into seconds_throttling",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self.stats.seconds_backing_off += backoff\n",
+      "replace": "            self.stats.seconds_throttling += backoff\n"
+    },
+    {
+      "label": "08b throttle sleep recorded into seconds_backing_off",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                self.stats.seconds_throttling += wait\n",
+      "replace": "                self.stats.seconds_backing_off += wait\n"
+    },
+    {
+      "label": "09a seconds_throttling recorded even when no sleep happens",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            if wait > 0:\n                self.stats.seconds_throttling += wait\n                self._sleep(wait)\n",
+      "replace": "            self.stats.seconds_throttling += wait\n            if wait > 0:\n                self._sleep(wait)\n"
+    },
+    {
+      "label": "09b seconds_throttling records min_interval_s instead of the actual wait",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                self.stats.seconds_throttling += wait\n",
+      "replace": "                self.stats.seconds_throttling += self.min_interval_s\n"
+    },
+    {
+      "label": "10a slowest never updates (comparison inverted)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "if elapsed > stats.slowest_attempt_seconds:",
+      "replace": "if elapsed < stats.slowest_attempt_seconds:"
+    },
+    {
+      "label": "10b slowest keeps the FIRST attempt",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "if elapsed > stats.slowest_attempt_seconds:",
+      "replace": "if not stats.slowest_attempt_url:"
+    },
+    {
+      "label": "10c slowest_attempt_seconds only ever raised once, never replaced by a longer one (>= vs >)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "KNOWN GAP: ties between equal-duration attempts are not pinned (deliberately skipped). >= makes the LAST of equal attempts win and also records a url for an all-zero-duration run; > leaves slowest_attempt_url as the empty string there (the log prints n/a).",
+      "find": "if elapsed > stats.slowest_attempt_seconds:",
+      "replace": "if elapsed >= stats.slowest_attempt_seconds:"
+    },
+    {
+      "label": "11a slowest_attempt_url stays the first URL (assigned only when empty)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "stats.slowest_attempt_url = url[:200]",
+      "replace": "stats.slowest_attempt_url = stats.slowest_attempt_url or url[:200]"
+    },
+    {
+      "label": "11b slowest_attempt_url not truncated",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "stats.slowest_attempt_url = url[:200]",
+      "replace": "stats.slowest_attempt_url = url"
+    },
+    {
+      "label": "11c slowest_attempt_url truncated to 100",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "stats.slowest_attempt_url = url[:200]",
+      "replace": "stats.slowest_attempt_url = url[:100]"
+    },
+    {
+      "label": "11d slowest_attempt_url truncated to 201",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "stats.slowest_attempt_url = url[:200]",
+      "replace": "stats.slowest_attempt_url = url[:201]"
+    },
+    {
+      "label": "12 started_at taken before the throttle sleep (throttle wait counted as attempt time)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self._throttle()\n            self.stats.attempts += 1\n            if attempt > 0:\n                self.stats.retries += 1\n            started_at = self._clock()\n",
+      "replace": "            started_at = self._clock()\n            self._throttle()\n            self.stats.attempts += 1\n            if attempt > 0:\n                self.stats.retries += 1\n"
+    },
+    {
+      "label": "13a seconds_in_attempts rounding removed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "round(self.seconds_in_attempts, 1)",
+      "replace": "self.seconds_in_attempts"
+    },
+    {
+      "label": "13b seconds_backing_off rounding removed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "round(self.seconds_backing_off, 1)",
+      "replace": "self.seconds_backing_off"
+    },
+    {
+      "label": "13c seconds_throttling rounding removed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "round(self.seconds_throttling, 1)",
+      "replace": "self.seconds_throttling"
+    },
+    {
+      "label": "13d slowest_attempt_seconds rounding removed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "round(self.slowest_attempt_seconds, 1)",
+      "replace": "self.slowest_attempt_seconds"
+    },
+    {
+      "label": "13e rounding to 2 places",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "round(self.seconds_in_attempts, 1)",
+      "replace": "round(self.seconds_in_attempts, 2)"
+    },
+    {
+      "label": "13f key renamed (http_timeouts -> http_timeout)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "\"http_timeouts\": self.timeouts,",
+      "replace": "\"http_timeout\": self.timeouts,"
+    },
+    {
+      "label": "13g key renamed (http_slowest_attempt_url -> http_slowest_url)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "\"http_slowest_attempt_url\"",
+      "replace": "\"http_slowest_url\""
+    },
+    {
+      "label": "13h key renamed (http_throttled_429 -> http_throttled)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "\"http_throttled_429\"",
+      "replace": "\"http_throttled\""
+    },
+    {
+      "label": "13i key dropped (http_url_errors)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            \"http_url_errors\": self.url_errors,\n",
+      "replace": ""
+    },
+    {
+      "label": "13j extra key added",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            \"http_attempts\": self.attempts,\n",
+      "replace": "            \"http_attempts\": self.attempts,\n            \"http_extra\": 0,\n"
+    },
+    {
+      "label": "13k timeouts and url_errors values swapped in as_metadata",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "\"http_timeouts\": self.timeouts,",
+      "replace": "\"http_timeouts\": self.url_errors,"
+    },
+    {
+      "label": "13l attempts exposed as float",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "\"http_attempts\": self.attempts,",
+      "replace": "\"http_attempts\": float(self.attempts),"
+    },
+    {
+      "label": "13m server_errors_5xx and throttled_429 values swapped in as_metadata",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "\"http_server_errors_5xx\": self.server_errors_5xx,",
+      "replace": "\"http_server_errors_5xx\": self.throttled_429,"
+    },
+    {
+      "label": "14a _http_stats_metadata returns {} always",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "    return stats.as_metadata() if isinstance(stats, FetchStats) else {}",
+      "replace": "    return {}"
+    },
+    {
+      "label": "14b nbs_guidance does not merge http stats",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"guidance_gap_rate\"",
+      "replace": "        },\n        check_results=[\n            _gap_rate_check_result(\"guidance_gap_rate\""
+    },
+    {
+      "label": "14c asos_hourly does not merge http stats",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\"",
+      "replace": "        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\""
+    },
+    {
+      "label": "14d cli_daily does not merge http stats",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            **_http_stats_metadata(fetcher),\n        }\n    )",
+      "replace": "        }\n    )"
+    },
+    {
+      "label": "14e nbs_guidance drops request_count",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            \"request_count\": request_count,\n            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"guidance_gap_rate\"",
+      "replace": "            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"guidance_gap_rate\""
+    },
+    {
+      "label": "14f asos_hourly drops request_count",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            \"request_count\": request_count,\n            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\"",
+      "replace": "            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\""
+    },
+    {
+      "label": "14g cli_daily drops request_count",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            \"request_count\": request_count,\n            **_http_stats_metadata(fetcher),\n        }\n    )",
+      "replace": "            **_http_stats_metadata(fetcher),\n        }\n    )"
+    },
+    {
+      "label": "14h asos_hourly drops station_count",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            \"station_count\": len(station_list),\n            \"request_count\": request_count,\n            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\"",
+      "replace": "            \"request_count\": request_count,\n            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\""
+    },
+    {
+      "label": "14i isinstance check removed (any non-None stats attribute accepted)",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "    return stats.as_metadata() if isinstance(stats, FetchStats) else {}",
+      "replace": "    return stats.as_metadata() if stats is not None else {}"
+    },
+    {
+      "label": "14j _slowest_attempt_log always returns empty string",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "    stats = getattr(fetcher, \"stats\", None)\n    if not isinstance(stats, FetchStats):\n        return \"\"\n",
+      "replace": "    return \"\"\n"
+    },
+    {
+      "label": "14k _slowest_attempt_log fallback 'n/a' removed",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "{stats.slowest_attempt_url or 'n/a'}",
+      "replace": "{stats.slowest_attempt_url}"
+    },
+    {
+      "label": "14l _slowest_attempt_log drops the url",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "f\"({stats.slowest_attempt_url or 'n/a'})\"",
+      "replace": "\"\""
+    },
+    {
+      "label": "15a backoff sleep removed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self._sleep(backoff)\n",
+      "replace": "            pass\n"
+    },
+    {
+      "label": "15b backoff exponent changed (3**attempt)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "backoff = self.backoff_s * (2**attempt)",
+      "replace": "backoff = self.backoff_s * (3**attempt)"
+    },
+    {
+      "label": "15c backoff made constant",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "backoff = self.backoff_s * (2**attempt)",
+      "replace": "backoff = self.backoff_s"
+    },
+    {
+      "label": "15d HTTP status retries skipped (always raise)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "if status not in RETRYABLE_STATUSES or attempt == self.max_retries:",
+      "replace": "if True:"
+    },
+    {
+      "label": "15e timeout/URLError retries skipped (always raise)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                error = FetchError(status=None, reason=f\"http_error:{reason}\")\n                if attempt == self.max_retries:",
+      "replace": "                error = FetchError(status=None, reason=f\"http_error:{reason}\")\n                if True:"
+    },
+    {
+      "label": "15f read-error retries skipped (always raise)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if attempt == self.max_retries:",
+      "replace": "                    status=None, reason=f\"http_error:{type(exc).__name__}\"\n                )\n                if True:"
+    },
+    {
+      "label": "15g HTTPError FetchError reason changed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "reason=f\"http_error:{status}\"",
+      "replace": "reason=f\"http_status:{status}\"",
+      "expect": "survived",
+      "why": "KNOWN GAP in PRE-EXISTING tests (not this change): test_503_exhausts_retries_raises_fetch_error only asserts '503' in reason, so changing http_error:503 to http_status:503 passes. The reason keys the ingest-gaps ledger but its prefix is unpinned for HTTP status errors."
+    },
+    {
+      "label": "15h URLError/timeout FetchError reason changed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "reason=f\"http_error:{reason}\"",
+      "replace": "reason=f\"url_error:{reason}\""
+    },
+    {
+      "label": "15i read-error FetchError reason changed",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "reason=f\"http_error:{type(exc).__name__}\"",
+      "replace": "reason=\"http_error:read\""
+    },
+    {
+      "label": "15j HTTPError final raise drops exception chaining",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "attempt == self.max_retries:\n                    raise error from exc\n            except (TimeoutError",
+      "replace": "attempt == self.max_retries:\n                    raise error\n            except (TimeoutError",
+      "expect": "survived",
+      "why": "KNOWN GAP in PRE-EXISTING tests (not this change): no test asserts __cause__ on a FetchError raised from an HTTPError (only the URLError path asserts it), so dropping 'from exc' on that branch survives."
+    },
+    {
+      "label": "15k non-retryable HTTP error is retried (404 no longer raised)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "if status not in RETRYABLE_STATUSES or attempt == self.max_retries:",
+      "replace": "if attempt == self.max_retries:"
+    },
+    {
+      "label": "16a stats shared across all fetchers (module-level shared instance)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "        self.stats = FetchStats()\n",
+      "replace": "        self.stats = globals().setdefault(\"_SHARED_STATS\", FetchStats())\n"
+    },
+    {
+      "label": "16b stats reset at the start of every get (counts only the last call)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "    def get(self, url: str) -> HttpResponse:\n",
+      "replace": "    def get(self, url: str) -> HttpResponse:\n        self.stats = FetchStats()\n"
+    },
+    {
+      "label": "[control] 16c self.stats rebound to itself in _throttle (constant-False guard)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "CONTROL: Semantically inert: the conditional is constant-False (`and False`), so self.stats is rebound to itself on every call. Control proving the rig discriminates; holds over every input.",
+      "find": "        now = self._clock()\n        if self._last_request_at is not None:",
+      "replace": "        self.stats = FetchStats() if self._last_request_at is None and False else self.stats\n        now = self._clock()\n        if self._last_request_at is not None:"
+    },
+    {
+      "label": "16d seconds_backing_off recorded for the final (non-sleeping) attempt too",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            backoff = self.backoff_s * (2**attempt)\n            self.stats.seconds_backing_off += backoff\n            self._sleep(backoff)\n",
+      "replace": "            backoff = self.backoff_s * (2**attempt)\n            self.stats.seconds_backing_off += backoff + self.backoff_s\n            self._sleep(backoff)\n"
+    },
+    {
+      "label": "16e seconds_backing_off measured from the clock (elapsed), not the requested backoff",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "            self.stats.seconds_backing_off += backoff\n            self._sleep(backoff)\n",
+      "replace": "            _t = self._clock()\n            self._sleep(backoff)\n            self.stats.seconds_backing_off += self._clock() - _t\n"
+    },
+    {
+      "label": "16f 429 branch also counts into server_errors_5xx (elif -> if with widened range)",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "find": "elif 500 <= status < 600:",
+      "replace": "if 429 <= status < 600:"
+    },
+    {
+      "label": "[control] 17 elif -> if on the 5xx branch",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "CONTROL: Inert for all inputs: the 429 branch and the [500,600) range are disjoint, so whether the second test is an elif or an independent if cannot change which counters move.",
+      "find": "                elif 500 <= status < 600:",
+      "replace": "                if 500 <= status < 600:"
+    },
+    {
+      "label": "[control] 18 attempts counter incremented before the throttle",
+      "file": "../../../src/weather_forecast_audit/iem/http.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "CONTROL: Inert: _throttle never reads stats.attempts and attempts is not read between the two lines. Holds over every input; would differ only if _throttle raised, which it cannot (injected clock/sleep only).",
+      "find": "            self._throttle()\n            self.stats.attempts += 1\n",
+      "replace": "            self.stats.attempts += 1\n            self._throttle()\n"
+    },
+    {
+      "label": "14m nbs_guidance log line drops the slowest-attempt suffix",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "\"raw/nbs_guidance %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        _slowest_attempt_log(fetcher),\n",
+      "replace": "\"raw/nbs_guidance %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        \"\",\n"
+    },
+    {
+      "label": "14m asos_hourly log line drops the slowest-attempt suffix",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "\"raw/asos_hourly %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        _slowest_attempt_log(fetcher),\n",
+      "replace": "\"raw/asos_hourly %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        \"\",\n"
+    },
+    {
+      "label": "14m cli_daily log line drops the slowest-attempt suffix",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "\"raw/cli_daily %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        _slowest_attempt_log(fetcher),\n",
+      "replace": "\"raw/cli_daily %s..%s: %d stations, %d requests%s\",\n        start,\n        end,\n        len(station_list),\n        request_count,\n        \"\",\n"
+    }
+  ]
+}
