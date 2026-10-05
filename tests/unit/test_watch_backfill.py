@@ -9,12 +9,14 @@ mutating copies; no response shape is invented. Nothing touches the network:
 
 import ast
 import copy
+import http.client
 import importlib.util
 import io
 import json
 import os
 import re
 import sys
+import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -115,8 +117,19 @@ def _config(**overrides: float | bool) -> object:
     return wb.Config(**overrides)
 
 
-def _poll(sensor: dict, runs: dict, memory: object, config: object, now: float) -> list:
-    return wb.evaluate(wb.parse_snapshot(sensor, runs), memory, config, now)
+def _poll(
+    sensor: dict,
+    runs: dict,
+    memory: object,
+    config: object,
+    now: float,
+    mono: float | None = None,
+) -> list:
+    """Evaluate one poll; the monotonic clock follows `now` unless given."""
+    snapshot = wb.parse_snapshot(sensor, runs)
+    return wb.evaluate(
+        snapshot, memory, config, now, mono=now if mono is None else mono
+    )
 
 
 def _kinds(events: list) -> list[str]:
@@ -698,16 +711,35 @@ def test_fetch_snapshot_graphql_errors_are_snapshot_errors() -> None:
 
 
 class Clock:
-    def __init__(self, start: float = HEALTHY_NOW) -> None:
+    """Fake wall clock (`__call__`) and monotonic clock (`mono`).
+
+    `sleep` advances both. It raises after `max_sleeps` calls so a regressed
+    exit guard turns a hang into a red test instead of an endless loop.
+    """
+
+    def __init__(self, start: float = HEALTHY_NOW, max_sleeps: int = 1000) -> None:
         self.now = start
+        self.mono_now = 5000.0
+        self.max_sleeps = max_sleeps
         self.sleeps: list[float] = []
 
     def __call__(self) -> float:
         return self.now
 
+    def mono(self) -> float:
+        return self.mono_now
+
+    def step_wall(self, seconds: float) -> None:
+        """A wall-clock step (NTP, suspend/resume) the monotonic clock ignores."""
+        self.now += seconds
+
     def sleep(self, seconds: float) -> None:
+        if len(self.sleeps) >= self.max_sleeps:
+            msg = "watch looped past max_s"
+            raise AssertionError(msg)
         self.sleeps.append(seconds)
         self.now += seconds
+        self.mono_now += seconds
 
 
 def _scripted_fetch(snapshots: list) -> Callable[[], object]:
@@ -750,6 +782,7 @@ def test_watch_prints_nothing_while_healthy_then_events_and_status() -> None:
         interval=60,
         sleep=clock.sleep,
         clock=clock,
+        mono=clock.mono,
         out=out,
     )
     assert code == 0
@@ -770,6 +803,7 @@ def test_watch_is_silent_while_healthy(capsys: pytest.CaptureFixture[str]) -> No
         interval=60,
         sleep=clock.sleep,
         clock=clock,
+        mono=clock.mono,
         out=out,
         max_s=600,
     )
@@ -789,6 +823,7 @@ def test_watch_first_poll_event_exits_without_sleeping() -> None:
             interval=60,
             sleep=clock.sleep,
             clock=clock,
+            mono=clock.mono,
             out=out,
         )
         == 0
@@ -808,6 +843,7 @@ def test_watch_prints_every_event_then_one_status_line() -> None:
         interval=60,
         sleep=clock.sleep,
         clock=clock,
+        mono=clock.mono,
         out=out,
     )
     lines = out.getvalue().splitlines()
@@ -826,6 +862,7 @@ def test_watch_unreachable_after_n_consecutive_failures() -> None:
         interval=60,
         sleep=clock.sleep,
         clock=clock,
+        mono=clock.mono,
         out=out,
     )
     assert code == 0
@@ -847,6 +884,7 @@ def test_watch_unreachable_streak_resets_on_success() -> None:
         interval=60,
         sleep=clock.sleep,
         clock=clock,
+        mono=clock.mono,
         out=out,
     )
     assert out.getvalue().startswith("EVENT HALT ")
@@ -862,6 +900,7 @@ def test_watch_max_s_zero_never_quits_on_time() -> None:
         interval=3600,
         sleep=clock.sleep,
         clock=clock,
+        mono=clock.mono,
         out=out,
         max_s=0,
     )
@@ -877,6 +916,7 @@ def test_watch_max_s_does_not_pre_empt_an_event() -> None:
         interval=60,
         sleep=clock.sleep,
         clock=clock,
+        mono=clock.mono,
         out=out,
         max_s=1,
     )
@@ -892,7 +932,15 @@ def _main(
 ) -> tuple[int, str, str]:
     clock = clock or Clock()
     out, err = io.StringIO(), io.StringIO()
-    code = wb.main(argv, post=post, clock=clock, sleep=clock.sleep, out=out, err=err)
+    code = wb.main(
+        argv,
+        post=post,
+        clock=clock,
+        mono=clock.mono,
+        sleep=clock.sleep,
+        out=out,
+        err=err,
+    )
     return code, out.getvalue(), err.getvalue()
 
 
@@ -1011,32 +1059,6 @@ def test_main_wait_ignore_failed_attempts_flag(
     assert quiet.splitlines() == ["QUIET 300"]
 
 
-def test_main_wait_slow_and_stall_flags_are_honoured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
-    clock = Clock(HEALTHY_NOW)
-    code, out, _ = _main(
-        [
-            "wait",
-            "--url",
-            "http://x",
-            "--interval",
-            "10",
-            "--slow-s",
-            "100",
-            "--stall-s",
-            "100000",
-            "--max-s",
-            "1000",
-        ],
-        FakePost(),
-        clock,
-    )
-    assert code == 0
-    assert out.splitlines()[0].startswith("EVENT SLOW ")
-
-
 def test_main_wait_unreachable_polls_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
     clock = Clock()
@@ -1082,3 +1104,775 @@ def test_main_name_overrides_reach_the_query(monkeypatch: pytest.MonkeyPatch) ->
     q = next(c[1]["query"] for c in post.calls if "sensorOrError" in c[1]["query"])
     assert 'sensorName:"s2"' in q and 'repositoryLocationName:"l2"' in q
     assert 'repositoryName:"r2"' in q
+
+
+# -- main: threshold flags are honoured (set BELOW their defaults) ------
+
+
+def test_main_slow_s_flag_sets_the_slow_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    clock = Clock(HEALTHY_NOW, max_sleeps=100)
+    code, out, _ = _main(
+        ["wait", "--url", "http://x", "--interval", "10", "--slow-s", "100"]
+        + ["--stall-s", "100000", "--max-s", "1000"],
+        FakePost(),
+        clock,
+    )
+    assert code == 0
+    assert out.splitlines()[0].startswith("EVENT SLOW ")
+    assert "duration=100s" in out.splitlines()[0]
+    # The run was 60 s old at the first poll; 100 s is 4 intervals later.
+    assert clock.sleeps == [10, 10, 10, 10]
+
+
+def test_main_stall_s_flag_sets_the_stall_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    clock = Clock(HEALTHY_NOW, max_sleeps=100)
+    code, out, _ = _main(
+        ["wait", "--url", "http://x", "--interval", "10", "--stall-s", "100"]
+        + ["--slow-s", "1000000000", "--max-s", "5000"],
+        FakePost(),
+        clock,
+    )
+    assert code == 0
+    assert out.splitlines()[0].startswith("EVENT STALLED ")
+    assert "unchanged for 100s" in out.splitlines()[0]
+    assert clock.sleeps == [10] * 10
+
+
+def test_main_defaults_are_450_slow_and_3h_stall(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    clock = Clock(HEALTHY_NOW, max_sleeps=100)
+    _, out, _ = _main(
+        ["wait", "--url", "http://x", "--interval", "10", "--max-s", "1000"],
+        FakePost(),
+        clock,
+    )
+    assert out.splitlines()[0].startswith("EVENT SLOW ")
+    assert "duration=450s" in out.splitlines()[0]
+
+
+# -- --sensor decides which runs are kept ------------------------------
+
+
+def _runs_for_other_sensor() -> dict:
+    runs = _runs()
+    runs["data"]["runsOrError"]["results"].insert(
+        0,
+        _run(
+            runs,
+            run_id="s2-run",
+            status="SUCCESS",
+            start=LIVE_START + 10,
+            end=LIVE_START + 20,
+            unit="2024-01-s2",
+            sensor_name="s2",
+        ),
+    )
+    return runs
+
+
+def test_parse_snapshot_sensor_name_parameter_chooses_the_runs() -> None:
+    runs = _runs_for_other_sensor()
+    mine = wb.parse_snapshot(_sensor(), runs, sensor_name="s2")
+    assert [r.run_id for r in mine.runs] == ["s2-run"]
+    default = wb.parse_snapshot(_sensor(), runs)
+    assert "s2-run" not in [r.run_id for r in default.runs]
+
+
+def test_fetch_snapshot_sensor_name_chooses_the_runs() -> None:
+    post = FakePost(runs=_runs_for_other_sensor())
+    snap = wb.fetch_snapshot("http://x", post=post, sensor_name="s2")
+    assert [r.run_id for r in snap.runs] == ["s2-run"]
+
+
+def test_main_sensor_flag_changes_which_runs_are_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    _, out, _ = _main(
+        ["status", "--url", "http://x", "--sensor", "s2"],
+        FakePost(runs=_runs_for_other_sensor()),
+    )
+    assert "last=2024-01-s2:SUCCESS:10s" in out
+    assert "median_s=10 " in out
+    _, out, _ = _main(
+        ["status", "--url", "http://x"], FakePost(runs=_runs_for_other_sensor())
+    )
+    assert "last=2023-09-c11:STARTED" in out
+
+
+# -- STALLED: re-arm, idle seconds -------------------------------------
+
+
+def test_stalled_rearms_after_the_index_advances_again() -> None:
+    sensor, runs, memory = _sensor(), _runs(), wb.Memory()
+    config = _config(stall_s=1000, slow_s=10**9)
+    t0 = HEALTHY_NOW
+    assert _poll(sensor, runs, memory, config, t0) == []
+    assert _kinds(_poll(sensor, runs, memory, config, t0 + 1000)) == ["STALLED"]
+    assert _poll(sensor, runs, memory, config, t0 + 1500) == []
+    _set_cursor(sensor, next_index=1056)
+    assert _poll(sensor, runs, memory, config, t0 + 1600) == []
+    assert _poll(sensor, runs, memory, config, t0 + 2599) == []
+    events = _poll(sensor, runs, memory, config, t0 + 2600)
+    assert _kinds(events) == ["STALLED"]
+    assert "next_index=1056" in events[0].detail
+
+
+def test_stalled_detail_reports_the_actual_idle_seconds() -> None:
+    sensor, runs, memory = _sensor(), _runs(), wb.Memory()
+    config = _config(stall_s=1000, slow_s=10**9)
+    assert _poll(sensor, runs, memory, config, HEALTHY_NOW) == []
+    events = _poll(sensor, runs, memory, config, HEALTHY_NOW + 1234)
+    assert _kinds(events) == ["STALLED"]
+    assert "unchanged for 1234s" in events[0].detail
+
+
+# -- HALT: staleness, null cursors, prefix ------------------------------
+
+
+def test_status_line_stale_halt_prints_halted_no() -> None:
+    sensor = _halted_sensor()
+    _set_cursor(sensor, generation=6, attempt=1)
+    line = wb.format_status(wb.parse_snapshot(sensor, _runs()), HEALTHY_NOW)
+    assert "tick=SKIPPED:HALTED: unit 2023-09-c11 failed 3 attempts" in line
+    assert "halted=no" in line
+    assert "gen=6" in line
+
+
+@pytest.mark.parametrize("raw", [None, "{not json", '{"state": 3}', "[]"])
+def test_halt_does_not_fire_when_tick_and_current_cursor_are_both_unusable(
+    raw: str | None,
+) -> None:
+    sensor = _halted_sensor()
+    _state(sensor)["typeSpecificData"]["lastCursor"] = raw
+    _newest_tick(sensor)["cursor"] = raw
+    snap = wb.parse_snapshot(sensor, _runs())
+    assert wb.evaluate(snap, wb.Memory(), _config(), HEALTHY_NOW, mono=0.0) == []
+    assert "halted=no" in wb.format_status(snap, HEALTHY_NOW)
+
+
+def test_halt_does_not_fire_when_only_the_tick_cursor_is_null() -> None:
+    sensor = _halted_sensor()
+    _newest_tick(sensor)["cursor"] = None
+    assert _poll(sensor, _runs(), wb.Memory(), _config(), HEALTHY_NOW) == []
+
+
+@pytest.mark.parametrize("reason", ["HALTING", "HALTED", "halted: x", "Halted: x"])
+def test_halt_needs_the_exact_halted_colon_prefix(reason: str) -> None:
+    sensor = _halted_sensor(reason)
+    assert _poll(sensor, _runs(), wb.Memory(), _config(), HEALTHY_NOW) == []
+    line = wb.format_status(wb.parse_snapshot(sensor, _runs()), HEALTHY_NOW)
+    assert "halted=no" in line
+
+
+# -- SENSOR_ERROR / UNREACHABLE detail text -----------------------------
+
+
+def test_sensor_error_multiline_message_collapses_to_one_line() -> None:
+    sensor = _sensor()
+    _newest_tick(sensor).update(
+        status="FAILURE", error={"message": "Traceback:\n  line 1\r\n  line 2\t\n"}
+    )
+    events = _poll(sensor, _runs(), wb.Memory(), _config(), HEALTHY_NOW)
+    assert events[0].detail == "Traceback: line 1 line 2"
+
+
+def test_sensor_error_null_error_gives_the_fallback_text() -> None:
+    sensor = _sensor()
+    _newest_tick(sensor).update(status="FAILURE", error=None)
+    events = _poll(sensor, _runs(), wb.Memory(), _config(), HEALTHY_NOW)
+    assert events[0].detail == "no error message"
+
+
+def test_unreachable_default_threshold_is_ten_polls() -> None:
+    assert wb.Config().unreachable_polls == 10
+    memory, config = wb.Memory(), wb.Config()
+    for _ in range(9):
+        assert wb.note_poll_failure(memory, config, "down") == []
+    assert _kinds(wb.note_poll_failure(memory, config, "down")) == ["UNREACHABLE"]
+
+
+def test_main_wait_default_unreachable_threshold_is_ten(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    clock = Clock(max_sleeps=50)
+    _, out, _ = _main(
+        ["wait", "--url", "http://x", "--interval", "10"],
+        FakePost(error=OSError("refused")),
+        clock,
+    )
+    assert out.startswith("EVENT UNREACHABLE ")
+    assert clock.sleeps == [10] * 9
+
+
+def test_unreachable_detail_is_truncated_and_one_line() -> None:
+    config = _config(unreachable_polls=1)
+    long = wb.note_poll_failure(wb.Memory(), config, "x" * 500)
+    assert long[0].detail == "x" * 200
+    multi = wb.note_poll_failure(wb.Memory(), config, "a\nb\n\nEVENT COMPLETE c")
+    assert multi[0].detail == "a b EVENT COMPLETE c"
+
+
+# -- status line: median window and rounding ----------------------------
+
+
+def _finished_runs(durations_newest_first: list[float]) -> dict:
+    """Runs of this sensor, one finished run per duration, newest first."""
+    runs = _runs()
+    built = [
+        _run(
+            runs,
+            run_id=f"r{i}",
+            status="SUCCESS",
+            start=100_000.0 - i * 1000,
+            end=100_000.0 - i * 1000 + duration,
+        )
+        for i, duration in enumerate(durations_newest_first)
+    ]
+    _results(runs)[:] = built
+    return runs
+
+
+def test_status_median_covers_the_ten_most_recent_finished_runs() -> None:
+    # Newest ten: median is the mean of 241 and 242, rounded to 242 (not 241).
+    # A window of 3 would say 110, of 11 say 241, of 12 say 186 (the two 10 s runs).
+    newest = [100, 110, 120, 130, 241, 242, 300, 310, 320, 330]
+    runs = _finished_runs(newest + [10, 10])
+    line = wb.format_status(wb.parse_snapshot(_sensor(), runs), 200_000.0)
+    assert "median_s=242 " in line
+
+
+def test_status_median_rounds_to_nearest_not_down() -> None:
+    runs = _finished_runs([240, 241])
+    line = wb.format_status(wb.parse_snapshot(_sensor(), runs), 200_000.0)
+    assert "median_s=240 " in line or "median_s=241 " in line
+    runs = _finished_runs([241, 242])
+    line = wb.format_status(wb.parse_snapshot(_sensor(), runs), 200_000.0)
+    assert "median_s=242 " in line  # 241.5 -> 242 (round half to even)
+
+
+def test_status_last_duration_rounds_to_nearest_second() -> None:
+    runs = _finished_runs([0.6])
+    line = wb.format_status(wb.parse_snapshot(_sensor(), runs), 200_000.0)
+    assert line.endswith("last=2023-09-c99:SUCCESS:1s")
+
+
+# -- COMPLETE together with STOPPED -------------------------------------
+
+
+def test_complete_fires_even_while_the_sensor_is_stopped() -> None:
+    sensor = _sensor()
+    _state(sensor)["status"] = "STOPPED"
+    _newest_tick(sensor).update(
+        status="SKIPPED", skipReason="national backfill complete"
+    )
+    events = _poll(sensor, _runs(), wb.Memory(), _config(), HEALTHY_NOW)
+    assert sorted(_kinds(events)) == ["COMPLETE", "STOPPED"]
+
+
+# -- watch: boundary and bounded loops ----------------------------------
+
+
+def test_watch_quiet_exit_at_exactly_max_s_does_not_loop() -> None:
+    clock, out = Clock(max_sleeps=3), io.StringIO()
+    code = wb.watch(
+        fetch=_scripted_fetch([_healthy_snapshot()]),
+        config=_config(slow_s=10**9, stall_s=10**9),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+        max_s=180,
+    )
+    assert code == 0
+    assert out.getvalue() == "QUIET 180\n"
+    assert clock.sleeps == [60, 60, 60]
+
+
+def test_watch_final_sleep_is_clipped_to_the_remaining_max_s() -> None:
+    clock, out = Clock(max_sleeps=3), io.StringIO()
+    wb.watch(
+        fetch=_scripted_fetch([_healthy_snapshot()]),
+        config=_config(slow_s=10**9, stall_s=10**9),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+        max_s=150,
+    )
+    assert clock.sleeps == [60, 60, 30]
+    assert out.getvalue() == "QUIET 150\n"
+
+
+def test_a_wall_clock_step_cannot_fake_a_stall_or_a_quiet_exit() -> None:
+    clock, out = Clock(max_sleeps=5), io.StringIO()
+    snapshot = _healthy_snapshot()
+    polls = {"n": 0}
+
+    def fetch() -> object:
+        polls["n"] += 1
+        if polls["n"] == 2:
+            clock.step_wall(10 * 3600)  # laptop sleep / clock step
+        if polls["n"] == 4:
+            return _halted_snapshot()
+        return snapshot
+
+    wb.watch(
+        fetch=fetch,
+        config=_config(stall_s=1000, slow_s=10**12),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+        max_s=100_000,
+    )
+    assert out.getvalue().startswith("EVENT HALT ")
+    assert "STALLED" not in out.getvalue()
+    assert "QUIET" not in out.getvalue()
+
+
+def test_a_real_monotonic_idle_period_still_stalls_in_watch() -> None:
+    clock, out = Clock(max_sleeps=100), io.StringIO()
+    wb.watch(
+        fetch=_scripted_fetch([_healthy_snapshot()]),
+        config=_config(stall_s=300, slow_s=10**12),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+    )
+    assert out.getvalue().startswith("EVENT STALLED ")
+    assert "unchanged for 300s" in out.getvalue()
+    assert clock.sleeps == [60] * 5
+
+
+def test_slow_uses_the_wall_clock_against_the_server_start_time() -> None:
+    # The monotonic clock is an unrelated epoch: SLOW must not read it.
+    events = _poll(
+        _sensor(), _runs(), wb.Memory(), _config(), LIVE_START + 450, mono=12.0
+    )
+    assert _kinds(events) == ["SLOW"]
+
+
+def test_evaluate_stall_uses_the_monotonic_clock_not_the_wall_clock() -> None:
+    sensor, runs, memory = _sensor(), _runs(), wb.Memory()
+    config = _config(stall_s=1000, slow_s=10**12)
+    assert _poll(sensor, runs, memory, config, HEALTHY_NOW, mono=50.0) == []
+    # Wall clock leaps a day; monotonic moved 10 s: not a stall.
+    assert _poll(sensor, runs, memory, config, HEALTHY_NOW + 86400, mono=60.0) == []
+    events = _poll(sensor, runs, memory, config, HEALTHY_NOW + 86401, mono=1050.0)
+    assert _kinds(events) == ["STALLED"]
+
+
+# -- transport and shape hardening --------------------------------------
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        http.client.IncompleteRead(b"ab"),
+        http.client.BadStatusLine("x"),
+        http.client.RemoteDisconnected("closed"),
+    ],
+)
+def test_fetch_snapshot_wraps_http_client_exceptions(error: Exception) -> None:
+    with pytest.raises(wb.SnapshotError):
+        wb.fetch_snapshot("http://x", post=FakePost(error=error))
+
+
+def test_default_post_body_read_errors_are_snapshot_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            raise http.client.IncompleteRead(b"ab")
+
+    seen: list[object] = []
+
+    def fake_urlopen(request: object, timeout: float) -> Response:
+        seen.append(request)
+        return Response()
+
+    monkeypatch.setattr(wb.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(wb.SnapshotError):
+        wb.fetch_snapshot("http://dagster.invalid/graphql", post=wb.urllib_post)
+    assert seen
+
+
+def test_main_wait_counts_http_client_errors_as_failed_polls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    clock = Clock(max_sleeps=10)
+    code, out, _ = _main(
+        ["wait", "--url", "http://x", "--interval", "10", "--unreachable-polls", "2"],
+        FakePost(error=http.client.IncompleteRead(b"ab")),
+        clock,
+    )
+    assert code == 0
+    assert out.startswith("EVENT UNREACHABLE ")
+    assert clock.sleeps == [10]
+
+
+def test_main_status_http_client_error_is_unreachable_exit_3(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    code, out, _ = _main(
+        ["status", "--url", "http://x"],
+        FakePost(error=http.client.BadStatusLine("x")),
+    )
+    assert code == 3
+    assert out.startswith("UNREACHABLE ")
+    assert out.count("\n") == 1
+
+
+@pytest.mark.parametrize(
+    "errors",
+    [{"message": "x"}, {}, "boom", [{"message": "x"}], ["plain"], [None]],
+)
+def test_graphql_errors_in_any_shape_are_a_failed_poll(errors: object) -> None:
+    sensor = _sensor()
+    sensor["errors"] = errors
+    if not errors:
+        assert wb.parse_snapshot(sensor, _runs()).sensor_status == "RUNNING"
+        return
+    with pytest.raises(wb.SnapshotError):
+        wb.parse_snapshot(sensor, _runs())
+
+
+def test_graphql_errors_dict_message_is_reported() -> None:
+    sensor = _sensor()
+    sensor["errors"] = {"message": "bad\nthing"}
+    with pytest.raises(wb.SnapshotError, match="bad thing"):
+        wb.parse_snapshot(sensor, _runs())
+
+
+def test_string_epoch_times_are_coerced_to_floats() -> None:
+    runs = _runs()
+    _results(runs)[1].update(startTime="1791159656.3", endTime="1791159900")
+    snap = wb.parse_snapshot(_sensor(), runs)
+    assert snap.runs[1].start_time == 1791159656.3
+    assert snap.runs[1].end_time == 1791159900.0
+    assert snap.runs[1].duration(0) == pytest.approx(243.7)
+
+
+@pytest.mark.parametrize("bad", ["soon", "", [], {}, "nan", "inf", True])
+@pytest.mark.parametrize("field_name", ["startTime", "endTime"])
+def test_unusable_epoch_times_are_snapshot_errors(bad: object, field_name: str) -> None:
+    runs = _runs()
+    _results(runs)[1][field_name] = bad
+    with pytest.raises(wb.SnapshotError):
+        wb.parse_snapshot(_sensor(), runs)
+
+
+def test_non_string_skip_reason_does_not_crash() -> None:
+    sensor = _sensor()
+    _newest_tick(sensor).update(status="SKIPPED", skipReason=42)
+    assert _poll(sensor, _runs(), wb.Memory(), _config(), HEALTHY_NOW) == []
+
+
+@pytest.mark.parametrize("specific", ["x", 7, [1]])
+def test_non_dict_type_specific_data_is_a_failed_poll_not_a_traceback(
+    specific: object,
+) -> None:
+    sensor = _sensor()
+    _state(sensor)["typeSpecificData"] = specific
+    with pytest.raises(wb.SnapshotError):
+        wb.parse_snapshot(sensor, _runs())
+
+
+# -- a run that has not started (null startTime) ------------------------
+
+
+def _queued_run(
+    runs: dict, *, end: float | None = None, status: str = "QUEUED"
+) -> dict:
+    run = _run(runs, run_id="queued", status=status, start=0.0, end=end)
+    run["startTime"] = None
+    return run
+
+
+def test_run_without_start_time_is_not_slow_and_does_not_crash() -> None:
+    sensor, runs, memory = _sensor(), _runs(), wb.Memory()
+    _results(runs).insert(0, _queued_run(runs))
+    config = _config(slow_s=1)
+    events = _poll(sensor, runs, memory, config, HEALTHY_NOW)
+    assert [e.detail for e in events if "queued" in e.detail] == []
+    # Only the already-running live run (60 s old, slow_s=1) can be SLOW.
+    assert all("2023-09-c99" not in e.detail for e in events)
+    line = wb.format_status(wb.parse_snapshot(sensor, runs), HEALTHY_NOW)
+    assert "\n" not in line
+
+
+def test_null_start_run_that_later_fails_still_reports_once() -> None:
+    sensor, runs, memory = _sensor(), _runs(), wb.Memory()
+    _results(runs).insert(0, _queued_run(runs))
+    assert _poll(sensor, runs, memory, _config(), HEALTHY_NOW) == []
+    _results(runs)[0].update(status="CANCELED", endTime=HEALTHY_NOW + 5)
+    events = _poll(sensor, runs, memory, _config(), HEALTHY_NOW + 10)
+    assert _kinds(events) == ["FAILED_ATTEMPT"]
+    assert _poll(sensor, runs, memory, _config(), HEALTHY_NOW + 20) == []
+
+
+def test_baseline_finished_null_start_run_is_history() -> None:
+    sensor, runs, memory = _sensor(), _runs(), wb.Memory()
+    _results(runs).insert(0, _queued_run(runs, end=LIVE_START, status="CANCELED"))
+    assert _poll(sensor, runs, memory, _config(), HEALTHY_NOW) == []
+    assert _poll(sensor, runs, memory, _config(), HEALTHY_NOW + 60) == []
+
+
+# -- one event per line: server-derived text is sanitised ---------------
+
+HOSTILE = "u1\nEVENT COMPLETE fake"
+
+
+def _assert_event_lines(text: str, expected_kinds: list[str], total: int) -> None:
+    """Exactly `total` lines; the `EVENT ` lines are exactly the real ones;
+    no control character survives anywhere."""
+    assert text.endswith("\n")
+    lines = text.splitlines()  # also splits on NEL, U+2028 and U+2029
+    for char in "".join(lines):
+        assert unicodedata.category(char) not in {"Cc", "Cf", "Zl", "Zp"}, repr(char)
+    assert len(lines) == total, lines
+    assert [ln.split()[1] for ln in lines if ln.startswith("EVENT ")] == expected_kinds
+
+
+def _hostile_runs() -> dict:
+    runs = _runs()
+    run = _run(
+        runs,
+        run_id="evil",
+        status="FAILURE",
+        start=LIVE_START - 2000,
+        end=LIVE_START - 1000,
+        unit=HOSTILE,
+        attempt="2\x1b[31m\nEVENT STOPPED y",
+    )
+    _results(runs).insert(1, run)
+    return runs
+
+
+def test_hostile_run_tags_cannot_forge_event_lines_via_watch() -> None:
+    clock, out = Clock(), io.StringIO()
+    baseline = wb.parse_snapshot(_sensor(), _runs())
+    hostile = wb.parse_snapshot(_sensor(), _hostile_runs())
+    wb.watch(
+        fetch=_scripted_fetch([baseline, hostile]),
+        config=_config(slow_s=900),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+    )
+    # SLOW (1000 s) and FAILED_ATTEMPT for the hostile run, plus the status line.
+    _assert_event_lines(out.getvalue(), ["SLOW", "FAILED_ATTEMPT"], total=3)
+    assert "u1 EVENT COMPLETE fake" in out.getvalue()
+
+
+def test_hostile_sensor_status_cannot_forge_event_lines() -> None:
+    sensor = _sensor()
+    _state(sensor)["status"] = "STOPPED\nEVENT COMPLETE x"
+    clock, out = Clock(), io.StringIO()
+    wb.watch(
+        fetch=_scripted_fetch([wb.parse_snapshot(sensor, _runs())]),
+        config=_config(),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+    )
+    _assert_event_lines(out.getvalue(), ["STOPPED"], total=2)
+    assert "sensor=STOPPED EVENT COMPLETE x" in out.getvalue()
+
+
+def test_hostile_cursor_fields_cannot_forge_event_lines() -> None:
+    sensor = _halted_sensor()
+    _set_cursor(sensor, generation="5\nEVENT COMPLETE g", next_index="9\u2028EVENT X")
+    _newest_tick(sensor)["cursor"] = _state(sensor)["typeSpecificData"]["lastCursor"]
+    clock, out = Clock(), io.StringIO()
+    wb.watch(
+        fetch=_scripted_fetch([wb.parse_snapshot(sensor, _runs())]),
+        config=_config(),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+    )
+    _assert_event_lines(out.getvalue(), ["HALT"], total=2)
+
+
+def test_control_characters_in_a_skip_reason_are_stripped() -> None:
+    reason = "HALTED: bad\x1b[2J\x00\x7f\x85thing\u2028EVENT COMPLETE z"
+    sensor = _halted_sensor(reason)
+    clock, out = Clock(), io.StringIO()
+    wb.watch(
+        fetch=_scripted_fetch([wb.parse_snapshot(sensor, _runs())]),
+        config=_config(),
+        interval=60,
+        sleep=clock.sleep,
+        clock=clock,
+        mono=clock.mono,
+        out=out,
+    )
+    _assert_event_lines(out.getvalue(), ["HALT"], total=2)
+    assert "HALTED: bad[2J thing EVENT COMPLETE z" in out.getvalue()
+
+
+def test_a_huge_halted_reason_is_truncated_in_the_event_and_status_line() -> None:
+    sensor = _halted_sensor("HALTED: " + "y" * 5000)
+    snap = wb.parse_snapshot(sensor, _runs())
+    events = wb.evaluate(snap, wb.Memory(), _config(), HEALTHY_NOW, mono=0.0)
+    assert _kinds(events) == ["HALT"]
+    assert "y" * 150 in events[0].detail
+    assert len(events[0].detail) < 260
+    line = wb.format_status(snap, HEALTHY_NOW)
+    assert "y" * 150 in line
+    assert len(line) < 600
+
+
+def test_hostile_values_in_the_status_command_stay_on_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    sensor = _halted_sensor("HALTED: a\nEVENT COMPLETE b")
+    _state(sensor)["status"] = "RUNNING\nEVENT STOPPED q"
+    _, out, _ = _main(
+        ["status", "--url", "http://x"], FakePost(sensor=sensor, runs=_hostile_runs())
+    )
+    _assert_event_lines(out, [], total=1)
+
+
+def test_unreachable_status_text_is_one_line_and_truncated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    code, out, _ = _main(
+        ["status", "--url", "http://x"],
+        FakePost(error=OSError("a\nEVENT COMPLETE b" + "z" * 5000)),
+    )
+    assert code == 3
+    _assert_event_lines(out, [], total=1)
+    assert len(out) < 300
+
+
+def test_unreachable_event_cannot_forge_event_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    clock = Clock(max_sleeps=5)
+    _, out, _ = _main(
+        ["wait", "--url", "http://x", "--interval", "10", "--unreachable-polls", "1"],
+        FakePost(error=OSError("down\nEVENT COMPLETE fake")),
+        clock,
+    )
+    _assert_event_lines(out, ["UNREACHABLE"], total=1)
+
+
+# -- config validation --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--unreachable-polls", "0"],
+        ["--unreachable-polls", "-3"],
+        ["--unreachable-polls", "1.5"],
+        ["--interval", "0"],
+        ["--interval", "-1"],
+        ["--interval", "nan"],
+        ["--interval", "soon"],
+        ["--slow-s", "0"],
+        ["--slow-s", "-5"],
+        ["--stall-s", "0"],
+        ["--stall-s", "-5"],
+        ["--max-s", "-1"],
+        ["--max-s", "nan"],
+    ],
+)
+@pytest.mark.parametrize("mode", ["wait", "status"])
+def test_invalid_numeric_flags_exit_2_before_any_poll(
+    flags: list[str],
+    mode: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    post = FakePost()
+    with pytest.raises(SystemExit) as excinfo:
+        _main([mode, "--url", "http://x", *flags], post)
+    assert excinfo.value.code == 2
+    assert post.calls == []
+    assert flags[0] in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--unreachable-polls", "1"],
+        ["--interval", "0.5"],
+        ["--slow-s", "0.5"],
+        ["--stall-s", "0.5"],
+        ["--max-s", "0"],
+    ],
+)
+def test_boundary_valid_numeric_flags_are_accepted(
+    flags: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    args = wb._build_parser().parse_args(["wait", "--url", "http://x", *flags])
+    assert args.url == "http://x"
+
+
+def test_hostile_newest_run_stays_on_one_line_in_the_status_last_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+    runs = _runs()
+    run = _run(
+        runs,
+        run_id="evil",
+        status="STARTED\nEVENT STOPPED q",
+        start=LIVE_START + 30,
+        end=None,
+        unit="u\nEVENT COMPLETE z",
+    )
+    _results(runs).insert(0, run)
+    _, out, _ = _main(["status", "--url", "http://x"], FakePost(runs=runs))
+    _assert_event_lines(out, [], total=1)
+    assert "last=u EVENT COMPLETE z:STARTED EVENT STOPPED q:" in out
+
+
+def test_status_command_sanitises_a_snapshot_error_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WFA_DAGSTER_URL", raising=False)
+
+    def failing(*_args: object, **_kwargs: object) -> object:
+        raise wb.SnapshotError("a\nEVENT COMPLETE b" + "z" * 5000)
+
+    monkeypatch.setattr(wb, "fetch_snapshot", failing)
+    code, out, _ = _main(["status", "--url", "http://x"], FakePost())
+    assert code == 3
+    _assert_event_lines(out, [], total=1)
+    assert len(out) < 300

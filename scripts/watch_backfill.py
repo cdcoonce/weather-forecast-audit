@@ -48,6 +48,8 @@ Events:
     SENSOR_ERROR    newest tick status is FAILURE (the sensor itself crashed).
     STOPPED         the sensor's status is not RUNNING.
     COMPLETE        newest tick skip reason is `national backfill complete`.
+                    Independent of the other events: a stopped sensor that
+                    has also finished fires both STOPPED and COMPLETE.
     SLOW            a sensor run lasted >= --slow-s (default 450; the server's
                     hard cap is 600). Once per run, whether it is still running
                     or already finished.
@@ -56,9 +58,20 @@ Events:
     STALLED         the highest next_index seen has not increased for --stall-s
                     (default 10800 s, outlasting the ~105 minute morning
                     blackout). Fires once until the index advances again.
+                    Timed on the monotonic clock, so a laptop sleep or a clock
+                    step cannot fake a stall (nor a `--max-s` QUIET exit).
+                    SLOW is the one wall-clock comparison, because it measures
+                    against the server's epoch `startTime`.
     UNREACHABLE     --unreachable-polls consecutive failed polls (network or
                     HTTP error, bad JSON, or a GraphQL error / non-Sensor
                     result). Any successful poll resets the count.
+
+One event per line: every server-derived value is collapsed to a single line
+with control characters stripped and truncated to 200 characters before it is
+printed, so a hostile or garbled field cannot forge an `EVENT ` line.
+
+Numeric flags are validated (exit 2): `--interval`, `--slow-s`, `--stall-s`
+must be > 0, `--unreachable-polls` >= 1, `--max-s` >= 0.
 
 Baseline rule: on the first successful poll every already-finished sensor run
 is marked seen, so history produces no SLOW or FAILED_ATTEMPT. A run still
@@ -73,11 +86,14 @@ the sensor" in `docs/methodology.md`).
 """
 
 import argparse
+import http.client
 import json
+import math
 import os
 import statistics
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -187,7 +203,33 @@ class Memory:
 
 
 def _one_line(text: str) -> str:
-    return " ".join(text.split())
+    """Collapse all whitespace (newlines, NEL, U+2028/9 included) to single
+    spaces and drop the other control / format characters (NUL, ESC, DEL...)."""
+    kept = (
+        " " if char.isspace() else char
+        for char in text
+        if char.isspace() or unicodedata.category(char) not in {"Cc", "Cf"}
+    )
+    return " ".join("".join(kept).split())
+
+
+def _field(value: object, limit: int = DETAIL_LIMIT) -> str:
+    """A server-derived value made safe for one output line, capped at `limit`."""
+    return _one_line(str(value))[:limit]
+
+
+def _epoch(value: object, name: str) -> float | None:
+    """A server epoch (number or numeric string) as a float; None stays None."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        msg = f"{name} is not a number"
+        raise ValueError(msg)
+    number = float(value)  # type: ignore[arg-type]
+    if not math.isfinite(number):
+        msg = f"{name} is not finite"
+        raise ValueError(msg)
+    return number
 
 
 def _parse_cursor(raw: object) -> dict[str, Any] | None:
@@ -206,21 +248,27 @@ def _graphql_errors(response: JSON, what: str) -> None:
     if not isinstance(response, dict):
         msg = f"{what}: response is not a JSON object"
         raise SnapshotError(msg)
-    if response.get("errors"):
-        first = response["errors"][0]
+    errors = response.get("errors")
+    if errors:
+        first = errors[0] if isinstance(errors, list) else errors
         text = first.get("message") if isinstance(first, dict) else first
-        msg = f"{what}: GraphQL error: {_one_line(str(text))[:DETAIL_LIMIT]}"
+        msg = f"{what}: GraphQL error: {_field(text)}"
         raise SnapshotError(msg)
 
 
 def _parse_tick(raw: JSON) -> Tick:
     error = raw.get("error")
+    skip_reason = raw.get("skipReason")
     return Tick(
         status=str(raw.get("status")),
-        timestamp=float(raw.get("timestamp") or 0.0),
-        skip_reason=raw.get("skipReason"),
+        timestamp=_epoch(raw.get("timestamp"), "tick timestamp") or 0.0,
+        skip_reason=None if skip_reason is None else str(skip_reason),
         cursor=_parse_cursor(raw.get("cursor")),
-        error=error.get("message") if isinstance(error, dict) else None,
+        error=(
+            None
+            if not isinstance(error, dict) or error.get("message") is None
+            else str(error["message"])
+        ),
     )
 
 
@@ -229,8 +277,8 @@ def _parse_run(raw: JSON) -> Run:
     return Run(
         run_id=str(raw.get("runId")),
         status=str(raw.get("status")),
-        start_time=raw.get("startTime"),
-        end_time=raw.get("endTime"),
+        start_time=_epoch(raw.get("startTime"), "startTime"),
+        end_time=_epoch(raw.get("endTime"), "endTime"),
         unit=tags.get("wfa/backfill_unit") or "?",
         attempt=tags.get("wfa/backfill_attempt") or "?",
     )
@@ -247,15 +295,15 @@ def parse_snapshot(
         sensor = sensor_response["data"]["sensorOrError"]
         runs = runs_response["data"]["runsOrError"]
     except (KeyError, TypeError) as exc:
-        msg = f"unexpected response shape (missing {exc})"
+        msg = f"unexpected response shape (missing {_field(exc)})"
         raise SnapshotError(msg) from exc
     if not isinstance(sensor, dict) or "sensorState" not in sensor:
         text = sensor.get("message") if isinstance(sensor, dict) else sensor
-        msg = f"sensor query did not return a Sensor: {_one_line(str(text))}"
+        msg = f"sensor query did not return a Sensor: {_field(text)}"
         raise SnapshotError(msg)
     if not isinstance(runs, dict) or "results" not in runs:
         text = runs.get("message") if isinstance(runs, dict) else runs
-        msg = f"runs query did not return Runs: {_one_line(str(text))}"
+        msg = f"runs query did not return Runs: {_field(text)}"
         raise SnapshotError(msg)
     try:
         state = sensor["sensorState"]
@@ -263,8 +311,9 @@ def parse_snapshot(
         ticks = [_parse_tick(t) for t in state.get("ticks") or []]
         parsed_runs = [_parse_run(r) for r in runs["results"]]
         sensor_status = str(state["status"])
+        cursor_state = _parse_cursor(specific.get("lastCursor"))
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        msg = f"unexpected response shape ({exc!r})"
+        msg = f"unexpected response shape ({_field(repr(exc))})"
         raise SnapshotError(msg) from exc
     mine = []
     for raw, run in zip(runs["results"], parsed_runs, strict=True):
@@ -273,7 +322,7 @@ def parse_snapshot(
             mine.append(run)
     return Snapshot(
         sensor_status=sensor_status,
-        cursor_state=_parse_cursor(specific.get("lastCursor")),
+        cursor_state=cursor_state,
         ticks=ticks,
         runs=mine,
     )
@@ -328,8 +377,13 @@ def fetch_snapshot(
     try:
         sensor_response = post(url, {"query": query}, REQUEST_TIMEOUT_S)
         runs_response = post(url, {"query": RUNS_QUERY}, REQUEST_TIMEOUT_S)
-    except (OSError, ValueError, urllib.error.URLError) as exc:
-        msg = f"{type(exc).__name__}: {_one_line(str(exc))}"
+    except (
+        OSError,
+        ValueError,
+        urllib.error.URLError,
+        http.client.HTTPException,
+    ) as exc:
+        msg = f"{type(exc).__name__}: {_field(exc)}"
         raise SnapshotError(msg) from exc
     return parse_snapshot(sensor_response, runs_response, sensor_name)
 
@@ -356,25 +410,33 @@ def _fmt_seconds(seconds: float) -> str:
 
 
 def evaluate(
-    snapshot: Snapshot, memory: Memory, config: Config, now: float
+    snapshot: Snapshot, memory: Memory, config: Config, now: float, mono: float
 ) -> list[Event]:
-    """Events this poll warrants. Mutates `memory`; otherwise pure."""
+    """Events this poll warrants. Mutates `memory`; otherwise pure.
+
+    `now` is the wall clock (comparable with the server's epoch `startTime`,
+    used for SLOW durations); `mono` is a monotonic reading, used only for the
+    STALLED idle timer so a clock step or laptop sleep cannot fake a stall.
+    """
     events: list[Event] = []
     tick = snapshot.newest_tick
     state = snapshot.cursor_state or {}
 
     if snapshot.sensor_status != "RUNNING":
-        events.append(Event("STOPPED", f"sensor status={snapshot.sensor_status}"))
+        events.append(
+            Event("STOPPED", f"sensor status={_field(snapshot.sensor_status)}")
+        )
     if _halt_is_current(snapshot):
         events.append(
             Event(
                 "HALT",
-                f"{_one_line(tick.skip_reason)} "
-                f"gen={state.get('generation')} next_index={state.get('next_index')}",
+                f"{_field(tick.skip_reason)} "
+                f"gen={_field(state.get('generation'))} "
+                f"next_index={_field(state.get('next_index'))}",
             )
         )
     if tick is not None and tick.status == "FAILURE":
-        message = _one_line(tick.error or "no error message")[:DETAIL_LIMIT]
+        message = _field(tick.error or "no error message")
         events.append(Event("SENSOR_ERROR", message))
     if tick is not None and tick.skip_reason == COMPLETE_REASON:
         events.append(Event("COMPLETE", COMPLETE_REASON))
@@ -395,8 +457,8 @@ def evaluate(
             events.append(
                 Event(
                     "SLOW",
-                    f"unit={run.unit} attempt={run.attempt} "
-                    f"duration={_fmt_seconds(duration)} status={run.status}",
+                    f"unit={_field(run.unit)} attempt={_field(run.attempt)} "
+                    f"duration={_fmt_seconds(duration)} status={_field(run.status)}",
                 )
             )
         if run.finished and run.run_id not in memory.seen_finished:
@@ -405,7 +467,8 @@ def evaluate(
                 events.append(
                     Event(
                         "FAILED_ATTEMPT",
-                        f"unit={run.unit} attempt={run.attempt} status={run.status} "
+                        f"unit={_field(run.unit)} attempt={_field(run.attempt)} "
+                        f"status={_field(run.status)} "
                         f"duration={_fmt_seconds(duration or 0)}",
                     )
                 )
@@ -414,15 +477,15 @@ def evaluate(
     if isinstance(index, int):
         if memory.max_next_index is None or index > memory.max_next_index:
             memory.max_next_index = index
-            memory.last_advance_at = now
+            memory.last_advance_at = mono
             memory.stall_reported = False
         elif (
             not memory.stall_reported
             and memory.last_advance_at is not None
-            and now - memory.last_advance_at >= config.stall_s
+            and mono - memory.last_advance_at >= config.stall_s
         ):
             memory.stall_reported = True
-            idle = _fmt_seconds(now - memory.last_advance_at)
+            idle = _fmt_seconds(mono - memory.last_advance_at)
             events.append(Event("STALLED", f"next_index={index} unchanged for {idle}"))
 
     memory.first_poll = False
@@ -434,7 +497,7 @@ def note_poll_failure(memory: Memory, config: Config, error: str) -> list[Event]
     """Record a failed poll; return UNREACHABLE when the streak reaches N."""
     memory.consecutive_failures += 1
     if memory.consecutive_failures == config.unreachable_polls:
-        return [Event("UNREACHABLE", _one_line(error)[:DETAIL_LIMIT])]
+        return [Event("UNREACHABLE", _field(error))]
     return []
 
 
@@ -450,15 +513,15 @@ def format_status(snapshot: Snapshot, now: float) -> str:
 
     def field_of(key: str) -> str:
         value = state.get(key)
-        return "n/a" if value is None else str(value)
+        return "n/a" if value is None else _field(value)
 
     tick = snapshot.newest_tick
     if tick is None:
         tick_text = "none"
     elif tick.skip_reason:
-        tick_text = _one_line(f"{tick.status}:{tick.skip_reason}")
+        tick_text = f"{_field(tick.status)}:{_field(tick.skip_reason)}"
     else:
-        tick_text = tick.status
+        tick_text = _field(tick.status)
 
     by_start = sorted(snapshot.runs, key=lambda r: r.start_time or 0.0, reverse=True)
     durations = [
@@ -470,10 +533,10 @@ def format_status(snapshot: Snapshot, now: float) -> str:
         run = by_start[0]
         duration = run.duration(now)
         shown = "?" if duration is None else _fmt_seconds(duration)
-        last = f"{run.unit}:{run.status}:{shown}"
+        last = f"{_field(run.unit)}:{_field(run.status)}:{shown}"
 
     return (
-        f"{_iso(now)} sensor={snapshot.sensor_status} "
+        f"{_iso(now)} sensor={_field(snapshot.sensor_status)} "
         f"gen={field_of('generation')} next_index={field_of('next_index')} "
         f"attempt={field_of('attempt')} tick={tick_text} "
         f"halted={'yes' if _halt_is_current(snapshot) else 'no'} "
@@ -491,23 +554,28 @@ def watch(
     interval: float,
     sleep: Callable[[float], None] = time.sleep,
     clock: Clock = time.time,
+    mono: Clock = time.monotonic,
     out: TextIO | None = None,
     max_s: float = 0,
 ) -> int:
     """Poll until an event (print it plus a status line, return 0) or, when
-    `max_s` > 0, until that many seconds pass quietly (print QUIET, return 0)."""
+    `max_s` > 0, until that many seconds pass quietly (print QUIET, return 0).
+
+    `clock` is the wall clock (SLOW and the status timestamp); `mono` is the
+    monotonic clock (the STALLED idle timer and the `max_s` timer)."""
     out = out if out is not None else sys.stdout
     memory = Memory()
-    started = clock()
+    started = mono()
     while True:
         now = clock()
+        mono_now = mono()
         snapshot: Snapshot | None = None
         try:
             snapshot = fetch()
         except SnapshotError as exc:
             events = note_poll_failure(memory, config, str(exc))
         else:
-            events = evaluate(snapshot, memory, config, now)
+            events = evaluate(snapshot, memory, config, now, mono_now)
         if events:
             for event in events:
                 print(event, file=out)
@@ -515,7 +583,7 @@ def watch(
                 print(format_status(snapshot, now), file=out)
             out.flush()
             return EXIT_OK
-        elapsed = clock() - started
+        elapsed = mono() - started
         if max_s > 0:
             if elapsed >= max_s:
                 print(f"QUIET {int(elapsed)}", file=out)
@@ -529,6 +597,43 @@ def watch(
 # -- CLI ----------------------------------------------------------------
 
 
+def _number(text: str, *, minimum: float, inclusive: bool) -> float:
+    try:
+        value = float(text)
+    except ValueError as exc:
+        msg = f"not a number: {text!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if (
+        not math.isfinite(value)
+        or value < minimum
+        or (not inclusive and value == minimum)
+    ):
+        bound = ">=" if inclusive else ">"
+        msg = f"must be a finite number {bound} {minimum:g}, got {text!r}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
+def _positive_float(text: str) -> float:
+    return _number(text, minimum=0, inclusive=False)
+
+
+def _non_negative_float(text: str) -> float:
+    return _number(text, minimum=0, inclusive=True)
+
+
+def _at_least_one(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError as exc:
+        msg = f"not an integer: {text!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if value < 1:
+        msg = f"must be an integer >= 1, got {text!r}"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Print one line and exit only when the national backfill "
@@ -536,16 +641,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("mode", choices=["status", "wait"])
     parser.add_argument("--url", help="Dagster GraphQL URL (default: $WFA_DAGSTER_URL)")
-    parser.add_argument("--interval", type=float, default=60)
-    parser.add_argument("--slow-s", type=float, default=Config.slow_s)
-    parser.add_argument("--stall-s", type=float, default=Config.stall_s)
+    parser.add_argument("--interval", type=_positive_float, default=60)
+    parser.add_argument("--slow-s", type=_positive_float, default=Config.slow_s)
+    parser.add_argument("--stall-s", type=_positive_float, default=Config.stall_s)
     parser.add_argument(
-        "--unreachable-polls", type=int, default=Config.unreachable_polls
+        "--unreachable-polls", type=_at_least_one, default=Config.unreachable_polls
     )
     parser.add_argument("--ignore-failed-attempts", action="store_true")
     parser.add_argument(
         "--max-s",
-        type=float,
+        type=_non_negative_float,
         default=0,
         help="print QUIET and exit 0 after this many event-free seconds (0 = never)",
     )
@@ -560,6 +665,7 @@ def main(
     *,
     post: Post = urllib_post,
     clock: Clock = time.time,
+    mono: Clock = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     out: TextIO | None = None,
     err: TextIO | None = None,
@@ -585,7 +691,7 @@ def main(
         try:
             snapshot = fetch()
         except SnapshotError as exc:
-            print(f"UNREACHABLE {_one_line(str(exc))}", file=out)
+            print(f"UNREACHABLE {_field(exc)}", file=out)
             return EXIT_UNREACHABLE
         print(format_status(snapshot, clock()), file=out)
         return EXIT_OK
@@ -602,6 +708,7 @@ def main(
         interval=args.interval,
         sleep=sleep,
         clock=clock,
+        mono=mono,
         out=out,
         max_s=args.max_s,
     )
