@@ -1,0 +1,802 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_challenger.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_challenger.py"
+  ],
+  "mutants": [
+    {
+      "label": "asof-allows-exact-matches",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "allow_exact_matches=False,",
+      "replace": "allow_exact_matches=True,"
+    },
+    {
+      "label": "asof-by-the-rows-own-window-end",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            _naive_utc(queries, \"runtime_utc\"),\n",
+      "replace": "            _naive_utc(\n                queries,\n                \"window_end_utc\" if \"window_end_utc\" in queries.columns else \"runtime_utc\",\n            ).alias(\"runtime_utc\"),\n"
+    },
+    {
+      "label": "asof-by-target-date",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            _naive_utc(queries, \"runtime_utc\"),\n",
+      "replace": "            (\n                pl.col(\"target_date\").cast(pl.Datetime(\"us\")).alias(\"runtime_utc\")\n                if \"target_date\" in queries.columns\n                else _naive_utc(queries, \"runtime_utc\")\n            ),\n"
+    },
+    {
+      "label": "asof-direction-forward",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "strategy=\"backward\",",
+      "replace": "strategy=\"forward\","
+    },
+    {
+      "label": "asof-ignores-the-group",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        by=list(GROUP_KEYS),\n        strategy=\"backward\",",
+      "replace": "        by=[\"station\"],\n        strategy=\"backward\","
+    },
+    {
+      "label": "asof-group-loses-lead-day",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        by=list(GROUP_KEYS),\n        strategy=\"backward\",",
+      "replace": "        by=[\"station\", \"variable\"],\n        strategy=\"backward\","
+    },
+    {
+      "label": "train-lags-as-of-the-window-end",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        lags = asof_lag_features(rows, pair_stats(self._history))\n",
+      "replace": "        lags = asof_lag_features(\n            rows.with_columns(pl.col(\"window_end_utc\").alias(\"runtime_utc\")),\n            pair_stats(self._history),\n        )\n"
+    },
+    {
+      "label": "train-lags-see-one-day-past-issuance",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        lags = asof_lag_features(rows, pair_stats(self._history))\n",
+      "replace": "        lags = asof_lag_features(\n            rows.with_columns(pl.col(\"runtime_utc\") + pl.duration(days=1)),\n            pair_stats(self._history),\n        )\n"
+    },
+    {
+      "label": "train-lags-from-the-rows-not-the-history",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "self._history was built by _as_history(rows) a few lines earlier in fit and has not been trimmed yet (_trim runs after _train), so pair_stats(rows) and pair_stats(self._history) see the same pairs; _as_history only casts dtypes and drops null observed_f, which fit already filtered. Inert on every input fit can pass: the two frames are the same pairs, differently typed.",
+      "find": "        lags = asof_lag_features(rows, pair_stats(self._history))\n",
+      "replace": "        lags = asof_lag_features(rows, pair_stats(rows.select(self._history.columns)))\n"
+    },
+    {
+      "label": "update-does-not-trim",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self._history = pl.concat([self._history, addition])\n        self._trim()\n",
+      "replace": "        self._history = pl.concat([self._history, addition])\n        self._stats = None\n"
+    },
+    {
+      "label": "update-drops-the-new-pairs",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self._history = pl.concat([self._history, addition])\n        self._trim()\n",
+      "replace": "        self._history = pl.concat([self._history, addition.head(0)])\n        self._trim()\n"
+    },
+    {
+      "label": "update-replaces-instead-of-appends",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self._history = pl.concat([self._history, addition])\n        self._trim()\n",
+      "replace": "        self._history = addition\n        self._trim()\n"
+    },
+    {
+      "label": "trim-horizon-is-global-not-per-group",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            pl.col(\"window_end_utc\").max().over(group)\n",
+      "replace": "            pl.col(\"window_end_utc\").max()\n"
+    },
+    {
+      "label": "trim-keeps-only-the-horizon",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        keep = history.with_columns((within_horizon | among_last).alias(\"_keep\"))",
+      "replace": "        keep = history.with_columns(within_horizon.alias(\"_keep\"))"
+    },
+    {
+      "label": "trim-keeps-only-the-last-pairs",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        keep = history.with_columns((within_horizon | among_last).alias(\"_keep\"))",
+      "replace": "        keep = history.with_columns(among_last.alias(\"_keep\"))"
+    },
+    {
+      "label": "trim-keeps-last-three-not-seven",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "among_last = pl.int_range(pl.len(), 0, -1).over(group) <= max(LAG_COUNTS)",
+      "replace": "among_last = pl.int_range(pl.len(), 0, -1).over(group) <= min(LAG_COUNTS)"
+    },
+    {
+      "label": "trim-keeps-the-first-seven-not-the-last",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "among_last = pl.int_range(pl.len(), 0, -1).over(group) <= max(LAG_COUNTS)",
+      "replace": "among_last = pl.int_range(pl.len()).over(group) < max(LAG_COUNTS)"
+    },
+    {
+      "label": "retention-twenty-days",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "RETENTION_DAYS = 40\n",
+      "replace": "RETENTION_DAYS = 20\n"
+    },
+    {
+      "label": "retention-thirty-days",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "The features of a group's latest pair need its last 7 pairs (kept unconditionally by among_last) and the pairs in (end - 30 d, end]; within_horizon keeps window_end >= latest - R, a superset of that window for any R >= 30, so 30 days is exactly sufficient and the 10-day margin of 40 is slack. Inert for every query at or after the group's latest close, which is the only region the evaluator's contract produces (a query earlier than the latest retained pair is outside that contract: lag_n30 is then counted over the trimmed history and can undercount, for any retention below the query's age).",
+      "find": "RETENTION_DAYS = 40\n",
+      "replace": "RETENTION_DAYS = 30\n"
+    },
+    {
+      "label": "trim-does-not-invalidate-the-stats-cache",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self._history = keep.filter(pl.col(\"_keep\")).drop(\"_keep\")\n        self._stats = None\n",
+      "replace": "        self._history = keep.filter(pl.col(\"_keep\")).drop(\"_keep\")\n"
+    },
+    {
+      "label": "fit-appends-to-the-previous-history",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self._history = self._as_history(rows)\n",
+      "replace": "        self._history = pl.concat([self._history, self._as_history(rows)])\n"
+    },
+    {
+      "label": "fit-keeps-the-previous-booster",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self._booster = None\n\n        columns =",
+      "replace": "        columns ="
+    },
+    {
+      "label": "fit-skips-the-stats-reset",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "fit always ends with self._trim(), which sets self._stats = None, and _train reads pair_stats(self._history) directly rather than the cache; so the explicit reset between the history rebuild and the trim is redundant. No path reads self._stats in between.",
+      "find": "        self._history = self._as_history(rows)\n        self._stats = None\n",
+      "replace": "        self._history = self._as_history(rows)\n"
+    },
+    {
+      "label": "fit-does-not-trim-after-training",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            self._booster = self._train(rows)\n            self.fit_seconds_log.append(time.monotonic() - started)\n        self._trim()\n",
+      "replace": "            self._booster = self._train(rows)\n            self.fit_seconds_log.append(time.monotonic() - started)\n        self._stats = None\n"
+    },
+    {
+      "label": "fit-trims-before-training",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self._stats = None\n\n        if rows.height >= self.min_train_rows:\n            self._booster = self._train(rows)\n            self.fit_seconds_log.append(time.monotonic() - started)\n        self._trim()\n",
+      "replace": "        self._stats = None\n        self._trim()\n\n        if rows.height >= self.min_train_rows:\n            self._booster = self._train(rows)\n            self.fit_seconds_log.append(time.monotonic() - started)\n"
+    },
+    {
+      "label": "update-ignores-an-empty-delta-guard",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "With a zero-row delta, _as_history returns an empty frame, concat adds nothing and _trim is idempotent on an already-trimmed history, so the early return only skips work. Inert for every non-negative-height frame; it would matter only if _as_history raised on an empty frame, and it does not.",
+      "find": "        if new_pairs.height == 0:\n            return\n",
+      "replace": ""
+    },
+    {
+      "label": "age-sign-flipped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "(pl.col(\"runtime_utc\") - pl.col(\"_known_utc\")).dt.total_microseconds()",
+      "replace": "(pl.col(\"_known_utc\") - pl.col(\"runtime_utc\")).dt.total_microseconds()"
+    },
+    {
+      "label": "age-in-hours",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "_MICROSECONDS_PER_DAY = 86_400_000_000",
+      "replace": "_MICROSECONDS_PER_DAY = 3_600_000_000"
+    },
+    {
+      "label": "age-from-the-pairs-issuance-not-its-close",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        pl.col(\"window_end_utc\").alias(\"_known_utc\"),\n",
+      "replace": "        pl.col(\"runtime_utc\").alias(\"_known_utc\"),\n"
+    },
+    {
+      "label": "mean3-and-mean7-swapped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        _mean_of_last(LAG_COUNTS[0]).alias(\"lag_mean3\"),\n        _mean_of_last(LAG_COUNTS[1]).alias(\"lag_mean7\"),\n",
+      "replace": "        _mean_of_last(LAG_COUNTS[1]).alias(\"lag_mean3\"),\n        _mean_of_last(LAG_COUNTS[0]).alias(\"lag_mean7\"),\n"
+    },
+    {
+      "label": "lag-counts-reversed-constant",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "LAG_COUNTS = (3, 7)",
+      "replace": "LAG_COUNTS = (7, 3)"
+    },
+    {
+      "label": "mean-window-one-short",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "error.shift(k).over(list(GROUP_KEYS)) for k in range(1, n)]",
+      "replace": "error.shift(k).over(list(GROUP_KEYS)) for k in range(1, n - 1)]"
+    },
+    {
+      "label": "mean-window-one-long",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "error.shift(k).over(list(GROUP_KEYS)) for k in range(1, n)]",
+      "replace": "error.shift(k).over(list(GROUP_KEYS)) for k in range(1, n + 1)]"
+    },
+    {
+      "label": "mean-shift-crosses-groups",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "error.shift(k).over(list(GROUP_KEYS)) for k in range(1, n)]",
+      "replace": "error.shift(k) for k in range(1, n)]"
+    },
+    {
+      "label": "mean-over-station-only",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "error.shift(k).over(list(GROUP_KEYS)) for k in range(1, n)]",
+      "replace": "error.shift(k).over([\"station\"]) for k in range(1, n)]"
+    },
+    {
+      "label": "window-thirty-one-days",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "LAG_WINDOW_DAYS = 30\n",
+      "replace": "LAG_WINDOW_DAYS = 31\n"
+    },
+    {
+      "label": "window-lower-bound-inclusive",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "first_inside = np.searchsorted(segment, segment - window, side=\"right\")",
+      "replace": "first_inside = np.searchsorted(segment, segment - window, side=\"left\")"
+    },
+    {
+      "label": "n30-counts-from-the-query-not-the-pair",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "n30[position : position + length] = np.arange(1, length + 1) - first_inside",
+      "replace": "n30[position : position + length] = np.arange(1, length + 1)"
+    },
+    {
+      "label": "n30-excludes-the-pair-itself",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "n30[position : position + length] = np.arange(1, length + 1) - first_inside",
+      "replace": "n30[position : position + length] = np.arange(1, length + 1) - first_inside - 1"
+    },
+    {
+      "label": "pair-order-ignores-runtime-tiebreak",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        .sort([*GROUP_KEYS, \"window_end_utc\", \"runtime_utc\"], maintain_order=True)\n    )\n\n    n30",
+      "replace": "        .sort([*GROUP_KEYS, \"window_end_utc\"], maintain_order=True)\n    )\n\n    n30"
+    },
+    {
+      "label": "null-observed-pairs-count-as-zero-error",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        .filter(pl.col(\"lag_error\").is_not_null())\n",
+      "replace": "        .with_columns(pl.col(\"lag_error\").fill_null(0.0))\n"
+    },
+    {
+      "label": "asof-output-not-restored-to-query-order",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        check_sortedness=False,\n    ).sort(\"_row\")\n",
+      "replace": "        check_sortedness=False,\n    )\n"
+    },
+    {
+      "label": "asof-left-side-not-sorted",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        .with_row_index(\"_row\")\n        .sort(\"runtime_utc\", maintain_order=True)\n",
+      "replace": "        .with_row_index(\"_row\")\n"
+    },
+    {
+      "label": "asof-right-side-not-sorted",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "    ).sort(\"window_end_utc\", maintain_order=True)\n\n    joined",
+      "replace": "    )\n\n    joined"
+    },
+    {
+      "label": "timestamps-not-converted-to-utc",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        expr = expr.dt.convert_time_zone(\"UTC\").dt.replace_time_zone(None)\n",
+      "replace": "        expr = expr.dt.replace_time_zone(None)\n"
+    },
+    {
+      "label": "station-join-order-unspecified",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Polars documents maintain_order=\"none\" as unspecified, but the in-memory engine pinned by uv.lock implements a left join by probing the left rows in order, so the output order is the left order for any size tried (5e3 to 2e6 rows, 5 to 300 stations, probed in a scratch script). No deterministic test can distinguish an unspecified-but-stable order from a specified one; the explicit maintain_order=\"left\" is the contract the code asks for, and test_predictions_align_with_unsorted_run_rows plus the matrix oracle would catch a polars release that reorders (station-join-reorders-rows, maintain_order=\"right\", is killed). Inert on the pinned polars; not a guarantee across versions.",
+      "find": "self._station_table, on=\"station\", how=\"left\", maintain_order=\"left\"",
+      "replace": "self._station_table, on=\"station\", how=\"left\", maintain_order=\"none\""
+    },
+    {
+      "label": "station-join-drops-unknown-stations",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "self._station_table, on=\"station\", how=\"left\", maintain_order=\"left\"",
+      "replace": "self._station_table, on=\"station\", how=\"inner\", maintain_order=\"left\""
+    },
+    {
+      "label": "station-join-reorders-rows",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "self._station_table, on=\"station\", how=\"left\", maintain_order=\"left\"",
+      "replace": "self._station_table, on=\"station\", how=\"left\", maintain_order=\"right\""
+    },
+    {
+      "label": "prediction-sign-flipped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "pl.when(usable).then(raw - predicted).otherwise(raw)",
+      "replace": "pl.when(usable).then(raw + predicted).otherwise(raw)"
+    },
+    {
+      "label": "target-built-as-observed-minus-forecast",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "(rows.get_column(\"forecast_f\") - rows.get_column(\"observed_f\"))",
+      "replace": "(rows.get_column(\"observed_f\") - rows.get_column(\"forecast_f\"))"
+    },
+    {
+      "label": "target-is-the-absolute-error",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "(rows.get_column(\"forecast_f\") - rows.get_column(\"observed_f\"))",
+      "replace": "(rows.get_column(\"forecast_f\") - rows.get_column(\"observed_f\")).abs()"
+    },
+    {
+      "label": "fallback-flag-false-when-unfitted",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "\"fallback\": pl.Series(\n                        [self._booster is None] * n, dtype=pl.Boolean\n                    ),",
+      "replace": "\"fallback\": pl.Series([False] * n, dtype=pl.Boolean),"
+    },
+    {
+      "label": "fallback-flag-true-when-fitted",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "return pl.DataFrame({\"forecast_f\": corrected, \"fallback\": ~usable})",
+      "replace": "return pl.DataFrame({\"forecast_f\": corrected, \"fallback\": pl.Series([True] * n)})"
+    },
+    {
+      "label": "fallback-flag-never-set-for-nonfinite",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "return pl.DataFrame({\"forecast_f\": corrected, \"fallback\": ~usable})",
+      "replace": "return pl.DataFrame({\"forecast_f\": corrected, \"fallback\": pl.Series([False] * n)})"
+    },
+    {
+      "label": "threshold-strictly-greater",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        if rows.height >= self.min_train_rows:",
+      "replace": "        if rows.height > self.min_train_rows:"
+    },
+    {
+      "label": "threshold-counts-unfiltered-rows",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        if rows.height >= self.min_train_rows:",
+      "replace": "        if training_pairs.height >= self.min_train_rows:"
+    },
+    {
+      "label": "threshold-always-trains",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        if rows.height >= self.min_train_rows:",
+      "replace": "        if True:"
+    },
+    {
+      "label": "nonfinite-prediction-passes-through",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        usable = predicted.is_finite()\n",
+      "replace": "        usable = pl.Series([True] * n)\n"
+    },
+    {
+      "label": "nonfinite-prediction-falls-to-zero-not-raw",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "pl.when(usable).then(raw - predicted).otherwise(raw)",
+      "replace": "pl.when(usable).then(raw - predicted).otherwise(pl.lit(0.0))"
+    },
+    {
+      "label": "empty-run-rows-reach-the-booster",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "A fitted model handed a zero-row frame builds a (0, 18) float32 matrix; LightGBM's predict returns an empty array for it, usable is an empty boolean series, and the final frame is the same empty (forecast_f, fallback) pair the early return builds. The `or n == 0` shortcut is a pure fast path; the evaluator never passes zero rows (it filters run dates that have rows). Inert on every input, verified by running a fitted model on a zero-row frame under the mutant.",
+      "find": "        if self._booster is None or n == 0:\n",
+      "replace": "        if self._booster is None:\n"
+    },
+    {
+      "label": "nan-features-become-zero-lags",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        pl.col(\"lag_error\").cast(pl.Float64).fill_null(_NAN),\n",
+      "replace": "        pl.col(\"lag_error\").cast(pl.Float64).fill_null(0.0),\n"
+    },
+    {
+      "label": "missing-numeric-column-becomes-zero",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "                return pl.lit(_NAN, dtype=pl.Float32).alias(name)\n",
+      "replace": "                return pl.lit(0.0, dtype=pl.Float32).alias(name)\n"
+    },
+    {
+      "label": "null-numeric-becomes-zero",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            return pl.col(name).cast(pl.Float32).fill_null(_NAN)\n",
+      "replace": "            return pl.col(name).cast(pl.Float32).fill_null(0.0)\n"
+    },
+    {
+      "label": "unknown-station-latitude-becomes-zero",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            pl.col(\"latitude\").fill_null(_NAN),\n",
+      "replace": "            pl.col(\"latitude\").fill_null(0.0),\n"
+    },
+    {
+      "label": "unseen-region-becomes-zero-code",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            pl.col(\"climate_region_code\").fill_null(_NAN),\n",
+      "replace": "            pl.col(\"climate_region_code\").fill_null(0.0),\n"
+    },
+    {
+      "label": "constant-n-estimators-201",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "N_ESTIMATORS = 200\n",
+      "replace": "N_ESTIMATORS = 201\n"
+    },
+    {
+      "label": "constant-learning-rate-0.06",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "LEARNING_RATE = 0.05\n",
+      "replace": "LEARNING_RATE = 0.06\n"
+    },
+    {
+      "label": "constant-num-leaves-32",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "NUM_LEAVES = 31\n",
+      "replace": "NUM_LEAVES = 32\n"
+    },
+    {
+      "label": "constant-min-data-in-leaf-501",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "MIN_DATA_IN_LEAF = 500\n",
+      "replace": "MIN_DATA_IN_LEAF = 501\n"
+    },
+    {
+      "label": "constant-feature-fraction-0.9",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "FEATURE_FRACTION = 0.8\n",
+      "replace": "FEATURE_FRACTION = 0.9\n"
+    },
+    {
+      "label": "constant-bagging-fraction-0.9",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "BAGGING_FRACTION = 0.8\n",
+      "replace": "BAGGING_FRACTION = 0.9\n"
+    },
+    {
+      "label": "constant-bagging-freq-2",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "BAGGING_FREQ = 1\n",
+      "replace": "BAGGING_FREQ = 2\n"
+    },
+    {
+      "label": "constant-lambda-l2-11",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "LAMBDA_L2 = 10.0\n",
+      "replace": "LAMBDA_L2 = 11.0\n"
+    },
+    {
+      "label": "constant-max-bin-64",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "MAX_BIN = 63\n",
+      "replace": "MAX_BIN = 64\n"
+    },
+    {
+      "label": "constant-seed-43",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "SEED = 42\n",
+      "replace": "SEED = 43\n"
+    },
+    {
+      "label": "constant-min-train-rows-20001",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "MIN_TRAIN_ROWS = 20_000\n",
+      "replace": "MIN_TRAIN_ROWS = 20_001\n"
+    },
+    {
+      "label": "constant-objective-l2",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "\"objective\": \"regression_l1\",",
+      "replace": "\"objective\": \"regression\","
+    },
+    {
+      "label": "constant-deterministic-off",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "\"deterministic\": True,",
+      "replace": "\"deterministic\": False,"
+    },
+    {
+      "label": "constant-row-wise-off",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "\"force_row_wise\": True,",
+      "replace": "\"force_row_wise\": False,"
+    },
+    {
+      "label": "constant-threads-2",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "\"num_threads\": 1,",
+      "replace": "\"num_threads\": 2,"
+    },
+    {
+      "label": "constant-booster-params-bagging-freq-dropped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        \"bagging_freq\": BAGGING_FREQ,\n",
+      "replace": ""
+    },
+    {
+      "label": "train-ignores-n-estimators",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "num_boost_round=N_ESTIMATORS)",
+      "replace": "num_boost_round=100)"
+    },
+    {
+      "label": "train-overrides-a-param",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "lightgbm.train(booster_params(), dataset,",
+      "replace": "lightgbm.train({**booster_params(), \"num_leaves\": 15}, dataset,"
+    },
+    {
+      "label": "train-drops-the-categorical-declaration",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            categorical_feature=list(_CATEGORICAL_FEATURES),\n",
+      "replace": "            categorical_feature=[],\n"
+    },
+    {
+      "label": "categorical-feature-is-another-column",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "_CATEGORICAL_FEATURES = (\"climate_region_code\",)",
+      "replace": "_CATEGORICAL_FEATURES = (\"coastal_flag\",)"
+    },
+    {
+      "label": "train-drops-feature-names",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            feature_name=list(FEATURE_COLUMNS),\n",
+      "replace": "            feature_name=\"auto\",\n"
+    },
+    {
+      "label": "train-keeps-the-raw-matrix",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "free_raw_data only decides whether LightGBM keeps its reference to the numpy matrix after the Dataset is constructed (memory); the trained Booster, its parameters and every prediction are byte-identical. Inert on behaviour by construction; the memory effect is outside what a unit test can assert without a peak-RSS measurement, which no test here makes.",
+      "find": "            free_raw_data=True,\n",
+      "replace": "            free_raw_data=False,\n"
+    },
+    {
+      "label": "is-max-mapping-flipped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            pl.when(pl.col(\"variable\") == \"max\")\n            .then(pl.lit(1.0, dtype=pl.Float32))\n            .when(pl.col(\"variable\") == \"min\")\n            .then(pl.lit(0.0, dtype=pl.Float32))\n",
+      "replace": "            pl.when(pl.col(\"variable\") == \"max\")\n            .then(pl.lit(0.0, dtype=pl.Float32))\n            .when(pl.col(\"variable\") == \"min\")\n            .then(pl.lit(1.0, dtype=pl.Float32))\n"
+    },
+    {
+      "label": "doy-sin-and-cos-swapped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            doy_sin = angle.sin().cast(pl.Float32).fill_null(_NAN).alias(\"doy_sin\")\n            doy_cos = angle.cos().cast(pl.Float32).fill_null(_NAN).alias(\"doy_cos\")\n",
+      "replace": "            doy_sin = angle.cos().cast(pl.Float32).fill_null(_NAN).alias(\"doy_sin\")\n            doy_cos = angle.sin().cast(pl.Float32).fill_null(_NAN).alias(\"doy_cos\")\n"
+    },
+    {
+      "label": "doy-period-365-not-365.25",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "* (2.0 * np.pi / 365.25)",
+      "replace": "* (2.0 * np.pi / 365.0)"
+    },
+    {
+      "label": "doy-from-the-run-not-the-target",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "                pl.col(\"target_date\").dt.ordinal_day().cast(pl.Float64)\n",
+      "replace": "                pl.col(\"runtime_utc\").dt.ordinal_day().cast(pl.Float64)\n"
+    },
+    {
+      "label": "doy-sin-only-constant-zero",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            doy_sin = angle.sin().cast(pl.Float32).fill_null(_NAN).alias(\"doy_sin\")\n",
+      "replace": "            doy_sin = pl.lit(0.0, dtype=pl.Float32).alias(\"doy_sin\")\n"
+    },
+    {
+      "label": "latitude-and-longitude-swapped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "                \"latitude\": station_features[\"latitude\"].cast(pl.Float32),\n                \"longitude\": station_features[\"longitude\"].cast(pl.Float32),\n",
+      "replace": "                \"latitude\": station_features[\"longitude\"].cast(pl.Float32),\n                \"longitude\": station_features[\"latitude\"].cast(pl.Float32),\n"
+    },
+    {
+      "label": "coastal-flag-and-elevation-swapped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "                \"elevation_m\": station_features[\"elevation_m\"].cast(pl.Float32),\n                \"coastal_flag\": station_features[\"coastal_flag\"].cast(pl.Float32),\n",
+      "replace": "                \"elevation_m\": station_features[\"coastal_flag\"].cast(pl.Float32),\n                \"coastal_flag\": station_features[\"elevation_m\"].cast(pl.Float32),\n"
+    },
+    {
+      "label": "region-codes-unsorted-vocabulary-reversed",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "for i, region in enumerate(regions)}",
+      "replace": "for i, region in enumerate(reversed(regions))}"
+    },
+    {
+      "label": "region-code-offset-by-one",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "self._region_codes = {region: float(i) for i, region in enumerate(regions)}",
+      "replace": "self._region_codes = {region: float(i + 1) for i, region in enumerate(regions)}"
+    },
+    {
+      "label": "station-table-region-from-wrong-station-order",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "                        for r in station_features[\"climate_region\"].to_list()\n",
+      "replace": "                        for r in reversed(station_features[\"climate_region\"].to_list())\n"
+    },
+    {
+      "label": "predict-feature-order-reversed",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "predicted_error = self._booster.predict(features.to_numpy(order=\"c\"))",
+      "replace": "predicted_error = self._booster.predict(\n            features.select(list(reversed(features.columns))).to_numpy(order=\"c\")\n        )"
+    },
+    {
+      "label": "lag-columns-dropped-at-predict",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "features = self._feature_frame(run_rows, self.lag_features(run_rows))\n",
+      "replace": "features = self._feature_frame(\n            run_rows,\n            self.lag_features(run_rows).with_columns(\n                pl.lit(_NAN).alias(\"lag_error\"), pl.lit(_NAN).alias(\"lag_age_days\")\n            ),\n        )\n"
+    },
+    {
+      "label": "predict-reads-features-without-the-maintained-history",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        return asof_lag_features(rows, self._current_stats())\n",
+      "replace": "        return asof_lag_features(rows, pair_stats(self._history.head(0)))\n"
+    },
+    {
+      "label": "lag-stats-recomputed-on-every-call",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Recomputing pair_stats on every call instead of memoising it returns the same frame: _history is only mutated by fit/update/_trim, and each of those resets the cache, so the cached and the recomputed value are equal at every read. Pure performance difference (the cache is why 31 daily predicts do not rebuild stats 31 times); inert on values.",
+      "find": "        if self._stats is None:\n            self._stats = pair_stats(self._history)\n        return self._stats\n",
+      "replace": "        if self._stats is None or True:\n            self._stats = pair_stats(self._history)\n        return self._stats\n"
+    },
+    {
+      "label": "duplicate-station-check-removed",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        if station_features[\"station\"].n_unique() != station_features.height:\n            msg = \"station_features must have one row per station\"\n            raise ValueError(msg)\n",
+      "replace": ""
+    },
+    {
+      "label": "missing-column-check-removed",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            if column not in station_features.columns:\n                msg = f\"station_features is missing required column: {column}\"\n                raise ValueError(msg)\n",
+      "replace": "            pass\n"
+    },
+    {
+      "label": "fit-count-not-incremented",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self.fit_count += 1\n",
+      "replace": ""
+    },
+    {
+      "label": "fit-seconds-logged-for-unfitted",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            self._booster = self._train(rows)\n            self.fit_seconds_log.append(time.monotonic() - started)\n",
+      "replace": "            self._booster = self._train(rows)\n        self.fit_seconds_log.append(time.monotonic() - started)\n"
+    },
+    {
+      "label": "describe-params-retrain-daily",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "\"retrain\": \"monthly\",",
+      "replace": "\"retrain\": \"daily\","
+    },
+    {
+      "label": "describe-params-drops-polars-version",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            \"polars_version\": importlib.metadata.version(\"polars\"),\n",
+      "replace": ""
+    },
+    {
+      "label": "describe-params-drops-booster-params",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            **booster_params(),\n",
+      "replace": ""
+    },
+    {
+      "label": "describe-params-drops-retention",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "            \"retention_days\": RETENTION_DAYS,\n",
+      "replace": ""
+    }
+  ]
+}

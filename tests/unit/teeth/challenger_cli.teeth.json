@@ -1,0 +1,208 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_cli.py",
+    "tests/integration/test_challenger_pipeline.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_cli.py",
+    "tests/integration/test_challenger_pipeline.py"
+  ],
+  "mutants": [
+    {
+      "label": "retrain-daily-instead-of-monthly",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "result = walk_forward(pairs, model, start, end, retrain=\"monthly\")",
+      "replace": "result = walk_forward(pairs, model, start, end, retrain=\"daily\")"
+    },
+    {
+      "label": "pairs-read-up-to-before-the-end-date",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "from int_raw_verification_pairs where run_date <= ?\"",
+      "replace": "from int_raw_verification_pairs where run_date < ?\""
+    },
+    {
+      "label": "pairs-read-from-the-end-date-onward",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "from int_raw_verification_pairs where run_date <= ?\"",
+      "replace": "from int_raw_verification_pairs where run_date >= ?\""
+    },
+    {
+      "label": "pairs-read-without-the-end-date-bound",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Rows with run_date after `end` can reach neither a prediction (walk_forward evaluates run dates in [start, end] only) nor a training set (their windows close after any issuance in range, and fit/update take window_end_utc < T). So the predicate is a read-size optimisation for the 6M-row table, and dropping it changes no output row; the comment above the query says exactly that. Inert on values, only memory differs; the unit test seeds rows after the end date to keep it that way.",
+      "find": "from int_raw_verification_pairs where run_date <= ?\",\n            [end],",
+      "replace": "from int_raw_verification_pairs\",\n            [],"
+    },
+    {
+      "label": "load-predictions-range-swapped",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "            conn,\n            model.name,\n            start,\n            end,\n            rows_frame,\n            now=datetime.now(UTC).replace(tzinfo=None),\n        )\n    wall_time = time.monotonic() - started\n\n    n = result.height\n    fallback_share = float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log",
+      "replace": "            conn,\n            model.name,\n            end,\n            start,\n            rows_frame,\n            now=datetime.now(UTC).replace(tzinfo=None),\n        )\n    wall_time = time.monotonic() - started\n\n    n = result.height\n    fallback_share = float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log"
+    },
+    {
+      "label": "load-predictions-deletes-the-baselines-range",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "        rows_frame = result.with_columns(pl.lit(params).alias(\"params\"))\n        warehouse.load_predictions(\n            conn,\n            model.name,\n            start,\n            end,\n            rows_frame,\n            now=datetime.now(UTC).replace(tzinfo=None),\n        )\n    wall_time = time.monotonic() - started\n\n    n = result.height\n    fallback_share = float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log",
+      "replace": "        rows_frame = result.with_columns(pl.lit(params).alias(\"params\"))\n        warehouse.load_predictions(\n            conn,\n            \"baseline\",\n            start,\n            end,\n            rows_frame,\n            now=datetime.now(UTC).replace(tzinfo=None),\n        )\n    wall_time = time.monotonic() - started\n\n    n = result.height\n    fallback_share = float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log"
+    },
+    {
+      "label": "params-json-without-the-constants",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "params = json.dumps(model.describe_params())",
+      "replace": "params = json.dumps({\"model\": model.name})"
+    },
+    {
+      "label": "minimum-bound-as-a-literal",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "min_train_rows=challenger_module.MIN_TRAIN_ROWS,",
+      "replace": "min_train_rows=20_000,"
+    },
+    {
+      "label": "station-features-latitude-and-longitude-swapped",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "            \"latitude\": [s.lat for s in registry.values()],\n            \"longitude\": [s.lon for s in registry.values()],\n",
+      "replace": "            \"latitude\": [s.lon for s in registry.values()],\n            \"longitude\": [s.lat for s in registry.values()],\n"
+    },
+    {
+      "label": "station-features-coastal-flag-inverted",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "\"coastal_flag\": [s.coastal_flag for s in registry.values()],",
+      "replace": "\"coastal_flag\": [not s.coastal_flag for s in registry.values()],"
+    },
+    {
+      "label": "station-features-region-is-the-label",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "\"climate_region\": [s.climate_region for s in registry.values()],",
+      "replace": "\"climate_region\": [s.label for s in registry.values()],"
+    },
+    {
+      "label": "station-features-elevation-is-latitude",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "\"elevation_m\": [s.elevation_m for s in registry.values()],",
+      "replace": "\"elevation_m\": [s.lat for s in registry.values()],"
+    },
+    {
+      "label": "station-features-keyed-by-the-cli-station",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "In the registry seed (dbt/seeds/station_registry.csv, 573 rows) cli_station equals icao on every row -- checked by loading it -- so the two keys select identical strings and the resulting station table is identical. Inert on the shipped registry; it would matter only for a future registry row where the CLI identifier differs from the ICAO code, which is a seed-data change rather than a code defect.",
+      "find": "\"station\": [s.icao for s in registry.values()],",
+      "replace": "\"station\": [s.cli_station for s in registry.values()],"
+    },
+    {
+      "label": "pair-columns-without-tmp-f",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    \"spread_f\",\n    \"tmp_f\",\n    \"window_start_utc\",\n    \"window_end_utc\",\n    \"observed_f\",\n    \"scorable\",\n)",
+      "replace": "    \"spread_f\",\n    \"window_start_utc\",\n    \"window_end_utc\",\n    \"observed_f\",\n    \"scorable\",\n)"
+    },
+    {
+      "label": "pair-columns-without-cycle-hour",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "cycle_hour is a model feature whose value is constant in the synthetic and fixture data (13 / one regime), and the booster routes a missing column as NaN for every row; with one distinct value the feature has no split to make, so predictions are identical with or without it. The unit-level matrix oracle (test_challenger.py) pins that the model consumes it when present; this CLI test cannot see a column whose value never varies. Real archives carry 00/06/12/18 and would differ.",
+      "find": "    \"runtime_utc\",\n    \"cycle_hour\",\n    \"lead_day\",\n    \"variable\",\n    \"target_date\",\n    \"forecast_f\",\n    \"spread_f\",\n    \"tmp_f\",",
+      "replace": "    \"runtime_utc\",\n    \"lead_day\",\n    \"variable\",\n    \"target_date\",\n    \"forecast_f\",\n    \"spread_f\",\n    \"tmp_f\","
+    },
+    {
+      "label": "fallback-share-inverted",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "fallback_share = float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log",
+      "replace": "fallback_share = 1.0 - float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log"
+    },
+    {
+      "label": "retrains-reported-as-fitted-count",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "retrains={model.fit_count} ",
+      "replace": "retrains={len(fit_log)} "
+    },
+    {
+      "label": "fitted-reported-as-retrain-count",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "f\"fitted={len(fit_log)} \"",
+      "replace": "f\"fitted={model.fit_count} \""
+    },
+    {
+      "label": "fit-seconds-total-is-the-max",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "f\"fit_seconds_total={sum(fit_log):.2f} \"",
+      "replace": "f\"fit_seconds_total={max(fit_log, default=0.0):.2f} \""
+    },
+    {
+      "label": "fit-seconds-max-is-the-min",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "f\"fit_seconds_max={max(fit_log, default=0.0):.2f} \"",
+      "replace": "f\"fit_seconds_max={min(fit_log, default=0.0):.2f} \""
+    },
+    {
+      "label": "fit-seconds-median-is-the-mean",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "statistics.median(fit_log) if fit_log else 0.0:.2f}",
+      "replace": "statistics.mean(fit_log) if fit_log else 0.0:.2f}"
+    },
+    {
+      "label": "wall-time-excludes-the-load",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    wall_time = time.monotonic() - started\n\n    n = result.height\n    fallback_share = float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log",
+      "replace": "    wall_time = 0.0\n\n    n = result.height\n    fallback_share = float(result[\"fallback\"].mean()) if n > 0 else 0.0\n    fit_log"
+    },
+    {
+      "label": "parser-allows-a-model-override",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    challenger_parser.add_argument(\"--end\", required=True, help=\"YYYY-MM-DD\")\n",
+      "replace": "    challenger_parser.add_argument(\"--end\", required=True, help=\"YYYY-MM-DD\")\n    challenger_parser.add_argument(\"--n-estimators\", type=int, default=200)\n"
+    },
+    {
+      "label": "parser-end-not-required",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    challenger_parser.add_argument(\"--end\", required=True, help=\"YYYY-MM-DD\")\n",
+      "replace": "    challenger_parser.add_argument(\"--end\", default=\"2099-01-01\", help=\"YYYY-MM-DD\")\n"
+    },
+    {
+      "label": "init-db-not-run-before-the-read",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "init_db is `create ... if not exists`, and the loader's insert needs raw.model_predictions, so on a database that has never been initialised the mutant fails in load_predictions rather than silently; on any database the pipeline has touched (every fixture here ingests or runs init-db first) the two are identical. Not a silent-wrong-output mutant: the failure, where it exists, is a loud catalog error one statement later.",
+      "find": "        warehouse.init_db(conn)\n        # Rows from runs after `end`",
+      "replace": "        # Rows from runs after `end`"
+    }
+  ]
+}
