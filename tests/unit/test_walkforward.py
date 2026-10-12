@@ -1196,3 +1196,50 @@ def test_models_without_update_are_unaffected() -> None:
 
     assert with_spy.drop("source").equals(with_raw.drop("source"))
     assert len(spy.fit_calls) == 2  # Jan 20 and Feb 1: unchanged cadence
+
+
+# -- 12. teeth-check survivors: cadence across years, scorable vs observed_f ----
+
+
+def test_monthly_cadence_retrains_in_the_same_calendar_month_of_a_later_year() -> None:
+    run_dates = [
+        date(2026, 1, 28),
+        date(2026, 1, 29),
+        date(2027, 1, 28),
+        date(2027, 1, 29),
+    ]
+    pairs = _synthetic_pairs(run_dates, seed=31)
+
+    model = _CountingRawModel()
+    result = walk_forward(
+        pairs, model, start=run_dates[0], end=run_dates[-1], retrain="monthly"
+    )
+
+    assert model.fit_count == 2
+    for row in result.iter_rows(named=True):
+        year = row["run_date"].year
+        assert row["retrained_on"] == date(year, 1, 28)
+
+
+def test_scorable_flag_not_observed_f_decides_what_fit_and_update_receive() -> None:
+    """An unscorable pair may still carry an observed_f (a window that could
+    not be tiled has partial hourly coverage). Neither `fit` nor `update`
+    may be handed it: the `scorable` flag is the gate, not a non-null
+    `observed_f`."""
+    run_dates = _consecutive_run_dates(date(2026, 1, 20), 24)
+    pairs = _synthetic_pairs(run_dates, seed=32, unscorable_frac=0.3).with_columns(
+        observed_f=pl.when(pl.col("scorable"))
+        .then(pl.col("observed_f"))
+        .otherwise(pl.lit(99.0))
+    )
+    assert pairs.filter(~pl.col("scorable"))["observed_f"].null_count() == 0
+
+    model = UpdateRecordingModel()
+    walk_forward(
+        pairs, model, start=run_dates[0], end=run_dates[-1], retrain="monthly"
+    )
+
+    _assert_leakage_property(model, pairs, run_dates)
+    assert model.update_frames
+    for frame in [*model.fit_frames, *model.update_frames]:
+        assert frame.filter(pl.col("observed_f") == 99.0).height == 0

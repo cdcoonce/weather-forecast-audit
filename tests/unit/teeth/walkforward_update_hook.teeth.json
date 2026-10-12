@@ -1,0 +1,180 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_walkforward.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_walkforward.py"
+  ],
+  "mutants": [
+    {
+      "label": "delta upper bound inclusive (pairs closing exactly at T delivered a day early)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "        elif can_update and cutoff_idx > seen_idx:\n            model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))\n            seen_idx = cutoff_idx",
+      "replace": "        elif can_update and cutoff_idx > seen_idx:\n            upd_idx = int(\n                np.searchsorted(\n                    window_end_arr, np.datetime64(t.replace(tzinfo=None)), side=\"right\"\n                )\n            )\n            model.update(scorable_sorted.slice(seen_idx, upd_idx - seen_idx))\n            seen_idx = upd_idx"
+    },
+    {
+      "label": "delta lower bound off by one (first pair of every delta lost)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "        elif can_update and cutoff_idx > seen_idx:\n            model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))\n            seen_idx = cutoff_idx",
+      "replace": "        elif can_update and cutoff_idx > seen_idx:\n            model.update(\n                scorable_sorted.slice(seen_idx + 1, cutoff_idx - seen_idx - 1)\n            )\n            seen_idx = cutoff_idx"
+    },
+    {
+      "label": "seen index not advanced after update (pairs delivered twice)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "            model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))\n            seen_idx = cutoff_idx",
+      "replace": "            model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))"
+    },
+    {
+      "label": "seen index not advanced by a retrain (post-retrain delta re-delivers fit's prefix)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "            last_retrain_date = run_date_\n            seen_idx = cutoff_idx",
+      "replace": "            last_retrain_date = run_date_"
+    },
+    {
+      "label": "seen index reset to 0 on retrain (whole history re-delivered next day)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "            last_retrain_date = run_date_\n            seen_idx = cutoff_idx",
+      "replace": "            last_retrain_date = run_date_\n            seen_idx = 0"
+    },
+    {
+      "label": "update called with an empty delta",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "elif can_update and cutoff_idx > seen_idx:",
+      "replace": "elif can_update and cutoff_idx >= seen_idx:"
+    },
+    {
+      "label": "delta sorted by a different key order",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))",
+      "replace": "model.update(\n                scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx).sort(\n                    [\"window_end_utc\", \"lead_day\", \"station\"]\n                )\n            )"
+    },
+    {
+      "label": "delta delivered newest-first",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))",
+      "replace": "model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx).reverse())"
+    },
+    {
+      "label": "delta cutoff is run_date midnight instead of the issuance time",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "        elif can_update and cutoff_idx > seen_idx:\n            model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))\n            seen_idx = cutoff_idx",
+      "replace": "        elif can_update and cutoff_idx > seen_idx:\n            upd_idx = int(np.searchsorted(window_end_arr, np.datetime64(run_date_)))\n            model.update(scorable_sorted.slice(seen_idx, upd_idx - seen_idx))\n            seen_idx = upd_idx"
+    },
+    {
+      "label": "delta cutoff is the end of run_date (future pairs leak into update)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "        elif can_update and cutoff_idx > seen_idx:\n            model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))\n            seen_idx = cutoff_idx",
+      "replace": "        elif can_update and cutoff_idx > seen_idx:\n            upd_idx = int(\n                np.searchsorted(\n                    window_end_arr,\n                    np.datetime64(run_date_, \"D\") + np.timedelta64(1, \"D\"),\n                )\n            )\n            model.update(scorable_sorted.slice(seen_idx, upd_idx - seen_idx))\n            seen_idx = upd_idx"
+    },
+    {
+      "label": "update called unconditionally (hasattr check removed)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "can_update = hasattr(model, \"update\")",
+      "replace": "can_update = True"
+    },
+    {
+      "label": "update receives the full prefix, not the delta",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))",
+      "replace": "model.update(scorable_sorted.slice(0, cutoff_idx))"
+    },
+    {
+      "label": "update receives unscorable pairs (delta cut from the unfiltered frame)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))",
+      "replace": "model.update(\n                pairs.sort(list(_CUTOFF_SORT_KEYS)).slice(\n                    seen_idx, cutoff_idx - seen_idx\n                )\n            )"
+    },
+    {
+      "label": "scorable decided by observed_f non-null instead of the scorable flag",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "scorable_sorted = pairs.filter(pl.col(\"scorable\")).sort(list(_CUTOFF_SORT_KEYS))",
+      "replace": "scorable_sorted = pairs.filter(pl.col(\"observed_f\").is_not_null()).sort(\n        list(_CUTOFF_SORT_KEYS)\n    )"
+    },
+    {
+      "label": "update delta restricted to the predict allow-list columns (answers stripped)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))",
+      "replace": "model.update(\n                scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx).select(\n                    predict_columns\n                )\n            )"
+    },
+    {
+      "label": "monthly cadence keyed on month number only (a new year never retrains)",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "month_key = (run_date_.year, run_date_.month)",
+      "replace": "month_key = (run_date_.month,)"
+    },
+    {
+      "label": "monthly cadence fits only on the first evaluated date",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "if month_key not in seen_months:",
+      "replace": "if not seen_months:"
+    },
+    {
+      "label": "monthly cadence behaves as daily",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "if retrain == \"daily\":",
+      "replace": "if retrain in (\"daily\", \"monthly\"):"
+    },
+    {
+      "label": "tmp_f dropped from the predict allow-list",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "    \"spread_f\",\n    \"tmp_f\",\n    \"window_start_utc\",",
+      "replace": "    \"spread_f\",\n    \"window_start_utc\","
+    },
+    {
+      "label": "observed_f added to the predict allow-list",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "    \"tmp_f\",\n    \"window_start_utc\",",
+      "replace": "    \"tmp_f\",\n    \"observed_f\",\n    \"window_start_utc\","
+    },
+    {
+      "label": "scorable added to the predict allow-list",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "    \"tmp_f\",\n    \"window_start_utc\",",
+      "replace": "    \"tmp_f\",\n    \"scorable\",\n    \"window_start_utc\","
+    },
+    {
+      "label": "[control] elif -> if on the update branch",
+      "file": "../../../src/weather_forecast_audit/walkforward.py",
+      "oracle": "real",
+      "find": "        elif can_update and cutoff_idx > seen_idx:",
+      "replace": "        if can_update and cutoff_idx > seen_idx:",
+      "expect": "survived",
+      "why": "On a retrain date the preceding `if` branch has just set seen_idx = cutoff_idx, so `cutoff_idx > seen_idx` is False and the update branch cannot fire either way. Inert while the retrain branch advances seen_idx to cutoff_idx (the row 'seen index not advanced by a retrain' removes that and is a separate mutant); it would stop being inert if a retrain stopped consuming the whole prefix."
+    }
+  ]
+}
