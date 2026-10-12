@@ -1343,3 +1343,64 @@ def test_lag_features_do_not_depend_on_the_timestamp_representation() -> None:
         reference,
         check_exact=True,
     )
+
+
+def test_asof_features_tie_break_does_not_depend_on_stats_arrival_order() -> None:
+    # Two pairs of one group close at the same instant; the later runtime is
+    # "last" (its through-p statistics include the other). Whichever order the
+    # stats rows arrive in, that pair is the one matched.
+    close = datetime(2026, 1, 10, 6, 0, tzinfo=UTC)
+    history = pl.DataFrame(
+        {
+            "station": ["KAAA", "KAAA", "KAAA"],
+            "lead_day": [1, 1, 1],
+            "variable": ["max", "max", "max"],
+            "runtime_utc": [
+                datetime(2026, 1, 8, 13, tzinfo=UTC),
+                datetime(2026, 1, 9, 13, tzinfo=UTC),
+                datetime(2026, 1, 7, 13, tzinfo=UTC),
+            ],
+            "window_end_utc": [close, close, close - timedelta(days=1)],
+            "forecast_f": [70.0, 71.0, 72.0],
+            "observed_f": [60.0, 50.0, 40.0],
+        }
+    )
+    queries = pl.DataFrame(
+        {
+            "station": ["KAAA"],
+            "lead_day": [1],
+            "variable": ["max"],
+            "runtime_utc": [datetime(2026, 1, 12, 13, tzinfo=UTC)],
+        }
+    )
+    stats = pair_stats(history)
+    reference = asof_lag_features(queries, stats)
+
+    assert reference["lag_error"][0] == 21.0  # runtime 01-09: 71 - 50
+    for seed in range(12):
+        shuffled = stats.sample(fraction=1.0, shuffle=True, seed=seed)
+        assert_frame_equal(
+            asof_lag_features(queries, shuffled), reference, check_exact=True
+        )
+
+
+def test_fit_ignores_scorable_pairs_without_a_forecast() -> None:
+    _, ordered, _, features = _small_world(n_days=30)
+    holed = ordered.with_columns(
+        pl.when(pl.int_range(pl.len()) % 11 == 3)
+        .then(None)
+        .otherwise(pl.col("forecast_f"))
+        .alias("forecast_f")
+    )
+    kept = holed.filter(pl.col("forecast_f").is_not_null())
+    rows = _predict_rows(ordered, date(2026, 1, 30))
+
+    with_holes = ChallengerModel(features, min_train_rows=100)
+    with_holes.fit(holed)
+    without = ChallengerModel(features, min_train_rows=100)
+    without.fit(kept)
+
+    assert with_holes.is_fitted
+    assert_frame_equal(
+        with_holes.predict_detail(rows), without.predict_detail(rows), check_exact=True
+    )

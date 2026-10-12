@@ -305,15 +305,22 @@ def asof_lag_features(queries: pl.DataFrame, stats: pl.DataFrame) -> pl.DataFram
         .with_row_index("_row")
         .sort("runtime_utc", maintain_order=True)
     )
-    right = stats.select(
-        *GROUP_KEYS,
-        "window_end_utc",
-        "_known_utc",
-        "lag_error",
-        "lag_mean3",
-        "lag_mean7",
-        "lag_n30",
-    ).sort("window_end_utc", maintain_order=True)
+    # Pairs of one group closing at the same instant are ordered by their own
+    # runtime (the order `pair_stats` used for "the last n"), so the matched
+    # pair is the same whichever order the caller holds the stats rows in.
+    right = (
+        stats.select(
+            *GROUP_KEYS,
+            "window_end_utc",
+            pl.col("runtime_utc").alias("_pair_runtime_utc"),
+            "_known_utc",
+            "lag_error",
+            "lag_mean3",
+            "lag_mean7",
+            "lag_n30",
+        )
+        .sort(["window_end_utc", *GROUP_KEYS, "_pair_runtime_utc"])
+    )
 
     joined = left.join_asof(
         right,
@@ -471,8 +478,10 @@ class ChallengerModel:
         self._booster = None
 
         columns = [c for c in _TRAIN_COLUMNS if c in training_pairs.columns]
+        # A pair with no forecast or no observation has no error to learn
+        # from (a null label would otherwise be trained as 0).
         rows = training_pairs.select(columns).filter(
-            pl.col("observed_f").is_not_null()
+            pl.col("observed_f").is_not_null() & pl.col("forecast_f").is_not_null()
         )
         self._history = self._as_history(rows)
         self._stats = None
