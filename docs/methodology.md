@@ -463,8 +463,9 @@ every issuance date.
 
 `predict` is restricted to an allow-list of guidance-side columns
 (`station, run_date, runtime_utc, cycle_hour, lead_day, variable,
-target_date, forecast_f, spread_f, window_start_utc, window_end_utc`) and
-never sees `observed_f`, `error_f`, or any other verification-derived
+target_date, forecast_f, spread_f, tmp_f, window_start_utc,
+window_end_utc`; `cycle_hour` and `tmp_f` only when the input frame carries
+them) and never sees `observed_f`, `error_f`, or any other verification-derived
 column -- those are the answers a model is being scored against.
 
 ### Measured: the cheat has teeth, and the guard closes it
@@ -498,6 +499,26 @@ empty, which is always true on the first evaluated date given no earlier
 history). `trained_through < runtime_utc` holds for every non-null
 prediction by construction of the cutoff, not as a separately-imposed
 constraint.
+
+### The optional `update` hook
+
+A model may implement `update(new_pairs)` (issue #19), detected with
+`hasattr` like `predict_detail`. Under a monthly retrain a model whose
+features include lagged errors would otherwise be up to a month stale on
+the last day of the month, which understates what the same model could do
+in production, where yesterday's verified errors are available today.
+Handing the model the whole future to fix that is exactly the leak the
+guard exists to prevent, so the hook is cut by the same rule as `fit`.
+
+After any retrain and before `predict` on each run date, the evaluator
+passes the scorable pairs with `seen_cutoff <= window_end_utc < T`, where
+*T* is that run's issuance time (strict) and `seen_cutoff` is the *T* of
+the model's last `fit` or `update`. It is a slice of the already-sorted
+scorable frame, in the same order `fit` receives, and `update` is only
+called when the slice is non-empty (never on a retrain date). The fit
+prefix plus every delta since therefore equals exactly the pairs with
+`window_end_utc < T`, none twice. `retrained_on` and `trained_through`
+describe the last `fit` and are not moved by an `update`.
 
 ## Baseline correction (rolling bias)
 
