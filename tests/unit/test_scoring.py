@@ -906,3 +906,88 @@ def test_default_reference_absent_keeps_the_legacy_null_skill() -> None:
     assert result["skill"][0] is None
     assert result["skill_lo"][0] is None
     assert result["skill_hi"][0] is None
+
+
+# -- 13. teeth-check survivors: zero reference MAE, CI direction ---------------
+
+
+def test_reference_with_zero_matched_mae_gives_null_skill_not_a_division() -> None:
+    """A reference that is exactly right on every matched key has MAE 0: skill
+    is null (and so is its CI), never a ZeroDivisionError or an infinity."""
+    rows: list[dict[str, object]] = []
+    for day in (1, 2, 3):
+        for source, error in (("baseline", 0.0), ("challenger", 1.0)):
+            rows.append(
+                _row(
+                    run_date=date(2025, 1, day),
+                    target_date=date(2025, 1, day + 1),
+                    source=source,
+                    error_f=error,
+                )
+            )
+
+    result = score(pl.DataFrame(rows), n_boot=50, reference="baseline")
+    by_source = {r["source"]: r for r in result.iter_rows(named=True)}
+
+    assert by_source["challenger"]["skill"] is None
+    assert by_source["challenger"]["skill_lo"] is None
+    assert by_source["challenger"]["skill_hi"] is None
+    assert by_source["baseline"]["skill"] == 0.0
+
+
+def test_reference_skill_ci_has_the_direction_of_the_point_estimate() -> None:
+    """Challenger |error| is exactly half of baseline's on every key, so every
+    block's ratio is 0.5: skill and both CI ends are 0.5. A CI built from the
+    inverted ratio (reference over source) would sit near -1.0 instead --
+    the relabelled-default comparison cannot see that, both sides share the
+    code."""
+    records: list[dict[str, object]] = []
+    for offset in range(70):
+        run_date_ = date(2025, 1, 1) + timedelta(days=offset)
+        sign = 1.0 if offset % 2 == 0 else -1.0
+        wobble = 1.0 + 0.1 * (offset % 3)
+        for source, magnitude in (("baseline", 2.0), ("challenger", 1.0)):
+            records.append(
+                _row(
+                    run_date=run_date_,
+                    target_date=run_date_ + timedelta(days=1),
+                    source=source,
+                    error_f=sign * magnitude * wobble,
+                )
+            )
+
+    result = score(pl.DataFrame(records), n_boot=200, reference="baseline")
+    challenger = result.filter(pl.col("source") == "challenger").row(0, named=True)
+
+    assert challenger["skill"] == pytest.approx(0.5, abs=1e-12)
+    assert challenger["skill_lo"] == pytest.approx(0.5, abs=1e-9)
+    assert challenger["skill_hi"] == pytest.approx(0.5, abs=1e-9)
+
+
+def test_reference_pairing_never_crosses_variables() -> None:
+    """The reference has only the `max` row for (station, run_date, lead). The
+    challenger's `min` row for the same key has no reference counterpart and
+    must contribute nothing to skill, however large its error."""
+
+    def row(variable: str, source: str, error: float) -> dict[str, object]:
+        return _row(
+            run_date=date(2025, 1, 1),
+            target_date=date(2025, 1, 2),
+            variable=variable,
+            source=source,
+            error_f=error,
+        )
+
+    frame = pl.DataFrame(
+        [
+            row("max", "baseline", 2.0),
+            row("max", "challenger", 1.0),
+            row("min", "challenger", 10.0),
+        ]
+    )
+
+    result = score(frame, n_boot=50, reference="baseline")
+    challenger = result.filter(pl.col("source") == "challenger").row(0, named=True)
+
+    assert challenger["n"] == 2
+    assert challenger["skill"] == pytest.approx(0.5, abs=1e-12)

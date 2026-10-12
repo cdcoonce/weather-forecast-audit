@@ -65,6 +65,17 @@ def _skill_by_source(output: str) -> dict[str, str]:
     return skills
 
 
+def _pooled_skill_by_source(output: str) -> dict[str, str]:
+    """`source -> skill cell` from the pooled-over-leads table (6 columns)."""
+    _, _, pooled = output.partition("## Pooled over leads")
+    skills: dict[str, str] = {}
+    for line in pooled.splitlines():
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) == 6 and cells[1] in {"raw_nbm", "baseline", "challenger"}:
+            skills[cells[1]] = cells[5]
+    return skills
+
+
 def test_flag_absent_output_is_the_raw_nbm_reference_and_unannotated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -118,3 +129,24 @@ def test_unknown_reference_exits_with_the_name(
 
     with pytest.raises(SystemExit, match="no_such_source"):
         _load_script().main(["--reference", "no_such_source"])
+
+
+def test_reference_flag_applies_to_the_pooled_table_too(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "fct.duckdb"
+    _build_db(db_path)
+    monkeypatch.setenv("WFA_DUCKDB_PATH", str(db_path))
+
+    _load_script().main([])
+    default_pooled = _pooled_skill_by_source(capsys.readouterr().out)
+    _load_script().main(["--reference", "baseline"])
+    baseline_pooled = _pooled_skill_by_source(capsys.readouterr().out)
+
+    assert default_pooled["raw_nbm"].startswith("0.000")
+    assert default_pooled["challenger"].startswith("0.750")
+    assert baseline_pooled["baseline"].startswith("0.000")
+    assert baseline_pooled["challenger"].startswith("0.500")
+    assert baseline_pooled["raw_nbm"].startswith("-1.000")

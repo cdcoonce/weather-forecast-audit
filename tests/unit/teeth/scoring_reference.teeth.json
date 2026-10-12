@@ -1,0 +1,193 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--deselect",
+    "tests/unit/test_scoring.py::test_date_block_coverage_beats_row_level",
+    "--deselect",
+    "tests/unit/test_scoring.py::test_block_days_seven_beats_block_days_one_on_ar1_data",
+    "tests/unit/test_scoring.py",
+    "tests/unit/test_score_sources_script.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_scoring.py",
+    "tests/unit/test_score_sources_script.py"
+  ],
+  "mutants": [
+    {
+      "label": "reference ignored in the lookup (always raw_nbm)",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "reference_lookup = filtered.filter(pl.col(\"source\") == reference).select(",
+      "replace": "reference_lookup = filtered.filter(pl.col(\"source\") == _RAW_SOURCE).select("
+    },
+    {
+      "label": "reference ignored when dropping the reference rows from the matched set",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "matched_non_ref = matched.filter(pl.col(\"source\") != reference)",
+      "replace": "matched_non_ref = matched.filter(pl.col(\"source\") != _RAW_SOURCE)"
+    },
+    {
+      "label": "reference row skill decided by raw_nbm, not the named reference",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "if source_value == reference:",
+      "replace": "if source_value == _RAW_SOURCE:"
+    },
+    {
+      "label": "reference row skill null instead of exactly 0.0",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "skill, skill_lo, skill_hi = 0.0, 0.0, 0.0",
+      "replace": "skill, skill_lo, skill_hi = None, None, None"
+    },
+    {
+      "label": "reference row skill CI not pinned at 0.0",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "skill, skill_lo, skill_hi = 0.0, 0.0, 0.0",
+      "replace": "skill, skill_lo, skill_hi = 0.0, -0.1, 0.1"
+    },
+    {
+      "label": "pairing not restricted to keys present in both (left join)",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "matched = filtered.join(reference_lookup, on=list(_MATCH_KEY), how=\"inner\")",
+      "replace": "matched = filtered.join(reference_lookup, on=list(_MATCH_KEY), how=\"left\")"
+    },
+    {
+      "label": "match key drops variable (max pairs with min of the same lead)",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "matched = filtered.join(reference_lookup, on=list(_MATCH_KEY), how=\"inner\")",
+      "replace": "matched = filtered.join(\n        reference_lookup.unique(subset=[\"station\", \"run_date\", \"lead_day\"], keep=\"first\"),\n        on=[\"station\", \"run_date\", \"lead_day\"],\n        how=\"inner\",\n        suffix=\"_r\",\n    )"
+    },
+    {
+      "label": "absent-reference error removed",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "if reference != _RAW_SOURCE and reference not in set(",
+      "replace": "if False and reference != _RAW_SOURCE and reference not in set("
+    },
+    {
+      "label": "absent-reference error also raised for raw_nbm (legacy exemption lost)",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "if reference != _RAW_SOURCE and reference not in set(",
+      "replace": "if reference not in set("
+    },
+    {
+      "label": "absent-reference error does not name the reference",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "msg = f\"reference source {reference!r} is not present in rows\"",
+      "replace": "msg = \"reference source is not present in rows\""
+    },
+    {
+      "label": "presence checked on scorable rows only (unscorable-only reference raises)",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "rows.get_column(\"source\").unique().to_list()",
+      "replace": "rows.filter(pl.col(\"scorable\")).get_column(\"source\").unique().to_list()"
+    },
+    {
+      "label": "default reference is not raw_nbm",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "reference: str = _RAW_SOURCE,",
+      "replace": "reference: str = \"baseline\","
+    },
+    {
+      "label": "zero reference MAE no longer yields null skill",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "elif n_matched is None or sum_abs_ref == 0:",
+      "replace": "elif n_matched is None:"
+    },
+    {
+      "label": "skill CI numerator and denominator swapped",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "matched_source_abs,\n                matched_ref_abs,\n                matched_block,",
+      "replace": "matched_ref_abs,\n                matched_source_abs,\n                matched_block,"
+    },
+    {
+      "label": "point skill denominator perturbed (reference MAE not the matched sum)",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "skill = 1.0 - sum_abs_source / sum_abs_ref",
+      "replace": "skill = 1.0 - sum_abs_source / (sum_abs_ref + 0.5)"
+    },
+    {
+      "label": "script: --reference parsed but ignored",
+      "file": "../../../scripts/score_sources.py",
+      "oracle": "real",
+      "find": "score_kwargs = {} if reference is None else {\"reference\": reference}",
+      "replace": "score_kwargs = {}"
+    },
+    {
+      "label": "script: reference not passed to the pooled table",
+      "file": "../../../scripts/score_sources.py",
+      "oracle": "real",
+      "find": "pooled = score(rows, by=tuple(_GROUP_COLUMNS[\"pooled\"]), **score_kwargs)",
+      "replace": "pooled = score(rows, by=tuple(_GROUP_COLUMNS[\"pooled\"]))"
+    },
+    {
+      "label": "script: reference not passed to the per-lead table",
+      "file": "../../../scripts/score_sources.py",
+      "oracle": "real",
+      "find": "per_lead = score(rows, by=tuple(_GROUP_COLUMNS[\"per_lead\"]), **score_kwargs)",
+      "replace": "per_lead = score(rows, by=tuple(_GROUP_COLUMNS[\"per_lead\"]))"
+    },
+    {
+      "label": "script: reference header printed even when the flag is absent",
+      "file": "../../../scripts/score_sources.py",
+      "oracle": "real",
+      "find": "if reference is not None:\n        print(",
+      "replace": "if True:\n        print("
+    },
+    {
+      "label": "script: flag defaults to raw_nbm (header printed on the default path)",
+      "file": "../../../scripts/score_sources.py",
+      "oracle": "real",
+      "find": "default=None,",
+      "replace": "default=\"raw_nbm\","
+    },
+    {
+      "label": "script: unknown reference escapes as a traceback, not a clean exit",
+      "file": "../../../scripts/score_sources.py",
+      "oracle": "real",
+      "find": "raise SystemExit(str(exc)) from exc",
+      "replace": "raise"
+    },
+    {
+      "label": "script: argv ignored, sys.argv parsed",
+      "file": "../../../scripts/score_sources.py",
+      "oracle": "real",
+      "find": "return parser.parse_args(argv)",
+      "replace": "return parser.parse_args()"
+    },
+    {
+      "label": "[control] reorder two named aggregates in the skill aggregation",
+      "file": "../../../src/weather_forecast_audit/scoring.py",
+      "oracle": "real",
+      "find": "n_matched=pl.len(),\n            sum_abs_source=pl.col(\"error_f\").abs().sum(),",
+      "replace": "sum_abs_source=pl.col(\"error_f\").abs().sum(),\n            n_matched=pl.len(),",
+      "expect": "survived",
+      "why": "Both are keyword aggregates of one group_by().agg(), read downstream only by name (row['n_matched'], row['sum_abs_source']) after a join on group_keys; polars aggregate expressions are independent of each other, so their order changes column position only, and the output frame is selected by name before it is returned. Inert while nothing indexes the skill_agg columns positionally."
+    }
+  ]
+}
