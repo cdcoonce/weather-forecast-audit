@@ -67,3 +67,32 @@ def test_ingest_unknown_station_raises_clear_error(
                 "2023-07-14",
             ]
         )
+
+
+def test_predict_challenger_requires_start_and_end() -> None:
+    parser = cli.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["predict", "challenger"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["predict", "challenger", "--start", "2023-07-14"])
+
+
+def test_predict_challenger_has_no_model_constant_overrides() -> None:
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        ["predict", "challenger", "--start", "2023-07-14", "--end", "2023-07-15"]
+    )
+    assert vars(args).keys() == {"command", "predict_model", "start", "end", "func"}
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "predict",
+                "challenger",
+                "--start",
+                "2023-07-14",
+                "--end",
+                "2023-07-15",
+                "--n-estimators",
+                "5",
+            ]
+        )
