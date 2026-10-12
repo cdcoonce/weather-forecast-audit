@@ -5,6 +5,7 @@ duplicate here is inserted directly with SQL, the way the old loaders left
 them in the production database.
 """
 
+import math
 import os
 import subprocess
 import sys
@@ -389,6 +390,113 @@ def test_connection_is_usable_after_a_failed_apply(
     assert report.rows_after == 1
 
 
+def _start_statement_log(conn: duckdb.DuckDBPyConnection) -> None:
+    """Have DuckDB itself log every statement the connection runs.
+
+    The merge raising before any write is a claim about *order*; the table
+    after a rollback cannot tell "never wrote" from "wrote and rolled
+    back", so these tests read the statement log instead.
+    """
+    conn.execute("call enable_logging('QueryLog')")
+
+
+def _statements(conn: duckdb.DuckDBPyConnection) -> list[str]:
+    rows = conn.execute(
+        "select message from duckdb_logs where type = 'QueryLog' order by timestamp"
+    ).fetchall()
+    normalised = [" ".join(str(message).split()).lower() for (message,) in rows]
+    return [s for s in normalised if "duckdb_logs" not in s]
+
+
+def _writes(statements: list[str]) -> list[str]:
+    return [s for s in statements if s.startswith(("delete", "insert"))]
+
+
+def test_a_conflict_is_found_before_any_delete_or_insert_is_issued(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _seed_conflict(conn)
+    _start_statement_log(conn)
+
+    with pytest.raises(ValueError, match="conflicting non-null values"):
+        dedupe_raw_table(conn, ASOS, apply=True)
+
+    statements = _statements(conn)
+    assert statements  # the run was observed
+    assert _writes(statements) == []
+
+
+def test_a_dry_run_issues_only_selects(conn: duckdb.DuckDBPyConnection) -> None:
+    _asos(conn, "2023-07-14 00:00:00", 100.0)
+    _asos(conn, "2023-07-14 00:00:00", None)
+    _start_statement_log(conn)
+
+    dedupe_raw_table(conn, ASOS, apply=False)
+
+    statements = _statements(conn)
+    assert statements
+    assert all(s.startswith("select") for s in statements)
+
+
+def test_a_table_without_duplicates_is_not_written_to(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _asos(conn, "2023-07-14 00:00:00", 100.0)
+    _asos(conn, "2023-07-14 01:00:00", None)
+    _start_statement_log(conn)
+
+    report = dedupe_raw_table(conn, ASOS, apply=True)
+
+    assert report == DedupeReport(ASOS, 2, 2, 0, True)
+    statements = _statements(conn)
+    assert statements
+    assert _writes(statements) == []
+
+
+def test_an_unknown_table_is_refused_before_the_connection_is_touched(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _start_statement_log(conn)
+
+    with pytest.raises(ValueError, match="no per-key repair"):
+        dedupe_raw_table(conn, "raw.cli_daily", apply=True)
+
+    assert _statements(conn) == []
+
+
+@pytest.mark.parametrize("table", ALL_TABLES)
+def test_a_dry_run_on_a_table_without_duplicates_is_not_reported_applied(
+    conn: duckdb.DuckDBPyConnection, table: str
+) -> None:
+    if table == ASOS:
+        _asos(conn, "2023-07-14 00:00:00", 100.0)
+
+    report = dedupe_raw_table(conn, table, apply=False)
+
+    expected_rows = 1 if table == ASOS else 0
+    assert report == DedupeReport(table, expected_rows, expected_rows, 0, False)
+
+
+def test_exact_copies_holding_nan_collapse_instead_of_conflicting(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    for _ in range(2):
+        conn.execute(
+            "insert into raw.asos_hourly values "
+            "('KPHX', '2023-07-14 00:00:00', 'nan'::double, 104.0, null)"
+        )
+
+    report = dedupe_raw_table(conn, ASOS, apply=True)
+
+    rows = _asos_for(conn, "2023-07-14 00:00:00")
+    assert len(rows) == 1
+    tmpf, max_6h, min_6h = rows[0]
+    assert isinstance(tmpf, float)
+    assert math.isnan(tmpf)
+    assert (max_6h, min_6h) == (104.0, None)
+    assert (report.rows_before, report.rows_after) == (2, 1)
+
+
 def _real_collapse(
     table: str,
     key_columns: tuple[str, ...],
@@ -545,3 +653,43 @@ def test_cli_conflict_leaves_earlier_tables_applied_and_says_so(
     assert after[WINDOWS] == before[WINDOWS]
     assert "already applied" in result.stderr
     assert NBS in result.stderr
+
+
+def test_cli_dry_run_on_a_clean_database_says_dry_run(tmp_path: Path) -> None:
+    db = tmp_path / "w.duckdb"
+    with duckdb.connect(str(db)) as writer:
+        warehouse.init_db(writer)
+        _asos(writer, "2023-07-14 00:00:00", 100.0)
+
+    result = _run("--db", str(db))
+
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.strip().splitlines()
+    assert len(lines) == 3
+    assert all(line.endswith("[DRY RUN]") for line in lines)
+    assert "raw.asos_hourly  1 -> 1  (keys_collapsed=0)  [DRY RUN]" in lines
+
+
+def test_cli_dry_run_works_on_a_database_file_it_cannot_write(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "w.duckdb"
+    _make_db(db)
+    db.chmod(0o444)
+
+    result = _run("--db", str(db))
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("[DRY RUN]") == 3
+
+
+def test_cli_a_repeated_table_is_repaired_and_reported_once(tmp_path: Path) -> None:
+    db = tmp_path / "w.duckdb"
+    _make_db(db)
+
+    result = _run("--db", str(db), "--apply", "--table", NBS, "--table", NBS)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines() == [
+        "raw.nbs_guidance  2 -> 1  (keys_collapsed=1)  [APPLIED]"
+    ]

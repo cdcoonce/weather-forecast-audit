@@ -1,0 +1,346 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_dedupe_raw.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_dedupe_raw.py"
+  ],
+  "mutants": [
+    {
+      "label": "merge-keeps-first-row",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    merged = _collapse_by_key(table, key_columns, records)\n    dropped = len(records) - len(merged)",
+      "replace": "    _first: dict[tuple[object, ...], dict[str, object]] = {}\n    for _r in records:\n        _first.setdefault(tuple(_r[c] for c in key_columns), _r)\n    merged = list(_first.values())\n    dropped = len(records) - len(merged)"
+    },
+    {
+      "label": "merge-keeps-last-row",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    merged = _collapse_by_key(table, key_columns, records)\n    dropped = len(records) - len(merged)",
+      "replace": "    _last = {tuple(_r[c] for c in key_columns): _r for _r in records}\n    merged = list(_last.values())\n    dropped = len(records) - len(merged)"
+    },
+    {
+      "label": "conflict-detection-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            if len(distinct) > 1:",
+      "replace": "            if False:"
+    },
+    {
+      "label": "valueless-first-row-wins",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            merged[column] = distinct[0] if distinct else None",
+      "replace": "            merged[column] = group[0][column]"
+    },
+    {
+      "label": "none-counts-as-a-value",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "                if value is None or any(_same_value(value, d) for d in distinct):",
+      "replace": "                if any(_same_value(value, d) for d in distinct):"
+    },
+    {
+      "label": "nan-copies-read-as-a-conflict",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        return left == right or (math.isnan(left) and math.isnan(right))",
+      "replace": "        return left == right"
+    },
+    {
+      "label": "conflict-raises-after-the-delete",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    merged = _collapse_by_key(table, key_columns, records)\n    dropped = len(records) - len(merged)",
+      "replace": "    if apply:\n        conn.execute(\n            f\"delete from {table} where ({key_list}) in \"\n            f\"(select {key_list} from key_frame)\"\n        )\n    merged = _collapse_by_key(table, key_columns, records)\n    dropped = len(records) - len(merged)"
+    },
+    {
+      "label": "dry-run-takes-the-write-path",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if not apply:\n        return DedupeReport(",
+      "replace": "    if False:\n        return DedupeReport("
+    },
+    {
+      "label": "dry-run-also-deletes",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if not apply:\n        return DedupeReport(",
+      "replace": "    if not apply:\n        conn.execute(\n            f\"delete from {table} where ({key_list}) in \"\n            f\"(select {key_list} from key_frame)\"\n        )\n        return DedupeReport("
+    },
+    {
+      "label": "dry-run-also-inserts",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if not apply:\n        return DedupeReport(",
+      "replace": "    if not apply:\n        _mf = _frame_for(conn, table, columns, merged)  # noqa: F841\n        _cl = \", \".join(columns)\n        conn.execute(f\"insert into {table} ({_cl}) select {_cl} from _mf\")\n        return DedupeReport("
+    },
+    {
+      "label": "delete-by-first-key-column-only",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        f\"delete from {table} where ({key_list}) in \"  # noqa: S608\n        f\"(select {key_list} from key_frame)\"",
+      "replace": "        f\"delete from {table} where {key_columns[0]} in \"  # noqa: S608\n        f\"(select {key_columns[0]} from key_frame)\""
+    },
+    {
+      "label": "delete-removes-only-one-duplicated-key",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        f\"(select {key_list} from key_frame)\"",
+      "replace": "        f\"(select {key_list} from key_frame limit 1)\""
+    },
+    {
+      "label": "join-fetches-by-first-key-column-only",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    join_on = \" and \".join(f\"t.{c} = k.{c}\" for c in key_columns)",
+      "replace": "    join_on = \" and \".join(f\"t.{c} = k.{c}\" for c in key_columns[:1])"
+    },
+    {
+      "label": "only-keys-seen-twice-or-more-counted-as-three",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "f\"group by {key_list} having count(*) > 1 order by {key_list}\"",
+      "replace": "f\"group by {key_list} having count(*) > 2 order by {key_list}\""
+    },
+    {
+      "label": "every-key-treated-as-duplicated",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "f\"group by {key_list} having count(*) > 1 order by {key_list}\"",
+      "replace": "f\"group by {key_list} having count(*) > 0 order by {key_list}\""
+    },
+    {
+      "label": "insert-without-delete",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    conn.execute(\n        f\"delete from {table} where ({key_list}) in \"  # noqa: S608\n        f\"(select {key_list} from key_frame)\"\n    )\n",
+      "replace": ""
+    },
+    {
+      "label": "delete-without-insert",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    conn.execute(\n        f\"insert into {table} ({column_list}) \"  # noqa: S608\n        f\"select {column_list} from merged_frame\"\n    )\n",
+      "replace": ""
+    },
+    {
+      "label": "count-verification-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if rows_after != rows_before - expected_drop:",
+      "replace": "    if False:"
+    },
+    {
+      "label": "count-verification-uses-the-merges-own-drop",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if rows_after != rows_before - expected_drop:",
+      "replace": "    if rows_after != rows_before - dropped:"
+    },
+    {
+      "label": "duplicate-verification-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if still_duplicated:",
+      "replace": "    if False:"
+    },
+    {
+      "label": "expected-drop-counts-whole-groups",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    expected_drop = sum(row[-1] - 1 for row in duplicated)",
+      "replace": "    expected_drop = sum(row[-1] for row in duplicated)"
+    },
+    {
+      "label": "verification-failure-commits-instead-of-rolling-back",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    except Exception:\n        if apply:\n            conn.execute(\"rollback\")\n        raise",
+      "replace": "    except Exception:\n        if apply:\n            conn.execute(\"commit\")\n        raise"
+    },
+    {
+      "label": "verification-failure-leaves-the-transaction-open",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    except Exception:\n        if apply:\n            conn.execute(\"rollback\")\n        raise",
+      "replace": "    except Exception:\n        if apply:\n            pass\n        raise"
+    },
+    {
+      "label": "commit-before-verification",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    rows_after = _scalar(conn, f\"select count(*) from {table}\")  # noqa: S608\n    still_duplicated = _scalar(",
+      "replace": "    conn.execute(\"commit\")\n    conn.execute(\"begin transaction\")\n    rows_after = _scalar(conn, f\"select count(*) from {table}\")  # noqa: S608\n    still_duplicated = _scalar("
+    },
+    {
+      "label": "no-transaction-at-all",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if apply:\n        conn.execute(\"begin transaction\")\n    try:\n        report = _plan_and_write_dedupe(conn, table, key_columns, apply=apply)\n        if apply:\n            conn.execute(\"commit\")\n    except Exception:\n        if apply:\n            conn.execute(\"rollback\")\n        raise\n    return report",
+      "replace": "    report = _plan_and_write_dedupe(conn, table, key_columns, apply=apply)\n    return report"
+    },
+    {
+      "label": "unknown-table-gets-a-default-key",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    key_columns = RAW_KEY_COLUMNS.get(table)\n",
+      "replace": "    key_columns = RAW_KEY_COLUMNS.get(table, (\"station\", \"local_date\"))\n"
+    },
+    {
+      "label": "unknown-table-guard-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if key_columns is None:",
+      "replace": "    if False:"
+    },
+    {
+      "label": "dry-run-reports-no-rows-dropped",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "table, rows_before, rows_before - dropped, len(duplicated), applied=False",
+      "replace": "table, rows_before, rows_before, len(duplicated), applied=False"
+    },
+    {
+      "label": "dry-run-keys-collapsed-is-rows-dropped",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "table, rows_before, rows_before - dropped, len(duplicated), applied=False",
+      "replace": "table, rows_before, rows_before - dropped, dropped, applied=False"
+    },
+    {
+      "label": "apply-keys-collapsed-is-rows-dropped",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "return DedupeReport(table, rows_before, rows_after, len(duplicated), applied=True)",
+      "replace": "return DedupeReport(table, rows_before, rows_after, expected_drop, applied=True)"
+    },
+    {
+      "label": "apply-rows-after-reports-rows-before",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "return DedupeReport(table, rows_before, rows_after, len(duplicated), applied=True)",
+      "replace": "return DedupeReport(table, rows_before, rows_before, len(duplicated), applied=True)"
+    },
+    {
+      "label": "clean-table-still-runs-the-write-path",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    if not duplicated:\n        return DedupeReport(table, rows_before, rows_before, 0, applied=apply)",
+      "replace": "    if False:\n        return DedupeReport(table, rows_before, rows_before, 0, applied=apply)"
+    },
+    {
+      "label": "clean-table-dry-run-reports-applied",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "return DedupeReport(table, rows_before, rows_before, 0, applied=apply)",
+      "replace": "return DedupeReport(table, rows_before, rows_before, 0, applied=True)"
+    },
+    {
+      "label": "cli-apply-flag-ignored",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "report = dedupe_raw_table(conn, table, apply=args.apply)",
+      "replace": "report = dedupe_raw_table(conn, table, apply=False)"
+    },
+    {
+      "label": "cli-defaults-to-apply",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "        action=\"store_true\",\n        help=\"write the repair (default: a read-only dry run)\",",
+      "replace": "        action=\"store_false\",\n        help=\"write the repair (default: a read-only dry run)\","
+    },
+    {
+      "label": "cli-conflict-exits-0",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "file=sys.stderr,\n                )\n                return 1",
+      "replace": "file=sys.stderr,\n                )\n                return 0"
+    },
+    {
+      "label": "cli-conflict-exits-2",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "file=sys.stderr,\n                )\n                return 1",
+      "replace": "file=sys.stderr,\n                )\n                return 2"
+    },
+    {
+      "label": "cli-missing-database-not-checked",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "    if not Path(db_path).is_file():",
+      "replace": "    if False:"
+    },
+    {
+      "label": "cli-no-path-exits-1",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "        print(\"dedupe_raw_once.py: pass --db or set WFA_DUCKDB_PATH\", file=sys.stderr)\n        return 2",
+      "replace": "        print(\"dedupe_raw_once.py: pass --db or set WFA_DUCKDB_PATH\", file=sys.stderr)\n        return 1"
+    },
+    {
+      "label": "cli-dry-run-opens-read-write",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "read_only=not args.apply",
+      "replace": "read_only=False"
+    },
+    {
+      "label": "cli-env-fallback-removed",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "    db_path = args.db or os.environ.get(\"WFA_DUCKDB_PATH\")",
+      "replace": "    db_path = args.db"
+    },
+    {
+      "label": "cli-earlier-applied-tables-not-reported",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "            if report.applied:\n                applied_tables.append(table)",
+      "replace": "            if False:\n                applied_tables.append(table)"
+    },
+    {
+      "label": "cli-default-tables-is-asos-only",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "    tables = list(dict.fromkeys(args.table or RAW_KEY_COLUMNS))",
+      "replace": "    tables = list(dict.fromkeys(args.table or [\"raw.asos_hourly\"]))"
+    },
+    {
+      "label": "cli-repeated-table-runs-twice",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "    tables = list(dict.fromkeys(args.table or RAW_KEY_COLUMNS))",
+      "replace": "    tables = list(args.table or RAW_KEY_COLUMNS)"
+    },
+    {
+      "label": "cli-table-choices-removed",
+      "file": "../../../scripts/dedupe_raw_once.py",
+      "oracle": "real",
+      "find": "        choices=sorted(RAW_KEY_COLUMNS),\n",
+      "replace": ""
+    },
+    {
+      "label": "[control] duplicated-key listing unordered",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "The `order by` only sorts the list of duplicated keys, which is then used purely as a set: key_records and key_frame carry it into a join and an `in (select ...)` subquery, neither of which reads row order, and the rows that are actually merged and inserted come from the separate `order by t.<key>` fetch, so merge order, the conflict the merge reports first, and the inserted rows are unchanged. Inert over every input; it would stop being inert only if a later change read `duplicated[0]` or paged the keys.",
+      "find": "f\"group by {key_list} having count(*) > 1 order by {key_list}\"",
+      "replace": "f\"group by {key_list} having count(*) > 1\""
+    }
+  ]
+}
