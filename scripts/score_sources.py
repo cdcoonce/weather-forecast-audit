@@ -8,12 +8,19 @@ one pooled-over-leads row per source. A script, not package code: all the
 actual statistics come from `weather_forecast_audit.scoring.score` (issue
 #8), unmodified.
 
+`--reference NAME` measures skill against another source in the table (for
+example `baseline`, to ask whether a challenger beats the baseline rather
+than raw NBM) instead of the default `raw_nbm`; the reference source is
+printed above the tables. Without the flag the output is unchanged.
+
 Requires `WFA_DUCKDB_PATH` set to a database that has already had `wfa
 predict baseline` and `dbt build` run against it, so
 `fct_forecast_verification` carries both sources.
 """
 
+import argparse
 import os
+from collections.abc import Sequence
 
 import duckdb
 import polars as pl
@@ -57,13 +64,34 @@ def _print_table(rows: pl.DataFrame, group_cols: list[str]) -> None:
     print()
 
 
-def main() -> None:
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[1])
+    parser.add_argument(
+        "--reference",
+        metavar="NAME",
+        default=None,
+        help="source skill is measured against (default: raw_nbm)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = _parse_args(argv)
+    reference: str | None = args.reference
+    score_kwargs = {} if reference is None else {"reference": reference}
+
     db_path = _db_path()
     with duckdb.connect(db_path) as conn:
         rows = conn.execute("select * from fct_forecast_verification").pl()
 
+    if reference is not None:
+        print(f"Reference source: `{reference}`\n")
+
     print("## Per (variable, lead_day)\n")
-    per_lead = score(rows, by=tuple(_GROUP_COLUMNS["per_lead"]))
+    try:
+        per_lead = score(rows, by=tuple(_GROUP_COLUMNS["per_lead"]), **score_kwargs)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     _print_table(per_lead, _GROUP_COLUMNS["per_lead"])
 
     print(
@@ -73,7 +101,7 @@ def main() -> None:
         "slices understate correlation across leads): treat this row's CI as "
         "optimistic, not a precise interval.\n"
     )
-    pooled = score(rows, by=tuple(_GROUP_COLUMNS["pooled"]))
+    pooled = score(rows, by=tuple(_GROUP_COLUMNS["pooled"]), **score_kwargs)
     _print_table(pooled, _GROUP_COLUMNS["pooled"])
 
 

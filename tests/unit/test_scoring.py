@@ -742,3 +742,167 @@ def test_block_days_default_is_the_measured_value_from_issue_31() -> None:
 
     assert scoring.BLOCK_DAYS == 14
     assert inspect.signature(score).parameters["block_days"].default == 14
+
+
+# -- 12. skill against an arbitrary reference source (issue #19) -------------
+
+
+def _three_source_frame() -> pl.DataFrame:
+    """raw_nbm, baseline and challenger over overlapping run dates.
+
+    Run dates d1..d4 (2025-01-01..04). Absolute errors by source:
+      raw_nbm:    d1 1.0   d2 2.0   d3 3.0
+      baseline:   d1 0.5   d2 1.0          d4 4.0
+      challenger: d1 0.25  d2 0.5   d3 1.0  d4 8.0
+
+    Against reference=baseline, the pairs are the keys where BOTH the
+    source and the baseline exist:
+      challenger: d1, d2, d4 -> 1 - (0.25 + 0.5 + 8.0) / (0.5 + 1.0 + 4.0)
+                              = 1 - 8.75 / 5.5
+      raw_nbm:    d1, d2     -> 1 - (1.0 + 2.0) / (0.5 + 1.0) = -1.0
+      baseline:   the reference itself, exactly 0.0
+    d3 (raw_nbm and challenger, no baseline) is excluded from both; d4
+    (baseline and challenger, no raw_nbm) is in challenger's match set.
+    """
+
+    def row(day: int, source: str, error: float) -> dict[str, object]:
+        return _row(
+            run_date=date(2025, 1, day),
+            target_date=date(2025, 1, day + 1),
+            source=source,
+            error_f=error,
+        )
+
+    return pl.DataFrame(
+        [
+            row(1, "raw_nbm", 1.0),
+            row(2, "raw_nbm", -2.0),
+            row(3, "raw_nbm", 3.0),
+            row(1, "baseline", 0.5),
+            row(2, "baseline", -1.0),
+            row(4, "baseline", 4.0),
+            row(1, "challenger", 0.25),
+            row(2, "challenger", -0.5),
+            row(3, "challenger", 1.0),
+            row(4, "challenger", 8.0),
+        ]
+    )
+
+
+def test_reference_baseline_known_answers_on_both_sides_present_keys() -> None:
+    result = score(_three_source_frame(), n_boot=50, reference="baseline")
+    by_source = {r["source"]: r for r in result.iter_rows(named=True)}
+
+    assert by_source["baseline"]["skill"] == 0.0
+    assert by_source["baseline"]["skill_lo"] == 0.0
+    assert by_source["baseline"]["skill_hi"] == 0.0
+    assert by_source["raw_nbm"]["skill"] == pytest.approx(-1.0, abs=1e-12)
+    assert by_source["challenger"]["skill"] == pytest.approx(
+        1.0 - 8.75 / 5.5, abs=1e-12
+    )
+
+
+def test_reference_changes_only_skill_columns() -> None:
+    frame = _three_source_frame()
+    default = score(frame, n_boot=50).sort("source")
+    against_baseline = score(frame, n_boot=50, reference="baseline").sort("source")
+
+    skill_columns = {"skill", "skill_lo", "skill_hi"}
+    kept = [c for c in default.columns if c not in skill_columns]
+    assert against_baseline.columns == default.columns
+    assert against_baseline.select(kept).equals(default.select(kept))
+    # And the skill numbers genuinely differ, so the flag is not a no-op.
+    assert default.filter(pl.col("source") == "challenger")["skill"][0] == (
+        pytest.approx(1.0 - 1.75 / 6.0, abs=1e-12)
+    )
+
+
+def test_explicit_default_reference_is_identical_to_the_default() -> None:
+    frame = _random_conservation_frame()
+    default = score(frame, by=("station", "variable"), n_boot=100)
+    explicit = score(
+        frame, by=("station", "variable"), n_boot=100, reference="raw_nbm"
+    )
+    assert explicit.equals(default)
+
+
+def test_reference_skill_ci_matches_relabelled_default_scoring() -> None:
+    """Skill (and its CI) against `baseline` is exactly what the unchanged
+    raw_nbm-reference path reports once `baseline` is relabelled `raw_nbm`
+    (and the real raw_nbm moved aside): same matched keys, same blocks,
+    same slice seed, so the whole challenger row is identical."""
+    rng = np.random.default_rng(2026)
+    records: list[dict[str, object]] = []
+    for offset in range(70):
+        run_date_ = date(2025, 1, 1) + timedelta(days=offset)
+        for source, scale in (("raw_nbm", 2.0), ("baseline", 1.5), ("challenger", 1.0)):
+            if source == "baseline" and offset % 9 == 0:
+                continue  # some keys are missing from the reference
+            records.append(
+                _row(
+                    run_date=run_date_,
+                    target_date=run_date_ + timedelta(days=1),
+                    source=source,
+                    error_f=float(rng.normal(0.3, scale)),
+                )
+            )
+    frame = pl.DataFrame(records)
+    relabelled = frame.with_columns(
+        pl.col("source").replace(
+            {"baseline": "raw_nbm", "raw_nbm": "zz_old_raw"}
+        )
+    )
+
+    got = score(frame, reference="baseline", n_boot=300).filter(
+        pl.col("source") == "challenger"
+    )
+    expected = score(relabelled, n_boot=300).filter(
+        pl.col("source") == "challenger"
+    )
+
+    assert got.height == 1
+    assert got["skill_lo"][0] is not None
+    assert got.equals(expected)
+
+
+def test_reference_absent_from_frame_raises_naming_it() -> None:
+    with pytest.raises(ValueError, match="nonexistent_ref"):
+        score(_three_source_frame(), reference="nonexistent_ref")
+    with pytest.raises(ValueError, match="challenger"):
+        score(
+            _known_answer_frame().filter(pl.col("source") == "raw_nbm"),
+            reference="challenger",
+        )
+
+
+def test_reference_present_only_on_unscorable_rows_gives_null_skill() -> None:
+    """Present in the frame (so no error) but with nothing to match against."""
+    frame = pl.DataFrame(
+        _known_answer_rows()
+        + [
+            _row(
+                run_date=date(2025, 1, 1),
+                target_date=date(2025, 1, 2),
+                source="baseline",
+                scorable=False,
+                error_f=None,
+            )
+        ]
+    )
+    result = score(frame, n_boot=50, reference="baseline")
+    challenger = result.filter(pl.col("source") == "challenger").row(0, named=True)
+    assert challenger["skill"] is None
+    assert challenger["skill_lo"] is None
+    assert challenger["skill_hi"] is None
+
+
+def test_default_reference_absent_keeps_the_legacy_null_skill() -> None:
+    """`raw_nbm` is exempt from the absent-reference error: a frame with no
+    raw_nbm rows has always scored with null skill, and the default path is
+    unchanged byte for byte."""
+    frame = _known_answer_frame().filter(pl.col("source") == "challenger")
+    result = score(frame, n_boot=50)
+    assert result.height == 1
+    assert result["skill"][0] is None
+    assert result["skill_lo"][0] is None
+    assert result["skill_hi"][0] is None

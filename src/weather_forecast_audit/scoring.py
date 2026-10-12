@@ -77,7 +77,7 @@ def _block_bootstrap(
 
     `numerator`/`denominator` are row-level arrays that this function sums
     into per-block totals (e.g. signed error and a constant 1 for bias;
-    matched `|error_source|` and `|error_raw|` for skill). `n_boot`
+    matched `|error_source|` and `|error_reference|` for skill). `n_boot`
     multinomial draws of block weights `W` -- each drawing `n_blocks` blocks
     with replacement -- give `n_boot` replicate ratios
     `(W . numerator_blocks) / (W . denominator_blocks)`; the CI is the
@@ -142,6 +142,7 @@ def score(
     ci_level: float = CI_LEVEL,
     min_sample_blocks: int = MIN_SAMPLE_BLOCKS,
     block_days: int = BLOCK_DAYS,
+    reference: str = _RAW_SOURCE,
 ) -> pl.DataFrame:
     """Score `rows` per slice, with a date-block bootstrap CI on bias/mae/skill.
 
@@ -158,12 +159,24 @@ def score(
     them is too narrow at any block length (#37). `n_dates` is still
     reported.
 
-    `skill` (`1 - MAE_source / MAE_raw_nbm`) is computed on matched pairs
-    only: a row of a non-`raw_nbm` source is matched when a scorable
-    `raw_nbm` row exists for the same `(station, run_date, lead_day,
-    variable)`. `raw_nbm` itself always scores exactly 0.0. A slice with no
-    matched pairs, or whose matched `raw_nbm` MAE is 0, has `skill` (and its
-    CI) null rather than a divide-by-zero.
+    `skill` (`1 - MAE_source / MAE_reference`) is computed on matched pairs
+    only: a row of a source other than `reference` is matched when a
+    scorable `reference` row exists for the same `(station, run_date,
+    lead_day, variable)`, so the pairing is restricted to the keys where
+    BOTH the source and the reference exist (a key the reference lacks
+    contributes to the source's `n`, `bias` and `mae` but never to its
+    skill). `reference` defaults to `raw_nbm`, the audit's canonical
+    reference; naming another source (e.g. `baseline`) scores every source,
+    `raw_nbm` included, against that one -- a challenger's skill over the
+    baseline is `score(rows, reference="baseline")`. The reference source
+    itself always scores exactly 0.0. A slice with no matched pairs, or
+    whose matched reference MAE is 0, has `skill` (and its CI) null rather
+    than a divide-by-zero.
+
+    A `reference` other than `raw_nbm` that appears nowhere in
+    `rows["source"]` raises `ValueError` naming it, rather than silently
+    nulling every skill. `raw_nbm` is exempt, as before: a frame without it
+    has always scored with null skill and still does.
     """
     for column in _REQUIRED_COLUMNS:
         if column not in rows.columns:
@@ -182,6 +195,12 @@ def score(
         raise ValueError(msg)
     if block_days < 1:
         msg = f"block_days must be >= 1, got {block_days}"
+        raise ValueError(msg)
+
+    if reference != _RAW_SOURCE and reference not in set(
+        rows.get_column("source").unique().to_list()
+    ):
+        msg = f"reference source {reference!r} is not present in rows"
         raise ValueError(msg)
 
     group_keys = list(dict.fromkeys([*by, "source"]))
@@ -203,11 +222,11 @@ def score(
         )
     )
 
-    raw_lookup = filtered.filter(pl.col("source") == _RAW_SOURCE).select(
-        [*_MATCH_KEY, pl.col("error_f").alias("error_raw")]
+    reference_lookup = filtered.filter(pl.col("source") == reference).select(
+        [*_MATCH_KEY, pl.col("error_f").alias("error_ref")]
     )
-    matched = filtered.join(raw_lookup, on=list(_MATCH_KEY), how="inner")
-    matched_non_raw = matched.filter(pl.col("source") != _RAW_SOURCE)
+    matched = filtered.join(reference_lookup, on=list(_MATCH_KEY), how="inner")
+    matched_non_ref = matched.filter(pl.col("source") != reference)
 
     if filtered.height == 0:
         columns = [
@@ -241,18 +260,18 @@ def score(
         .sort(group_keys)
     )
 
-    if matched_non_raw.height > 0:
-        skill_agg = matched_non_raw.group_by(group_keys).agg(
+    if matched_non_ref.height > 0:
+        skill_agg = matched_non_ref.group_by(group_keys).agg(
             n_matched=pl.len(),
             sum_abs_source=pl.col("error_f").abs().sum(),
-            sum_abs_raw=pl.col("error_raw").abs().sum(),
+            sum_abs_ref=pl.col("error_ref").abs().sum(),
         )
         agg = agg.join(skill_agg, on=group_keys, how="left")
     else:
         agg = agg.with_columns(
             n_matched=pl.lit(None, dtype=pl.UInt32),
             sum_abs_source=pl.lit(None, dtype=pl.Float64),
-            sum_abs_raw=pl.lit(None, dtype=pl.Float64),
+            sum_abs_ref=pl.lit(None, dtype=pl.Float64),
         )
 
     filtered_groups: dict[tuple[object, ...], pl.DataFrame] = {}
@@ -261,7 +280,7 @@ def score(
         filtered_groups[key_tuple] = sub
 
     matched_groups: dict[tuple[object, ...], pl.DataFrame] = {}
-    for key, sub in matched_non_raw.group_by(group_keys, maintain_order=True):
+    for key, sub in matched_non_ref.group_by(group_keys, maintain_order=True):
         key_tuple = key if isinstance(key, tuple) else (key,)
         matched_groups[key_tuple] = sub
 
@@ -284,21 +303,21 @@ def score(
         source_value = row["source"]
         n_matched = row["n_matched"]
         sum_abs_source = row["sum_abs_source"]
-        sum_abs_raw = row["sum_abs_raw"]
+        sum_abs_ref = row["sum_abs_ref"]
 
-        if source_value == _RAW_SOURCE:
+        if source_value == reference:
             skill, skill_lo, skill_hi = 0.0, 0.0, 0.0
-        elif n_matched is None or sum_abs_raw == 0:
+        elif n_matched is None or sum_abs_ref == 0:
             skill, skill_lo, skill_hi = None, None, None
         else:
-            skill = 1.0 - sum_abs_source / sum_abs_raw
+            skill = 1.0 - sum_abs_source / sum_abs_ref
             matched_sub = matched_groups[slice_key]
             matched_source_abs = np.abs(matched_sub["error_f"].to_numpy())
-            matched_raw_abs = np.abs(matched_sub["error_raw"].to_numpy())
+            matched_ref_abs = np.abs(matched_sub["error_ref"].to_numpy())
             matched_block = matched_sub["block_id"].to_numpy()
             ratio_lo, ratio_hi = _block_bootstrap(
                 matched_source_abs,
-                matched_raw_abs,
+                matched_ref_abs,
                 matched_block,
                 rng,
                 n_boot,
