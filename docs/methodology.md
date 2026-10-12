@@ -892,6 +892,19 @@ before anything is deleted. The assets report the number of dropped rows
 as `rows_collapsed`. The dbt uniqueness tests on the staging models remain
 the guard, and the loader keys are tested to equal them.
 
+#### One-time repair of an already-loaded database
+
+A database loaded before the collapse still holds the duplicates, and a
+plain `select distinct` or `row_number() = 1` would keep an arbitrary row of
+a key, which can be the valueless one and so drop an ASOS temperature.
+`scripts/dedupe_raw_once.py` instead reads only the duplicated keys' rows and
+merges them with the loaders' own rule. It runs as a dry run first, which
+writes nothing and prints each table's before and after row counts; with
+`--apply` each table is repaired in one transaction that checks the row count
+and that no key is still duplicated, and rolls back if either fails. A
+conflicting key stops it with the table untouched, and a second run is a
+no-op.
+
 ### Risk: the transform run may exceed the 600s cap
 
 `transform_job` is a full `dbt build` over the whole raw archive (D4), and
