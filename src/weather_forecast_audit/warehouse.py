@@ -9,9 +9,15 @@ portable).
 
 Loaders are idempotent: each one deletes the station's existing rows in the
 loaded date range inside a transaction, then inserts the new rows, so
-re-running the same ingest does not duplicate rows.
+re-running the same ingest does not duplicate rows. They also write one row
+per key: the source can serve a run twice or send a second, valueless report
+at the same valid time, so `raw.asos_hourly`, `raw.nbs_guidance` and
+`raw.resolved_windows` collapse each key's rows to one before the insert
+(`RAW_KEY_COLUMNS`, mirrored by the dbt uniqueness tests). A real non-null
+disagreement within a key raises, naming the key, before anything is deleted.
 """
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -205,6 +211,73 @@ def _frame_for(
     return pl.DataFrame(records, schema=schema)
 
 
+# The key each collapsing loader keeps unique. These must equal the dbt
+# `unique_combination_of_columns` tests on the matching staging models
+# (`tests/unit/test_warehouse.py` parses those YAML files and compares).
+RAW_KEY_COLUMNS: dict[str, tuple[str, ...]] = {
+    "raw.asos_hourly": ("station", "valid_utc"),
+    "raw.nbs_guidance": ("station", "runtime_utc", "ftime_utc"),
+    "raw.resolved_windows": ("station", "runtime_utc", "ftime_utc"),
+}
+
+
+def _same_value(left: object, right: object) -> bool:
+    """Equality that reads two NaN floats as equal (`nan != nan` in Python)."""
+    if isinstance(left, float) and isinstance(right, float):
+        return left == right or (math.isnan(left) and math.isnan(right))
+    return left == right
+
+
+def _collapse_by_key(
+    table: str,
+    key_columns: tuple[str, ...],
+    records: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Collapse `records` to one record per key, in first-seen key order.
+
+    A key seen once is returned unchanged. A key seen more than once is
+    merged column by column: a column's non-null values must all agree
+    (two NaNs agree), and the merged record carries that value, or `None`
+    when every copy is null. A source that sends a valueless second report
+    next to a valued one therefore merges to the valued one, exact copies
+    collapse trivially, and two non-null values that disagree raise a
+    `ValueError` naming the table, the key and the column.
+    """
+    groups: dict[tuple[object, ...], list[dict[str, object]]] = {}
+    for record in records:
+        groups.setdefault(tuple(record[c] for c in key_columns), []).append(record)
+
+    collapsed: list[dict[str, object]] = []
+    for key, group in groups.items():
+        if len(group) == 1:
+            collapsed.append(group[0])
+            continue
+        merged = dict(group[0])
+        for column in merged:
+            if column in key_columns:
+                continue
+            distinct: list[object] = []
+            for record in group:
+                value = record[column]
+                if value is None or any(_same_value(value, d) for d in distinct):
+                    continue
+                distinct.append(value)
+            if len(distinct) > 1:
+                key_text = ", ".join(
+                    f"{name}={value}"
+                    for name, value in zip(key_columns, key, strict=True)
+                )
+                values = " vs ".join(str(value) for value in distinct)
+                msg = (
+                    f"{table}: conflicting non-null values for key ({key_text}): "
+                    f"{column} is {values}"
+                )
+                raise ValueError(msg)
+            merged[column] = distinct[0] if distinct else None
+        collapsed.append(merged)
+    return collapsed
+
+
 def _replace(
     conn: duckdb.DuckDBPyConnection,
     table: str,
@@ -214,7 +287,25 @@ def _replace(
     start: date,
     end: date,
     records: list[dict[str, object]],
-) -> None:
+    *,
+    key_columns: tuple[str, ...] | None,
+) -> int:
+    """Replace `station`'s rows of `table` in `[start, end]` with `records`.
+
+    With `key_columns`, `records` are first collapsed to one per key; that
+    runs before the transaction opens, so a conflicting key raises with the
+    table untouched. Returns how many input records the collapse dropped
+    (0 when `key_columns` is None or nothing repeated).
+    """
+    if key_columns is not None:
+        missing = [name for name in key_columns if name not in columns]
+        if missing:
+            msg = f"{table}: key columns {missing} are not loaded columns"
+            raise ValueError(msg)
+        loaded = _collapse_by_key(table, key_columns, records)
+    else:
+        loaded = records
+    dropped = len(records) - len(loaded)
     conn.execute("begin transaction")
     try:
         conn.execute(
@@ -222,9 +313,9 @@ def _replace(
             f"and cast({date_column_sql} as date) between ? and ?",
             [station, start, end],
         )
-        if records:
+        if loaded:
             frame = _frame_for(  # noqa: F841 (read by name via duckdb's scan)
-                conn, table, columns, records
+                conn, table, columns, loaded
             )
             column_list = ", ".join(columns)
             conn.execute(
@@ -234,6 +325,7 @@ def _replace(
     except Exception:
         conn.execute("rollback")
         raise
+    return dropped
 
 
 def load_guidance(
@@ -242,7 +334,8 @@ def load_guidance(
     start: date,
     end: date,
     rows: list[GuidanceRow],
-) -> None:
+) -> int:
+    """Replace the station's guidance in `[start, end]`; return the drop."""
     columns = ["station", "runtime_utc", "ftime_utc", "cycle_hour", "txn", "xnd", "tmp"]
     records = [
         {
@@ -256,8 +349,16 @@ def load_guidance(
         }
         for row in rows
     ]
-    _replace(
-        conn, "raw.nbs_guidance", columns, station, "runtime_utc", start, end, records
+    return _replace(
+        conn,
+        "raw.nbs_guidance",
+        columns,
+        station,
+        "runtime_utc",
+        start,
+        end,
+        records,
+        key_columns=RAW_KEY_COLUMNS["raw.nbs_guidance"],
     )
 
 
@@ -267,7 +368,8 @@ def load_hourly(
     start: date,
     end: date,
     rows: list[HourlyObservation],
-) -> None:
+) -> int:
+    """Replace the station's hourly obs in `[start, end]`; return the drop."""
     columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
     records = [
         {
@@ -279,8 +381,16 @@ def load_hourly(
         }
         for row in rows
     ]
-    _replace(
-        conn, "raw.asos_hourly", columns, station, "valid_utc", start, end, records
+    return _replace(
+        conn,
+        "raw.asos_hourly",
+        columns,
+        station,
+        "valid_utc",
+        start,
+        end,
+        records,
+        key_columns=RAW_KEY_COLUMNS["raw.asos_hourly"],
     )
 
 
@@ -301,7 +411,19 @@ def load_cli(
         }
         for row in rows
     ]
-    _replace(conn, "raw.cli_daily", columns, station, "local_date", start, end, records)
+    _replace(
+        conn,
+        "raw.cli_daily",
+        columns,
+        station,
+        "local_date",
+        start,
+        end,
+        records,
+        # Deliberately not collapsed: cli_daily is outside the duplicate-key
+        # change (it did not fail its dbt uniqueness test).
+        key_columns=None,
+    )
 
 
 def load_gaps(
@@ -385,7 +507,8 @@ def load_resolved_windows(
     start: date,
     end: date,
     rows: list[ResolvedWindowRow],
-) -> None:
+) -> int:
+    """Replace the station's resolved windows in `[start, end]`; return the drop."""
     columns = [
         "station",
         "runtime_utc",
@@ -425,7 +548,7 @@ def load_resolved_windows(
         }
         for row in rows
     ]
-    _replace(
+    return _replace(
         conn,
         "raw.resolved_windows",
         columns,
@@ -434,6 +557,7 @@ def load_resolved_windows(
         start,
         end,
         records,
+        key_columns=RAW_KEY_COLUMNS["raw.resolved_windows"],
     )
 
 
