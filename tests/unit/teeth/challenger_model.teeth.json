@@ -332,8 +332,8 @@
       "label": "asof-right-side-not-sorted",
       "file": "../../../src/weather_forecast_audit/challenger.py",
       "oracle": "real",
-      "find": "    ).sort(\"window_end_utc\", maintain_order=True)\n\n    joined",
-      "replace": "    )\n\n    joined"
+      "find": "        .sort([\"window_end_utc\", *GROUP_KEYS, \"_pair_runtime_utc\"])\n    )\n",
+      "replace": "    )\n"
     },
     {
       "label": "timestamps-not-converted-to-utc",
@@ -797,6 +797,20 @@
       "oracle": "real",
       "find": "            \"retention_days\": RETENTION_DAYS,\n",
       "replace": ""
+    },
+    {
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "label": "asof-right-side-sorted-by-close-only-tie-order-is-arrival",
+      "find": "        .sort([\"window_end_utc\", *GROUP_KEYS, \"_pair_runtime_utc\"])\n    )\n",
+      "replace": "        .sort(\"window_end_utc\", maintain_order=True)\n    )\n"
+    },
+    {
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "label": "fit-keeps-pairs-without-a-forecast",
+      "find": "            pl.col(\"observed_f\").is_not_null() & pl.col(\"forecast_f\").is_not_null()\n",
+      "replace": "            pl.col(\"observed_f\").is_not_null()\n"
     }
   ]
 }
