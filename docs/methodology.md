@@ -597,6 +597,169 @@ fct_forecast_verification` acyclic, which matters once a later slice (#20)
 wires this into a Dagster asset graph. No Dagster asset exists for
 predictions in this slice.
 
+## Challenger correction (LightGBM)
+
+`weather_forecast_audit.challenger.ChallengerModel` (issue #19) is the model
+the rolling-bias baseline exists to be compared against (PRD module 7). It
+regresses the signed error `forecast_f - observed_f` (units °F) on
+guidance-side features known at issuance, station metadata and lagged
+errors of the same (`station`, `lead_day`, `variable`) group, and subtracts
+the predicted error from the raw forecast. It is driven only through
+`walk_forward`, so the same lead-aware cutoff and the same `update` hook
+apply to it as to any other model; the CLI is `wfa predict challenger
+--start --end`, which writes `source = 'challenger'` rows to
+`raw.model_predictions` exactly as the baseline does, with every constant
+below (and the LightGBM and polars versions) in the `params` JSON column.
+
+### Features, and why each is legal under the cutoff
+
+Every feature is either a property of the run known at issuance or a
+function of verified pairs whose window had already closed:
+
+- `forecast_f` (NBS `txn`/`xnd` extreme), `spread_f`, `tmp_f` (NBS's own
+  temperature guidance for the same run and `ftime`), `cycle_hour`,
+  `lead_day`: columns of the run itself, in the evaluator's `predict`
+  allow-list. A missing `tmp_f` (a legal null) is passed to the booster as
+  missing, never as zero.
+- `is_max` (the `variable`, 1 for the maximum and 0 for the minimum) and the
+  sine and cosine of the day of year of `target_date`: known at issuance.
+- Station `latitude`, `longitude`, `elevation_m`, `coastal_flag` (0/1) and
+  `climate_region` from the registry seed: static metadata. `climate_region`
+  is an integer code from the sorted vocabulary of the registry, declared
+  categorical; a station the registry does not know gets a missing value.
+- Lagged errors, keyed by (`station`, `lead_day`, `variable`): `lag_error`
+  (the latest known pair's signed error), `lag_mean3` and `lag_mean7` (mean
+  of the last 3 and last 7 errors, the latest pair included; fewer
+  predecessors give the mean of those available), `lag_n30` (the number of
+  the group's pairs in the 30 days ending at the latest known pair's
+  `window_end_utc`, the window being `(end - 30 d, end]` like the baseline's)
+  and `lag_age_days` (the issuance time minus that pair's close, in days).
+  All are missing when the group has no earlier pair.
+
+### Strict as-of semantics
+
+The lagged-error features are the only ones that touch verification
+outcomes, so they are built by exactly two pure functions that `fit` and
+`predict_detail` both use, so the two paths cannot diverge. `pair_stats`
+computes, for every pair of a history, the through-pair statistics above
+(the pair included). `asof_lag_features` then attaches to each query row the
+statistics of the group's latest pair whose `window_end_utc` is **strictly
+before** the row's `runtime_utc` (a backward as-of join with exact matches
+disallowed): a pair whose window closes exactly at issuance is not known
+yet, and neither is one that closes later. The feature is "that of the
+group's latest pair that closed before issuance", and its age is itself a
+feature, so a stale value is visible to the model as stale rather than
+disguised as fresh. Both frames are sorted explicitly before the join (a
+polars as-of join requires the key globally sorted and cannot verify that
+when `by` groups are used).
+
+- In `fit`, each training row's features are taken as of its own
+  `runtime_utc` over the training history, so a training row sees exactly
+  what a prediction at that issuance time would have seen.
+- In `predict_detail`, the features are taken as of the run's `runtime_utc`
+  over a history the model maintains: `fit` seeds it from the training pairs
+  and the evaluator's `update` hook (see "The optional `update` hook")
+  appends the pairs that closed since. The evaluator guarantees the history
+  holds only pairs with `window_end_utc < T`.
+- The maintained history is bounded without changing any feature: per
+  group, it keeps the pairs within 40 days of that group's own latest close
+  plus its last 7 pairs. The features of a group's latest pair need only its
+  last 7 pairs and 30 days of count, so this is exact for every query at or
+  after the latest close, including a sparse group or a station that has
+  stopped reporting (it keeps its last pairs, and their growing age).
+
+The leakage property is tested against an independent brute-force reference
+(pairs closing exactly at issuance, and later, are never used, and
+corrupting them changes nothing), and the incremental state built from
+`fit` plus `update` deltas is tested equal to feeding the same prefix to
+the builder in one go.
+
+### The fixed constants
+
+All are named module constants of `challenger.py`, fixed before any
+challenger skill was computed, never tuned on evaluation skill, and pinned
+by a unit test so a silent edit fails.
+
+| Constant | Value |
+| --- | --- |
+| Objective | `regression_l1` (the reported statistic, skill, is an MAE ratio) |
+| `N_ESTIMATORS` | 200 |
+| `LEARNING_RATE` | 0.05 |
+| `NUM_LEAVES` | 31 |
+| `MIN_DATA_IN_LEAF` | 500 |
+| `FEATURE_FRACTION` | 0.8 |
+| `BAGGING_FRACTION`, `BAGGING_FREQ` | 0.8, 1 |
+| `LAMBDA_L2` | 10.0 |
+| `MAX_BIN` | 63 |
+| Reproducibility | `deterministic=True`, `force_row_wise=True`, `num_threads=1`, `SEED=42` (the #4 platform-proof settings) |
+| Retrain | monthly, expanding window, all scorable pairs with `window_end_utc < T` |
+| `MIN_TRAIN_ROWS` | 20,000 scorable pairs |
+| `LAG_WINDOW_DAYS`, `LAG_COUNTS` | 30, (3, 7) |
+
+Below `MIN_TRAIN_ROWS` the model is left unfitted and every row falls back
+to the raw forecast, flagged `fallback`. The CLI exposes no override of any
+constant: a run is one set of constants, and a run that mixed two builds of
+them would be a defect (below). The feature matrix is float32 and the
+booster trains single-threaded; the fit time of each retrain is recorded in
+`fit_seconds_log` and printed by the CLI.
+
+### Pre-registered evaluation rule
+
+Status: the rules below were fixed on 2026-10-12, before the full-backfill
+baseline and challenger evaluations were run. Nothing here may be changed
+after reading a skill number. A change after the fact is a new, labelled,
+exploratory analysis, not a replacement.
+
+- **Window.** Every run date with a resolved verification pair,
+  2020-09-29 to the data end, scored on `scorable` pairs.
+- **Comparators.** Raw NBM (the bar) and the rolling-bias baseline (W = 30,
+  k = 15, the merged constants), both over the same matched keys.
+- **Primary statistic.** `skill = 1 - sum|err_challenger| / sum|err_raw|`,
+  per variable and lead (5 cells). The lead-1 slice is the only one the
+  published site may quote. The confidence interval is the date-block
+  bootstrap with `BLOCK_DAYS = 14`, `n_boot = 2000` and the seed used in
+  `scripts/score_sources.py`.
+- **Verdict per cell.** Positive (the CI excludes 0 and skill > 0),
+  indistinguishable (the CI includes 0), negative (the CI excludes 0 and
+  skill < 0). `min_sample_flag` cells are reported as too few days. The
+  result is reported whatever the sign.
+- **Secondary.** Skill against the baseline with the same CI machinery, and
+  the challenger's fallback share by month.
+- **Warm-up exclusion.** The first 12 months after 2020-09-29 are reported
+  separately (the model has little to train on) and are also included in the
+  headline; both numbers are shown, and the headline is the all-dates one.
+- **Exploratory only, never used to change any constant above.** A 60-day
+  baseline window, a larger `n_estimators`, per-lead models.
+
+What would be a defect, not a result:
+
+- A skill computed on keys where the challenger and the reference have
+  different row sets (the evaluation must pair on identical matched keys).
+- Any feature built from a pair whose `window_end_utc` is at or after the
+  run's issuance time.
+- A run that mixes rows from two builds of the model constants.
+
+### What is deliberately absent
+
+NBS also issues dewpoint, wind and sky-cover guidance. Those fields are not
+ingested (only the extremes and `tmp_f` are), and re-fetching the archive to
+add them is out of scope for this slice, so the challenger does not use
+them. The feature list above is therefore the pre-registered list as far as
+the ingested data allows, and a challenger that fails to beat the baseline
+says nothing about what those fields might add.
+
+### Staleness: how fresh the lag features are
+
+The lagged-error features are as fresh as the evaluator's `update` hook
+makes them. Under the daily `update` calls `walk_forward` makes between
+monthly retrains, a prediction at *T* sees every pair that closed before
+*T*, which is what production would see (yesterday's verified errors are
+available today). Their age is set by the lead, not by the retrain cadence
+(the latest closed pair of a lead-L group comes from a run about L days
+older); a group whose pairs stopped arriving keeps its last values with a
+growing `lag_age_days` rather than going missing. A caller that fits once and never calls `update` gets features that
+are stale by the time since the fit, and the age feature says so.
+
 ## Regime boundaries
 
 Every `fct_forecast_verification` row is tagged with two independent
