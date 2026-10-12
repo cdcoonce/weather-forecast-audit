@@ -849,3 +849,497 @@ def test_model_params_json_carries_every_constant_and_versions() -> None:
     assert described["objective"] == "regression_l1"
     assert described["seed"] == 42
     assert described["num_threads"] == 1
+
+
+# -- j. teeth: properties the first version of this file did not pin ------------
+#
+# Added by the independent teeth review (tests/unit/teeth/challenger_model.
+# teeth.json). Each test below is red against a named mutant in that spec and
+# green on the real code.
+
+
+def _history_rows(pairs: pl.DataFrame) -> list[dict[str, object]]:
+    return pairs.select(
+        "station",
+        "lead_day",
+        "variable",
+        "runtime_utc",
+        "window_end_utc",
+        "forecast_f",
+        "observed_f",
+    ).to_dicts()
+
+
+def _oracle_matrix(
+    rows: pl.DataFrame,
+    history: list[dict[str, object]],
+    station_features: pl.DataFrame,
+) -> np.ndarray:
+    """The documented feature set (docs/methodology.md), restated row by row.
+
+    Independent of `challenger._feature_frame`: stdlib math and a loop, the
+    registry vocabulary sorted by name, the as-of lags from the brute-force
+    reference. Unknown station / null input -> NaN, never zero.
+    """
+    meta = {r["station"]: r for r in station_features.iter_rows(named=True)}
+    vocabulary = {
+        name: float(i)
+        for i, name in enumerate(
+            sorted({m["climate_region"] for m in meta.values() if m["climate_region"]})
+        )
+    }
+    nan = math.nan
+
+    def number(value: object) -> float:
+        return nan if value is None else float(value)
+
+    out = []
+    for row in rows.iter_rows(named=True):
+        station = meta.get(row["station"])
+        lag = _reference_lags(
+            history,
+            row["station"],
+            row["lead_day"],
+            row["variable"],
+            row["runtime_utc"],
+        )
+        angle = 2.0 * math.pi * row["target_date"].timetuple().tm_yday / 365.25
+        out.append(
+            [
+                number(row["forecast_f"]),
+                number(row.get("spread_f")),
+                number(row.get("tmp_f")),
+                number(row.get("cycle_hour")),
+                number(row["lead_day"]),
+                {"max": 1.0, "min": 0.0}.get(row["variable"], nan),
+                math.sin(angle),
+                math.cos(angle),
+                number(station["latitude"]) if station else nan,
+                number(station["longitude"]) if station else nan,
+                number(station["elevation_m"]) if station else nan,
+                number(station["coastal_flag"]) if station else nan,
+                vocabulary.get(station["climate_region"], nan) if station else nan,
+                *(lag[c] for c in _LAG_COLUMNS),
+            ]
+        )
+    return np.array(out, dtype=np.float64)
+
+
+def _assert_matrix_matches(actual: np.ndarray, expected: np.ndarray) -> None:
+    assert actual.shape == expected.shape
+    for j, name in enumerate(challenger.FEATURE_COLUMNS):
+        np.testing.assert_allclose(
+            actual[:, j].astype(np.float64),
+            expected[:, j],
+            rtol=2e-6,
+            atol=2e-6,
+            equal_nan=True,
+            err_msg=f"feature column {name!r}",
+        )
+
+
+class _Capture:
+    """Records the matrices LightGBM is handed, without changing what it does."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.train_matrix: np.ndarray | None = None
+        self.predict_matrices: list[np.ndarray] = []
+        real_dataset = lightgbm.Dataset
+        real_predict = lightgbm.Booster.predict
+        capture = self
+
+        def dataset(data: np.ndarray, *args: object, **kwargs: object) -> object:
+            capture.train_matrix = np.array(data, copy=True)
+            return real_dataset(data, *args, **kwargs)
+
+        def predict(
+            booster: object, data: np.ndarray, *args: object, **kw: object
+        ) -> np.ndarray:
+            capture.predict_matrices.append(np.array(data, copy=True))
+            return real_predict(booster, data, *args, **kw)
+
+        monkeypatch.setattr(lightgbm, "Dataset", dataset)
+        monkeypatch.setattr(lightgbm.Booster, "predict", predict)
+
+
+def _small_world(
+    n_days: int = 40, n_stations: int = 4, seed: int = 31
+) -> tuple[pl.DataFrame, pl.DataFrame, list[str], pl.DataFrame]:
+    """(pairs, scorable-sorted pairs, stations, station features)."""
+    stations = [f"K{chr(65 + i)}{chr(65 + i)}{chr(65 + i)}" for i in range(n_stations)]
+    pairs = _make_pairs(
+        _consecutive_run_dates(date(2026, 1, 1), n_days),
+        stations,
+        seed=seed,
+        error_fn=_planted_error,
+    )
+    return pairs, _scorable_sorted(pairs), stations, _station_features(stations)
+
+
+def test_asof_features_ignore_other_time_columns_of_the_query() -> None:
+    history, queries = _builder_history_and_queries(seed=14)
+    stats = pair_stats(pl.DataFrame(history))
+    plain = pl.DataFrame(queries)
+    # A prediction frame also carries `window_end_utc` (the verification
+    # window's close, after issuance) and `target_date`; neither is an as-of
+    # time. Push both far past every pair in the history.
+    decorated = plain.with_columns(
+        (pl.col("runtime_utc") + pl.duration(days=400)).alias("window_end_utc"),
+        pl.lit(date(2030, 1, 1)).alias("target_date"),
+    )
+
+    assert_frame_equal(
+        asof_lag_features(decorated, stats),
+        asof_lag_features(plain, stats),
+        check_exact=True,
+    )
+
+
+def test_asof_features_do_not_depend_on_stats_or_history_row_order() -> None:
+    history, queries = _builder_history_and_queries(seed=15)
+    history_frame = pl.DataFrame(history)
+    query_frame = pl.DataFrame(queries)
+    reference = asof_lag_features(query_frame, pair_stats(history_frame))
+
+    for seed in (1, 2, 3):
+        shuffled_history = history_frame.sample(fraction=1.0, shuffle=True, seed=seed)
+        # Shuffle the stats rows by close time, keeping the relative order of
+        # rows that share one (a stable sort on a hash of the close): the
+        # builder's own output order is the tie order it is documented to use.
+        shuffled_stats = (
+            pair_stats(history_frame)
+            .with_columns(pl.col("window_end_utc").hash(seed=seed).alias("_h"))
+            .sort("_h", maintain_order=True)
+            .drop("_h")
+        )
+        # Exact ties on the close time exist inside groups (see the builder):
+        # their order is by runtime_utc, never by arrival order.
+        assert_frame_equal(
+            asof_lag_features(query_frame, pair_stats(shuffled_history)),
+            reference,
+            check_exact=True,
+        )
+        assert_frame_equal(
+            asof_lag_features(query_frame, shuffled_stats),
+            reference,
+            check_exact=True,
+        )
+
+
+def test_training_matrix_is_the_documented_feature_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 60 days: longer than RETENTION_DAYS, so the maintained history is
+    # trimmed at the end of `fit` and the training lags must still have been
+    # read from the full training history, not the trimmed one.
+    _, ordered, _, features = _small_world(n_days=60)
+    capture = _Capture(monkeypatch)
+    model = ChallengerModel(features, min_train_rows=100)
+
+    model.fit(ordered)
+
+    assert model.is_fitted
+    assert capture.train_matrix is not None
+    _assert_matrix_matches(
+        capture.train_matrix,
+        _oracle_matrix(ordered, _history_rows(ordered), features),
+    )
+    # Not vacuous: lag columns are populated for later rows, missing for the
+    # first, and the training rows' lags differ from the final-state lags.
+    lag_error = capture.train_matrix[:, challenger.FEATURE_COLUMNS.index("lag_error")]
+    assert np.isnan(lag_error).any()
+    assert np.isfinite(lag_error).sum() > 0.5 * lag_error.size
+
+
+def test_predict_matrix_is_the_documented_feature_set_over_the_maintained_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pairs, ordered, stations, features = _small_world()
+    fit_t = _issuance(date(2026, 1, 21))
+    predict_t = _issuance(date(2026, 1, 31))
+    capture = _Capture(monkeypatch)
+    model = ChallengerModel(features, min_train_rows=100)
+    model.fit(ordered.filter(pl.col("window_end_utc") < fit_t))
+    model.update(
+        ordered.filter(
+            (pl.col("window_end_utc") >= fit_t) & (pl.col("window_end_utc") < predict_t)
+        )
+    )
+    assert model.is_fitted
+
+    rows = _predict_rows(pairs, date(2026, 1, 31)).with_columns(
+        # one null tmp_f, one station the registry has never heard of
+        pl.when(pl.int_range(pl.len()) == 0)
+        .then(None)
+        .otherwise(pl.col("tmp_f"))
+        .alias("tmp_f"),
+        pl.when(pl.col("station") == stations[1])
+        .then(pl.lit("KNEW"))
+        .otherwise(pl.col("station"))
+        .alias("station"),
+    )
+    capture.predict_matrices.clear()
+    model.predict_detail(rows)
+
+    assert len(capture.predict_matrices) == 1
+    expected = _oracle_matrix(rows, _history_rows(ordered), features)
+    _assert_matrix_matches(capture.predict_matrices[0], expected)
+    # Sanity of the fixture: the NaN rows really are in the oracle.
+    j_tmp = challenger.FEATURE_COLUMNS.index("tmp_f")
+    j_lat = challenger.FEATURE_COLUMNS.index("latitude")
+    assert math.isnan(expected[0, j_tmp])
+    assert np.isnan(expected[:, j_lat]).any()
+
+    # A frame without optional columns: missing, never zero.
+    bare = rows.drop(["tmp_f", "cycle_hour", "spread_f"])
+    capture.predict_matrices.clear()
+    model.predict_detail(bare)
+    matrix = capture.predict_matrices[0]
+    for name in ("tmp_f", "cycle_hour", "spread_f"):
+        assert np.isnan(matrix[:, challenger.FEATURE_COLUMNS.index(name)]).all()
+
+
+def test_trained_booster_carries_the_pre_registered_parameters() -> None:
+    pairs = _planted_pairs(n_days=60, n_stations=4)
+    stations = sorted(pairs["station"].unique().to_list())
+    model = ChallengerModel(_station_features(stations), min_train_rows=500)
+    model.fit(_scorable_sorted(pairs))
+    assert model.is_fitted
+
+    text = model._booster.model_to_string()  # noqa: SLF001
+    header, _, tail = text.partition("parameters:")
+    recorded = dict(
+        line[1:-1].split(": ", 1)
+        for line in tail.splitlines()
+        if line.startswith("[") and ": " in line
+    )
+
+    assert "objective=regression_l1" in header
+    assert f"feature_names={' '.join(challenger.FEATURE_COLUMNS)}" in header
+    # The trained model's own record of what it was given: the constants
+    # reached LightGBM, not merely the module that holds them.
+    assert recorded["num_iterations"] == "200"
+    assert recorded["learning_rate"] == "0.05"
+    assert recorded["num_leaves"] == "31"
+    assert recorded["min_data_in_leaf"] == "500"
+    assert recorded["feature_fraction"] == "0.8"
+    assert recorded["bagging_fraction"] == "0.8"
+    assert recorded["bagging_freq"] == "1"
+    assert recorded["lambda_l2"] == "10"
+    assert recorded["max_bin"] == "63"
+    assert recorded["seed"] == "42"
+    assert recorded["deterministic"] == "1"
+    assert recorded["force_row_wise"] == "1"
+    assert recorded["num_threads"] == "1"
+    # climate_region_code, and only it, is categorical.
+    assert recorded["categorical_feature"] == str(
+        challenger.FEATURE_COLUMNS.index("climate_region_code")
+    )
+
+
+def test_refit_on_too_few_rows_drops_the_previous_booster() -> None:
+    pairs, ordered, _, features = _small_world(n_days=30)
+    model = ChallengerModel(features, min_train_rows=300)
+    rows = _predict_rows(pairs, date(2026, 1, 25))
+
+    model.fit(ordered)
+    assert model.is_fitted
+    assert not model.predict_detail(rows)["fallback"].any()
+
+    model.fit(ordered.head(50))
+
+    assert not model.is_fitted
+    detail = model.predict_detail(rows)
+    assert detail["fallback"].to_list() == [True] * rows.height
+    assert detail["forecast_f"].to_list() == rows["forecast_f"].to_list()
+
+
+def test_min_train_rows_is_inclusive_and_counts_only_observed_pairs() -> None:
+    _, ordered, _, features = _small_world(n_days=30)
+    threshold = 300
+    exact = ordered.head(threshold)
+
+    at = ChallengerModel(features, min_train_rows=threshold)
+    at.fit(exact)
+    below = ChallengerModel(features, min_train_rows=threshold)
+    below.fit(ordered.head(threshold - 1))
+    # `threshold` rows of which one has no observation: 299 scorable pairs.
+    holed = ChallengerModel(features, min_train_rows=threshold)
+    holed.fit(
+        exact.with_columns(
+            pl.when(pl.int_range(pl.len()) == 7)
+            .then(None)
+            .otherwise(pl.col("observed_f"))
+            .alias("observed_f")
+        )
+    )
+
+    assert at.is_fitted
+    assert not below.is_fitted
+    assert not holed.is_fitted
+
+
+def test_fit_count_counts_every_fit_fitted_or_not() -> None:
+    _, ordered, _, features = _small_world(n_days=30)
+    model = ChallengerModel(features, min_train_rows=300)
+
+    model.fit(ordered.head(50))
+    assert (model.fit_count, len(model.fit_seconds_log)) == (1, 0)
+    model.fit(ordered)
+    assert (model.fit_count, len(model.fit_seconds_log)) == (2, 1)
+
+
+def test_non_finite_booster_output_keeps_the_raw_forecast_and_is_flagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pairs, ordered, _, features = _small_world(n_days=30)
+    model = ChallengerModel(features, min_train_rows=300)
+    model.fit(ordered)
+    rows = _predict_rows(pairs, date(2026, 1, 25))
+    assert rows.height >= 6
+    returned = np.full(rows.height, 1.5)
+    returned[1] = math.nan
+    returned[2] = math.inf
+    returned[4] = -math.inf
+    monkeypatch.setattr(
+        lightgbm.Booster, "predict", lambda self, data, *a, **kw: returned.copy()
+    )
+
+    detail = model.predict_detail(rows)
+
+    raw = rows["forecast_f"].to_list()
+    got = detail["forecast_f"].to_list()
+    flags = detail["fallback"].to_list()
+    for i, value in enumerate(raw):
+        if i in (1, 2, 4):
+            assert got[i] == value
+            assert flags[i] is True
+        else:
+            assert got[i] == pytest.approx(value - 1.5)
+            assert flags[i] is False
+    assert detail["forecast_f"].null_count() == 0
+
+
+def test_describe_params_records_retrain_cadence_retention_and_polars() -> None:
+    import importlib.metadata
+
+    described = ChallengerModel(_station_features(["KAAA"])).describe_params()
+
+    assert described["retrain"] == "monthly"
+    assert described["retention_days"] == challenger.RETENTION_DAYS
+    assert described["polars_version"] == importlib.metadata.version("polars")
+    assert described["min_train_rows"] == 20_000
+    for key, value in challenger.booster_params().items():
+        assert described[key] == value
+
+
+def test_fit_bounds_the_maintained_history_to_what_the_features_need() -> None:
+    _, ordered, _, features = _small_world(n_days=120, n_stations=4)
+    model = ChallengerModel(features, min_train_rows=10**9)
+
+    model.fit(ordered)
+
+    # Independent restatement of the retention rule: per group, the pairs
+    # within RETENTION_DAYS of the group's own latest close, plus its last
+    # max(LAG_COUNTS) pairs.
+    expected = 0
+    for _, group in ordered.group_by(
+        ["station", "lead_day", "variable"], maintain_order=True
+    ):
+        ends = sorted(group["window_end_utc"].to_list())
+        horizon = ends[-1] - timedelta(days=challenger.RETENTION_DAYS)
+        keep = {i for i, end in enumerate(ends) if end >= horizon}
+        keep |= set(range(max(0, len(ends) - max(challenger.LAG_COUNTS)), len(ends)))
+        expected += len(keep)
+    assert expected < ordered.height / 2
+    assert model.history.height == expected
+
+
+def test_pairs_without_an_observation_are_ignored_by_the_builder() -> None:
+    history, queries = _builder_history_and_queries(seed=16)
+    frame = pl.DataFrame(history)
+    holed = frame.with_columns(
+        pl.when(pl.int_range(pl.len()) % 5 == 2)
+        .then(None)
+        .otherwise(pl.col("observed_f"))
+        .alias("observed_f")
+    )
+    observed_only = holed.filter(pl.col("observed_f").is_not_null())
+    assert 0 < observed_only.height < holed.height
+    query_frame = pl.DataFrame(queries)
+
+    assert_frame_equal(
+        asof_lag_features(query_frame, pair_stats(holed)),
+        asof_lag_features(query_frame, pair_stats(observed_only)),
+        check_exact=True,
+    )
+
+
+def _signed_error(
+    rng: np.random.Generator, station_index: int, tmp: float, variable: str, lead: int
+) -> float:
+    """+3 F when the guidance temperature is warm, -3 F when cool: both signs."""
+    return (3.0 if tmp > 60.0 else -3.0) + float(rng.normal(0.0, 0.5))
+
+
+def test_challenger_learns_the_sign_of_the_error_not_only_its_size() -> None:
+    stations = [f"K{chr(65 + i)}{chr(65 + i)}{chr(65 + i)}" for i in range(8)]
+    pairs = _make_pairs(
+        _consecutive_run_dates(date(2026, 1, 1), 130),
+        stations,
+        seed=17,
+        error_fn=_signed_error,
+    )
+    run_dates = sorted(pairs["run_date"].unique().to_list())
+    start, end, since = run_dates[20], run_dates[-1], run_dates[70]
+
+    raw = walk_forward(pairs, RawNbmModel(), start, end, "monthly")
+    fitted = walk_forward(
+        pairs,
+        ChallengerModel(_station_features(stations), min_train_rows=1000),
+        start,
+        end,
+        "monthly",
+    )
+
+    assert _mae(fitted, pairs, since) < 0.4 * _mae(raw, pairs, since)
+
+
+def test_lag_features_do_not_depend_on_the_timestamp_representation() -> None:
+    history, queries = _builder_history_and_queries(seed=18)
+    utc_history = pl.DataFrame(history)
+    utc_queries = pl.DataFrame(queries)
+    reference = asof_lag_features(utc_queries, pair_stats(utc_history))
+    time_columns = ("runtime_utc", "window_end_utc")
+
+    for zone in ("America/Phoenix", "Asia/Kolkata"):
+        local_history = utc_history.with_columns(
+            pl.col(c).dt.convert_time_zone(zone) for c in time_columns
+        )
+        local_queries = utc_queries.with_columns(
+            pl.col("runtime_utc").dt.convert_time_zone(zone)
+        )
+        # DuckDB hands TIMESTAMPTZ back in the session zone: the same instants.
+        assert_frame_equal(
+            asof_lag_features(local_queries, pair_stats(local_history)),
+            reference,
+            check_exact=True,
+        )
+        assert_frame_equal(
+            asof_lag_features(local_queries, pair_stats(utc_history)),
+            reference,
+            check_exact=True,
+        )
+
+    # A plain TIMESTAMP column is already UTC wall-clock time by convention.
+    naive_history = utc_history.with_columns(
+        pl.col(c).dt.replace_time_zone(None) for c in time_columns
+    )
+    naive_queries = utc_queries.with_columns(
+        pl.col("runtime_utc").dt.replace_time_zone(None)
+    )
+    assert_frame_equal(
+        asof_lag_features(naive_queries, pair_stats(naive_history)),
+        reference,
+        check_exact=True,
+    )
