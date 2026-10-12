@@ -6,6 +6,8 @@ valueless report at the same valid time). It is metadata, not a failure: a
 real non-null disagreement raises in the loader instead.
 """
 
+from datetime import date
+
 import duckdb
 import pytest
 from conftest import (
@@ -15,7 +17,11 @@ from conftest import (
 )
 from dagster import AssetKey, DagsterInstance
 
+from weather_forecast_audit import warehouse
 from weather_forecast_audit.iem.http import HttpResponse
+from weather_forecast_audit.pipeline import ingest_station
+from weather_forecast_audit.regimes import load_cycle_regimes
+from weather_forecast_audit.registry import load_registry
 
 pytestmark = [pytest.mark.dagster, pytest.mark.io]
 
@@ -109,3 +115,39 @@ def test_resolved_windows_asset_reports_the_duplicates_it_collapsed(
 
     assert metadata["rows_collapsed"] == duplicated[0] // 2
     assert _count(db_path, "raw.resolved_windows") == duplicated[0] // 2
+
+
+def test_resolved_windows_asset_reports_every_resolved_row_it_wrote(
+    tmp_path: object,
+) -> None:
+    db_path = str(tmp_path / "wfa.duckdb")  # type: ignore[operator]
+    _materialize(db_path, FixtureIemResource(), GUIDANCE_KEY)
+
+    metadata = _materialize(db_path, FixtureIemResource(), RESOLVED_KEY)
+
+    stored = _count(db_path, "raw.resolved_windows")
+    assert stored > 0
+    assert metadata["resolved_rows"] == stored
+    assert metadata["rows_collapsed"] == 0
+
+
+def test_ingest_station_summary_counts_the_resolved_rows_it_wrote(
+    tmp_path: object,
+) -> None:
+    db_path = str(tmp_path / "wfa.duckdb")  # type: ignore[operator]
+    start = end = date(2023, 7, 14)
+
+    with duckdb.connect(db_path) as conn:
+        warehouse.init_db(conn)
+        summary = ingest_station(
+            conn,
+            load_registry()["KPHX"],
+            start,
+            end,
+            DagsterFixtureFetcher(),
+            load_cycle_regimes(),
+        )
+
+    stored = _count(db_path, "raw.resolved_windows")
+    assert stored > 0
+    assert summary.resolved_rows == stored

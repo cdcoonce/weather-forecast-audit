@@ -1067,3 +1067,135 @@ def test_collapse_keys_equal_the_dbt_uniqueness_tests(
         "raw.nbs_guidance",
         "raw.resolved_windows",
     }
+
+
+# -- teeth: properties the first collapse tests left ungraded ------------------
+
+
+@pytest.mark.parametrize(
+    ("tmpfs", "dropped", "kept"),
+    [
+        pytest.param([100.0, 100.0, 100.0], 2, 100.0, id="three-identical"),
+        pytest.param([None, None, 100.0], 2, 100.0, id="value-only-in-the-third"),
+    ],
+)
+def test_load_hourly_merges_three_copies_of_one_key(
+    conn: duckdb.DuckDBPyConnection,
+    tmpfs: list[float | None],
+    dropped: int,
+    kept: float,
+) -> None:
+    rows = [_hourly("2023-07-14 00:51:00", tmpf) for tmpf in tmpfs]
+
+    count = warehouse.load_hourly(conn, "KPHX", DAY, DAY, rows)
+
+    assert count == dropped
+    assert conn.execute("select tmpf from raw.asos_hourly").fetchall() == [(kept,)]
+
+
+def test_load_hourly_compares_every_copy_not_just_the_first_two(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    rows = [
+        _hourly("2023-07-14 00:51:00", 100.0),
+        _hourly("2023-07-14 00:51:00", 100.0),
+        _hourly("2023-07-14 00:51:00", 101.0),
+    ]
+
+    with pytest.raises(ValueError, match="tmpf"):
+        warehouse.load_hourly(conn, "KPHX", DAY, DAY, rows)
+
+    assert conn.execute("select count(*) from raw.asos_hourly").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("nan_first", [True, False], ids=["nan-first", "number-first"])
+def test_load_hourly_treats_nan_against_a_number_as_a_conflict(
+    conn: duckdb.DuckDBPyConnection, nan_first: bool
+) -> None:
+    nan = float("nan")
+    values = [nan, 100.0] if nan_first else [100.0, nan]
+    rows = [_hourly("2023-07-14 00:51:00", value) for value in values]
+
+    with pytest.raises(ValueError, match="tmpf"):
+        warehouse.load_hourly(conn, "KPHX", DAY, DAY, rows)
+
+
+def test_connection_stays_usable_after_a_conflict_raises(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    conflicting = [
+        _hourly("2023-07-14 02:51:00", 100.0),
+        _hourly("2023-07-14 02:51:00", 101.0),
+    ]
+    with pytest.raises(ValueError, match="tmpf"):
+        warehouse.load_hourly(conn, "KPHX", DAY, DAY, conflicting)
+
+    # A later load on the same connection must not find a transaction left open.
+    warehouse.load_hourly(
+        conn, "KPHX", DAY, DAY, [_hourly("2023-07-14 03:51:00", 99.0)]
+    )
+
+    assert conn.execute("select tmpf from raw.asos_hourly").fetchall() == [(99.0,)]
+
+
+def test_replace_rejects_a_key_column_that_is_not_loaded(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    with pytest.raises(ValueError, match="key columns"):
+        warehouse._replace(
+            conn,
+            "raw.asos_hourly",
+            ["station", "valid_utc", "tmpf"],
+            "KPHX",
+            "valid_utc",
+            DAY,
+            DAY,
+            [],
+            key_columns=("station", "not_a_column"),
+        )
+
+
+def test_load_guidance_keeps_runs_that_share_one_half_of_the_key(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    runtimes = ["2023-07-14 13:00:00", "2023-07-14 14:00:00"]
+    ftimes = ["2023-07-15 00:00:00", "2023-07-15 01:00:00"]
+    rows = [
+        replace(
+            _guidance(100.0 + 2 * i + j),
+            runtime=_utc(runtime),
+            ftime=_utc(ftime),
+        )
+        for i, runtime in enumerate(runtimes)
+        for j, ftime in enumerate(ftimes)
+    ]
+
+    dropped = warehouse.load_guidance(conn, "KPHX", DAY, DAY, rows)
+
+    assert dropped == 0
+    stored = conn.execute("select txn from raw.nbs_guidance order by txn").fetchall()
+    assert stored == [(100.0,), (101.0,), (102.0,), (103.0,)]
+
+
+def test_load_resolved_windows_keeps_windows_that_share_one_half_of_the_key(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    runtimes = ["2023-07-14 13:00:00", "2023-07-14 14:00:00"]
+    ftimes = ["2023-07-15 00:00:00", "2023-07-15 01:00:00"]
+    rows = [
+        _window(
+            runtime_utc=_utc(runtime),
+            ftime_utc=_utc(ftime),
+            observed_f=100.0 + 2 * i + j,
+        )
+        for i, runtime in enumerate(runtimes)
+        for j, ftime in enumerate(ftimes)
+    ]
+
+    dropped = warehouse.load_resolved_windows(conn, "KPHX", DAY, DAY, rows)
+
+    assert dropped == 0
+    stored = conn.execute(
+        "select observed_f from raw.resolved_windows order by observed_f"
+    ).fetchall()
+    assert stored == [(100.0,), (101.0,), (102.0,), (103.0,)]

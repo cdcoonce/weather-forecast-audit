@@ -1,0 +1,319 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_warehouse.py",
+    "tests/dagster/test_ingest_rows_collapsed.py",
+    "tests/dagster/test_ingest_http_stats.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/unit/test_warehouse.py",
+    "tests/dagster/test_ingest_rows_collapsed.py",
+    "tests/dagster/test_ingest_http_stats.py"
+  ],
+  "mutants": [
+    {
+      "label": "collapse-bypassed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        loaded = _collapse_by_key(table, key_columns, records)",
+      "replace": "        loaded = records"
+    },
+    {
+      "label": "conflict-detection-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            if len(distinct) > 1:",
+      "replace": "            if False:"
+    },
+    {
+      "label": "valueless-first-row-wins",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            merged[column] = distinct[0] if distinct else None",
+      "replace": "            merged[column] = group[0][column]"
+    },
+    {
+      "label": "none-counts-as-a-value",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "                if value is None or any(_same_value(value, d) for d in distinct):",
+      "replace": "                if any(_same_value(value, d) for d in distinct):"
+    },
+    {
+      "label": "all-null-column-merges-to-zero",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            merged[column] = distinct[0] if distinct else None",
+      "replace": "            merged[column] = distinct[0] if distinct else 0.0"
+    },
+    {
+      "label": "only-first-two-copies-compared",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "            for record in group:\n                value = record[column]",
+      "replace": "            for record in group[:2]:\n                value = record[column]"
+    },
+    {
+      "label": "single-copy-fast-path-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "A key seen once goes through the merge loop instead: merged = dict(group[0]), and every non-key column has at most one distinct value, so merged[column] is that value (or None when it was None) -- the output record equals group[0] by value, column for column, with NaN preserved. The fast path is a pure optimisation (it skips a dict copy and the per-column scan); the only difference is object identity of the dict, which _frame_for never reads. Inert over every input shape the loaders build; it would stop being inert only if a record carried a column _collapse_by_key's merged dict does not (it copies group[0], so it cannot).",
+      "find": "        if len(group) == 1:\n            collapsed.append(group[0])\n            continue",
+      "replace": "        if False:\n            collapsed.append(group[0])\n            continue"
+    },
+    {
+      "label": "group-key-uses-first-key-column-only",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "groups.setdefault(tuple(record[c] for c in key_columns), [])",
+      "replace": "groups.setdefault(tuple(record[c] for c in key_columns[:1]), [])"
+    },
+    {
+      "label": "asos-key-loses-valid_utc",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.asos_hourly\": (\"station\", \"valid_utc\"),",
+      "replace": "    \"raw.asos_hourly\": (\"station\",),"
+    },
+    {
+      "label": "asos-key-loses-station",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.asos_hourly\": (\"station\", \"valid_utc\"),",
+      "replace": "    \"raw.asos_hourly\": (\"valid_utc\",),"
+    },
+    {
+      "label": "nbs-key-loses-ftime_utc",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.nbs_guidance\": (\"station\", \"runtime_utc\", \"ftime_utc\"),",
+      "replace": "    \"raw.nbs_guidance\": (\"station\", \"runtime_utc\"),"
+    },
+    {
+      "label": "nbs-key-loses-runtime_utc",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.nbs_guidance\": (\"station\", \"runtime_utc\", \"ftime_utc\"),",
+      "replace": "    \"raw.nbs_guidance\": (\"station\", \"ftime_utc\"),"
+    },
+    {
+      "label": "resolved-key-loses-ftime_utc",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.resolved_windows\": (\"station\", \"runtime_utc\", \"ftime_utc\"),",
+      "replace": "    \"raw.resolved_windows\": (\"station\", \"runtime_utc\"),"
+    },
+    {
+      "label": "resolved-key-loses-runtime_utc",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.resolved_windows\": (\"station\", \"runtime_utc\", \"ftime_utc\"),",
+      "replace": "    \"raw.resolved_windows\": (\"station\", \"ftime_utc\"),"
+    },
+    {
+      "label": "asos-key-gains-a-value-column",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.asos_hourly\": (\"station\", \"valid_utc\"),",
+      "replace": "    \"raw.asos_hourly\": (\"station\", \"valid_utc\", \"tmpf\"),"
+    },
+    {
+      "label": "nbs-key-order-swapped",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    \"raw.nbs_guidance\": (\"station\", \"runtime_utc\", \"ftime_utc\"),",
+      "replace": "    \"raw.nbs_guidance\": (\"station\", \"ftime_utc\", \"runtime_utc\"),"
+    },
+    {
+      "label": "collapse-inside-transaction-after-delete",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "The except clause rolls the transaction back and re-raises, and DuckDB's rollback restores the deleted rows, so on a conflict the table, the exception and the connection are all identical to the real order; the only difference is that the transaction is held open (and the delete issued) for the duration of the pure-Python collapse. Inert over every state a single-connection test can observe. It would matter only to a concurrent writer or to an observer of the write-ahead log, neither of which this suite has. The distinct hazard -- the collapse raising after `begin transaction` but outside the try, which leaves the transaction OPEN -- is its own row below.",
+      "find": "        loaded = _collapse_by_key(table, key_columns, records)\n    else:\n        loaded = records\n    dropped = len(records) - len(loaded)\n    conn.execute(\"begin transaction\")\n    try:\n        conn.execute(\n            f\"delete from {table} where station = ? \"  # noqa: S608 (table is a fixed constant, not user input)\n            f\"and cast({date_column_sql} as date) between ? and ?\",\n            [station, start, end],\n        )\n        if loaded:",
+      "replace": "        pass\n    loaded = records\n    conn.execute(\"begin transaction\")\n    try:\n        conn.execute(\n            f\"delete from {table} where station = ? \"  # noqa: S608 (table is a fixed constant, not user input)\n            f\"and cast({date_column_sql} as date) between ? and ?\",\n            [station, start, end],\n        )\n        if key_columns is not None:\n            loaded = _collapse_by_key(table, key_columns, records)\n        dropped = len(records) - len(loaded)\n        if loaded:"
+    },
+    {
+      "label": "collapse-after-begin-outside-try",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        loaded = _collapse_by_key(table, key_columns, records)\n    else:\n        loaded = records\n    dropped = len(records) - len(loaded)\n    conn.execute(\"begin transaction\")\n    try:",
+      "replace": "        pass\n    loaded = records\n    conn.execute(\"begin transaction\")\n    if key_columns is not None:\n        loaded = _collapse_by_key(table, key_columns, records)\n    dropped = len(records) - len(loaded)\n    try:"
+    },
+    {
+      "label": "key-column-guard-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        missing = [name for name in key_columns if name not in columns]\n        if missing:\n            msg = f\"{table}: key columns {missing} are not loaded columns\"\n            raise ValueError(msg)\n",
+      "replace": ""
+    },
+    {
+      "label": "nan-equality-removed",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        return left == right or (math.isnan(left) and math.isnan(right))",
+      "replace": "        return left == right"
+    },
+    {
+      "label": "nan-equals-any-float",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "        return left == right or (math.isnan(left) and math.isnan(right))",
+      "replace": "        return left == right or (math.isnan(left) or math.isnan(right))"
+    },
+    {
+      "label": "drop-count-returns-zero",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    return dropped\n",
+      "replace": "    return 0\n"
+    },
+    {
+      "label": "drop-count-off-by-one",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    dropped = len(records) - len(loaded)\n",
+      "replace": "    dropped = len(records) - len(loaded) + 1\n"
+    },
+    {
+      "label": "load_hourly-discards-the-drop",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    return _replace(\n        conn,\n        \"raw.asos_hourly\",",
+      "replace": "    _replace(\n        conn,\n        \"raw.asos_hourly\","
+    },
+    {
+      "label": "load_guidance-discards-the-drop",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    return _replace(\n        conn,\n        \"raw.nbs_guidance\",",
+      "replace": "    _replace(\n        conn,\n        \"raw.nbs_guidance\","
+    },
+    {
+      "label": "load_resolved_windows-discards-the-drop",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    return _replace(\n        conn,\n        \"raw.resolved_windows\",",
+      "replace": "    _replace(\n        conn,\n        \"raw.resolved_windows\","
+    },
+    {
+      "label": "guidance-asset-keeps-last-station-only",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            rows_collapsed += warehouse.load_guidance(",
+      "replace": "            rows_collapsed = warehouse.load_guidance("
+    },
+    {
+      "label": "hourly-asset-keeps-last-station-only",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            rows_collapsed += warehouse.load_hourly(",
+      "replace": "            rows_collapsed = warehouse.load_hourly("
+    },
+    {
+      "label": "resolved-asset-keeps-last-station-only",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            rows_collapsed += summary.rows_collapsed",
+      "replace": "            rows_collapsed = summary.rows_collapsed"
+    },
+    {
+      "label": "guidance-asset-metadata-key-absent",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            \"rows_collapsed\": rows_collapsed,\n            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"guidance_gap_rate\"",
+      "replace": "            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"guidance_gap_rate\""
+    },
+    {
+      "label": "hourly-asset-metadata-key-absent",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            \"rows_collapsed\": rows_collapsed,\n            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\"",
+      "replace": "            **_http_stats_metadata(fetcher),\n        },\n        check_results=[\n            _gap_rate_check_result(\"asos_gap_rate\""
+    },
+    {
+      "label": "resolved-asset-metadata-key-absent",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            \"resolved_rows\": total_resolved,\n            \"rows_collapsed\": rows_collapsed,\n",
+      "replace": "            \"resolved_rows\": total_resolved,\n"
+    },
+    {
+      "label": "resolved-asset-sums-the-wrong-field",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            total_resolved += summary.resolved_rows",
+      "replace": "            total_resolved += summary.rows_collapsed"
+    },
+    {
+      "label": "resolve-station-reports-zero-collapsed",
+      "file": "../../../src/weather_forecast_audit/pipeline.py",
+      "oracle": "real",
+      "find": "    return ResolveSummary(resolved_rows=len(resolved), rows_collapsed=collapsed)",
+      "replace": "    return ResolveSummary(resolved_rows=len(resolved), rows_collapsed=0)"
+    },
+    {
+      "label": "ingest-station-reads-collapsed-as-resolved",
+      "file": "../../../src/weather_forecast_audit/pipeline.py",
+      "oracle": "real",
+      "find": "resolved_rows = resolve_station(conn, station.icao, start, end).resolved_rows",
+      "replace": "resolved_rows = resolve_station(conn, station.icao, start, end).rows_collapsed"
+    },
+    {
+      "label": "message-drops-the-station",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "                    for name, value in zip(key_columns, key, strict=True)\n",
+      "replace": "                    for name, value in zip(key_columns, key, strict=True)\n                    if name != \"station\"\n"
+    },
+    {
+      "label": "message-drops-the-timestamps",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "                    for name, value in zip(key_columns, key, strict=True)\n",
+      "replace": "                    for name, value in zip(key_columns, key, strict=True)\n                    if name == \"station\"\n"
+    },
+    {
+      "label": "message-drops-the-column",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "f\"{column} is {values}\"",
+      "replace": "f\"is {values}\""
+    },
+    {
+      "label": "message-drops-the-table",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "f\"{table}: conflicting non-null values for key ({key_text}): \"",
+      "replace": "f\"conflicting non-null values for key ({key_text}): \""
+    },
+    {
+      "label": "message-shows-only-the-first-value",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "                values = \" vs \".join(str(value) for value in distinct)",
+      "replace": "                values = str(distinct[0])"
+    },
+    {
+      "label": "load_cli-collapses-too",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "expect": "survived",
+      "why": "Deliberate, documented scope: cli_daily never failed its dbt uniqueness test, and no test feeds load_cli a repeated (station, local_date). Every load_cli test passes distinct keys, for which collapsing is the identity (returned unchanged, zero dropped), so collapsing there is inert on every input the suite reaches. Not pinned on purpose: a test asserting cli's absence would forbid a later, intended extension.",
+      "find": "        key_columns=None,\n",
+      "replace": "        key_columns=(\"station\", \"local_date\"),\n"
+    }
+  ]
+}
