@@ -880,6 +880,18 @@ These are additive diagnostics: they record what already happens and change
 no retry, backoff, timeout or request behaviour. Fetchers that do not record
 statistics (test fixtures) leave the metadata exactly as it was.
 
+### Source duplicates
+
+The source can serve a guidance run twice, or send a second, valueless
+report at the same valid time as a real one, so the raw feeds are not
+unique per key. The loaders collapse each key's rows to one before they
+insert: exact copies merge, and a row with values absorbs a row of nulls.
+A real disagreement -- two non-null values for the same column of one key
+-- raises and names the table, the key (station and times) and the column,
+before anything is deleted. The assets report the number of dropped rows
+as `rows_collapsed`. The dbt uniqueness tests on the staging models remain
+the guard, and the loader keys are tested to equal them.
+
 ### Risk: the transform run may exceed the 600s cap
 
 `transform_job` is a full `dbt build` over the whole raw archive (D4), and
