@@ -29,6 +29,7 @@ prediction_rows as (
         raw_pairs.target_date,
         predictions.forecast_f,
         raw_pairs.spread_f,
+        raw_pairs.tmp_f,
         raw_pairs.observed_f,
         raw_pairs.window_start_utc,
         raw_pairs.window_end_utc,

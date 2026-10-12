@@ -52,6 +52,13 @@ models:
           - accepted_values:
               arguments:
                 values: ["raw_nbm", "baseline", "challenger"]
+      - name: tmp_f
+        description: >
+          NBS's own temperature guidance (degrees F) at the pair's ftime: a
+          guidance-side property of the run, known at issuance and identical
+          across `source` for one (station, run_date, lead_day, variable).
+          Null is legal. A model may use it as a feature; it is never an
+          observation (issue #19).
       - name: extreme_source
         data_tests:
           - not_null
@@ -80,6 +87,90 @@ models:
                 field: regime_id
 
 unit_tests:
+  - name: test_every_source_carries_the_raw_rows_tmp_f
+    description: >
+      tmp_f is a property of the run, not of the correction: the raw row and
+      a baseline prediction joined back to it carry the same tmp_f, and a
+      null stays null (issue #19).
+    model: fct_forecast_verification
+    given:
+      - input: ref('int_raw_verification_pairs')
+        rows:
+          - station: KPHX
+            run_date: "2024-07-01"
+            lead_day: 1
+            variable: max
+            source: raw_nbm
+            cycle_hour: 13
+            runtime_utc: "2024-07-01 13:00:00"
+            target_date: "2024-07-02"
+            forecast_f: 110.0
+            spread_f: 3.0
+            tmp_f: 98.5
+            observed_f: 108.0
+            window_start_utc: "2024-07-01 12:00:00"
+            window_end_utc: "2024-07-02 06:00:00"
+            scorable: true
+            extreme_source: metar_6h
+            error_f: 2.0
+            nbm_version: v4.3
+            cycle_regime: iem_01_07_13_19
+          - station: KPHX
+            run_date: "2024-07-01"
+            lead_day: 2
+            variable: max
+            source: raw_nbm
+            cycle_hour: 13
+            runtime_utc: "2024-07-01 13:00:00"
+            target_date: "2024-07-03"
+            forecast_f: 111.0
+            spread_f: 3.0
+            tmp_f: null
+            observed_f: 109.0
+            window_start_utc: "2024-07-02 12:00:00"
+            window_end_utc: "2024-07-03 06:00:00"
+            scorable: true
+            extreme_source: metar_6h
+            error_f: 2.0
+            nbm_version: v4.3
+            cycle_regime: iem_01_07_13_19
+      - input: ref('stg_model_predictions')
+        rows:
+          - station: KPHX
+            run_date: "2024-07-01"
+            runtime_utc: "2024-07-01 13:00:00"
+            lead_day: 1
+            variable: max
+            target_date: "2024-07-02"
+            source: baseline
+            forecast_f: 107.5
+            raw_forecast_f: 110.0
+            retrained_on: "2024-07-01"
+            trained_through: "2024-06-30 06:00:00"
+            fallback: false
+            params: '{"window_days": 30, "min_pairs": 15}'
+            generated_at: "2024-07-01 13:05:00"
+          - station: KPHX
+            run_date: "2024-07-01"
+            runtime_utc: "2024-07-01 13:00:00"
+            lead_day: 2
+            variable: max
+            target_date: "2024-07-03"
+            source: baseline
+            forecast_f: 110.0
+            raw_forecast_f: 111.0
+            retrained_on: "2024-07-01"
+            trained_through: "2024-06-30 06:00:00"
+            fallback: false
+            params: '{"window_days": 30, "min_pairs": 15}'
+            generated_at: "2024-07-01 13:05:00"
+    expect:
+      rows:
+        - {station: KPHX, lead_day: 1, variable: max, source: raw_nbm, tmp_f: 98.5}
+        - {station: KPHX, lead_day: 2, variable: max, source: raw_nbm, tmp_f: null}
+        - {station: KPHX, lead_day: 1, variable: max, source: baseline, tmp_f: 98.5}
+        - {station: KPHX, lead_day: 2, variable: max, source: baseline, tmp_f: null}
+
   - name: test_baseline_prediction_joins_to_its_raw_row
     description: >
       One raw_nbm row plus one baseline prediction for the same (station,

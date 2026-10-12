@@ -156,3 +156,42 @@ def test_baseline_predictions_land_in_fct_forecast_verification(
     assert fallback_mismatches == 0
     assert fallback_count > 0
     assert dupes == []
+
+
+def test_every_source_carries_the_same_tmp_f_per_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """tmp_f is a guidance-side property of the run (issue #19): the
+    baseline rows of one pair carry exactly the raw_nbm row's tmp_f."""
+    db_path = tmp_path / "baseline_pipeline.duckdb"
+    _run_ingest(db_path)
+    _dbt_build(tmp_path, db_path, monkeypatch)
+
+    monkeypatch.setenv("WFA_DUCKDB_PATH", str(db_path))
+    cli.main(["predict", "baseline", "--start", "2023-07-14", "--end", "2026-05-06"])
+    _dbt_build(tmp_path, db_path, monkeypatch)
+
+    with duckdb.connect(str(db_path)) as conn:
+        pairs = conn.execute(
+            "select count(*) from fct_forecast_verification as b "
+            "inner join fct_forecast_verification as r "
+            "on b.station = r.station and b.run_date = r.run_date "
+            "and b.lead_day = r.lead_day and b.variable = r.variable "
+            "where b.source = 'baseline' and r.source = 'raw_nbm'"
+        ).fetchone()
+        differing = conn.execute(
+            "select count(*) from fct_forecast_verification as b "
+            "inner join fct_forecast_verification as r "
+            "on b.station = r.station and b.run_date = r.run_date "
+            "and b.lead_day = r.lead_day and b.variable = r.variable "
+            "where b.source = 'baseline' and r.source = 'raw_nbm' "
+            "and b.tmp_f is distinct from r.tmp_f"
+        ).fetchone()
+        non_null = conn.execute(
+            "select count(*) from fct_forecast_verification "
+            "where source = 'baseline' and tmp_f is not null"
+        ).fetchone()
+
+    assert pairs is not None and pairs[0] > 0
+    assert differing == (0,)
+    assert non_null is not None and non_null[0] > 0
