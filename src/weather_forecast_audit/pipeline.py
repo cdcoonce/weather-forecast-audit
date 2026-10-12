@@ -13,6 +13,7 @@ observations on hand: a run on `end` can carry a lead-3 target date of
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from typing import NamedTuple
 
 import duckdb
 
@@ -95,7 +96,7 @@ def ingest_station(
         conn, station.icao, "cli", obs_start, obs_end, cli_result.gaps, now=now
     )
 
-    resolved_rows = resolve_station(conn, station.icao, start, end)
+    resolved_rows = resolve_station(conn, station.icao, start, end).resolved_rows
 
     return IngestSummary(
         station=station.icao,
@@ -109,9 +110,21 @@ def ingest_station(
     )
 
 
+class ResolveSummary(NamedTuple):
+    """What `resolve_station` wrote: windows resolved, and rows collapsed.
+
+    `rows_collapsed` counts resolved windows the loader folded into another of
+    the same (station, runtime, ftime) -- non-zero only when `raw.nbs_guidance`
+    already held a repeated key (a database loaded before guidance collapsed).
+    """
+
+    resolved_rows: int
+    rows_collapsed: int
+
+
 def resolve_station(
     conn: duckdb.DuckDBPyConnection, icao: str, start: date, end: date
-) -> int:
+) -> ResolveSummary:
     """Resolve verification windows for guidance runs in [start, end].
 
     Reads raw guidance (txn not null, any lead) and every raw hourly ob on
@@ -163,5 +176,5 @@ def resolve_station(
             )
         )
 
-    warehouse.load_resolved_windows(conn, icao, start, end, resolved)
-    return len(resolved)
+    collapsed = warehouse.load_resolved_windows(conn, icao, start, end, resolved)
+    return ResolveSummary(resolved_rows=len(resolved), rows_collapsed=collapsed)

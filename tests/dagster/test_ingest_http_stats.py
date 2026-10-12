@@ -24,6 +24,18 @@ HTTP_ASSETS = [
 ]
 
 
+# The two loaders that collapse source duplicates also report `rows_collapsed`.
+_COLLAPSING_NODES = {"raw__asos_hourly", "raw__nbs_guidance"}
+
+
+def _plain_metadata(node: str) -> dict[str, object]:
+    """The metadata of a fetcher without stats: station/request counts only."""
+    expected: dict[str, object] = {"station_count": 2, "request_count": 2}
+    if node in _COLLAPSING_NODES:
+        expected["rows_collapsed"] = 0
+    return expected
+
+
 def _known_stats() -> FetchStats:
     return FetchStats(
         attempts=9,
@@ -98,7 +110,7 @@ def test_asset_metadata_is_unchanged_for_a_fetcher_without_stats(
 ) -> None:
     metadata = _metadata(tmp_path, FixtureIemResource(), key, node)
 
-    assert metadata == {"station_count": 2, "request_count": 2}
+    assert metadata == _plain_metadata(node)
 
 
 class _FetcherWithBogusStats(DagsterFixtureFetcher):
@@ -132,7 +144,7 @@ def test_asset_metadata_ignores_a_stats_attribute_that_is_not_fetch_stats(
 ) -> None:
     metadata = _metadata(tmp_path, resource_class(), key, node)
 
-    assert metadata == {"station_count": 2, "request_count": 2}
+    assert metadata == _plain_metadata(node)
 
 
 def test_slowest_attempt_log_is_empty_without_stats() -> None:

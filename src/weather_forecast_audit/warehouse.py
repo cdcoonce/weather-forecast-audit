@@ -9,9 +9,18 @@ portable).
 
 Loaders are idempotent: each one deletes the station's existing rows in the
 loaded date range inside a transaction, then inserts the new rows, so
-re-running the same ingest does not duplicate rows.
+re-running the same ingest does not duplicate rows. They also write one row
+per key: the source can serve a run twice or send a second, valueless report
+at the same valid time, so `raw.asos_hourly`, `raw.nbs_guidance` and
+`raw.resolved_windows` collapse each key's rows to one before the insert
+(`RAW_KEY_COLUMNS`, mirrored by the dbt uniqueness tests). A real non-null
+disagreement within a key raises, naming the key, before anything is deleted.
+
+`dedupe_raw_table` applies the same merge rule once, in place, to a database
+that was loaded before the loaders collapsed.
 """
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -205,6 +214,222 @@ def _frame_for(
     return pl.DataFrame(records, schema=schema)
 
 
+# The key each collapsing loader keeps unique. These must equal the dbt
+# `unique_combination_of_columns` tests on the matching staging models
+# (`tests/unit/test_warehouse.py` parses those YAML files and compares).
+RAW_KEY_COLUMNS: dict[str, tuple[str, ...]] = {
+    "raw.asos_hourly": ("station", "valid_utc"),
+    "raw.nbs_guidance": ("station", "runtime_utc", "ftime_utc"),
+    "raw.resolved_windows": ("station", "runtime_utc", "ftime_utc"),
+}
+
+
+def _same_value(left: object, right: object) -> bool:
+    """Equality that reads two NaN floats as equal (`nan != nan` in Python)."""
+    if isinstance(left, float) and isinstance(right, float):
+        return left == right or (math.isnan(left) and math.isnan(right))
+    return left == right
+
+
+def _collapse_by_key(
+    table: str,
+    key_columns: tuple[str, ...],
+    records: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Collapse `records` to one record per key, in first-seen key order.
+
+    A key seen once is returned unchanged. A key seen more than once is
+    merged column by column: a column's non-null values must all agree
+    (two NaNs agree), and the merged record carries that value, or `None`
+    when every copy is null. A source that sends a valueless second report
+    next to a valued one therefore merges to the valued one, exact copies
+    collapse trivially, and two non-null values that disagree raise a
+    `ValueError` naming the table, the key and the column.
+    """
+    groups: dict[tuple[object, ...], list[dict[str, object]]] = {}
+    for record in records:
+        groups.setdefault(tuple(record[c] for c in key_columns), []).append(record)
+
+    collapsed: list[dict[str, object]] = []
+    for key, group in groups.items():
+        if len(group) == 1:
+            collapsed.append(group[0])
+            continue
+        merged = dict(group[0])
+        for column in merged:
+            if column in key_columns:
+                continue
+            distinct: list[object] = []
+            for record in group:
+                value = record[column]
+                if value is None or any(_same_value(value, d) for d in distinct):
+                    continue
+                distinct.append(value)
+            if len(distinct) > 1:
+                key_text = ", ".join(
+                    f"{name}={value}"
+                    for name, value in zip(key_columns, key, strict=True)
+                )
+                values = " vs ".join(str(value) for value in distinct)
+                msg = (
+                    f"{table}: conflicting non-null values for key ({key_text}): "
+                    f"{column} is {values}"
+                )
+                raise ValueError(msg)
+            merged[column] = distinct[0] if distinct else None
+        collapsed.append(merged)
+    return collapsed
+
+
+@dataclass(frozen=True)
+class DedupeReport:
+    """What `dedupe_raw_table` found (and, when `applied`, did) in one table."""
+
+    table: str
+    rows_before: int
+    rows_after: int
+    keys_collapsed: int
+    applied: bool
+
+
+def dedupe_raw_table(
+    conn: duckdb.DuckDBPyConnection, table: str, *, apply: bool
+) -> DedupeReport:
+    """Collapse the duplicated keys of an already-loaded raw table, in place.
+
+    The loaders collapse a key's rows before they insert, but a database
+    loaded before that change still holds the duplicates. This repairs it
+    with the loaders' own merge rule (`_collapse_by_key`), so a valued row
+    keeps its value next to a valueless one; a `select distinct` or
+    `row_number() = 1` would keep an arbitrary row and could drop it.
+
+    Only the rows of duplicated keys are read: one `group by ... having
+    count(*) > 1` finds the keys, a join fetches their rows, and the merge
+    runs in Python. A real non-null disagreement raises `ValueError` from
+    the merge, before any write.
+
+    With `apply=False` nothing is written (the connection may be read-only)
+    and the report is the prediction. With `apply=True` one transaction
+    deletes the duplicated keys' rows, inserts the merged rows, then checks
+    the table's row count and that no key is still duplicated; a failed
+    check rolls back and raises `RuntimeError`, and nothing is committed.
+    A table with no duplicated key is left untouched, so a second run is a
+    no-op.
+    """
+    key_columns = RAW_KEY_COLUMNS.get(table)
+    if key_columns is None:
+        known = ", ".join(sorted(RAW_KEY_COLUMNS))
+        msg = f"{table!r}: no per-key repair for this table (known: {known})"
+        raise ValueError(msg)
+
+    if apply:
+        conn.execute("begin transaction")
+    try:
+        report = _plan_and_write_dedupe(conn, table, key_columns, apply=apply)
+        if apply:
+            conn.execute("commit")
+    except Exception:
+        if apply:
+            conn.execute("rollback")
+        raise
+    return report
+
+
+def _plan_and_write_dedupe(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    key_columns: tuple[str, ...],
+    *,
+    apply: bool,
+) -> DedupeReport:
+    """Plan the repair and, when `apply`, write and verify it (no commit).
+
+    Runs inside the caller's transaction when `apply`; raises before any
+    write when the merge finds a conflict, and after the writes when a
+    verification fails (the caller then rolls back).
+    """
+    columns = [
+        row[0]
+        for row in conn.execute(
+            "select column_name from information_schema.columns "
+            "where table_schema = ? and table_name = ? order by ordinal_position",
+            table.split(".", 1),
+        ).fetchall()
+    ]
+    key_list = ", ".join(key_columns)
+    rows_before = _scalar(conn, f"select count(*) from {table}")  # noqa: S608
+    duplicated = conn.execute(
+        f"select {key_list}, count(*) from {table} "  # noqa: S608
+        f"group by {key_list} having count(*) > 1 order by {key_list}"
+    ).fetchall()
+    if not duplicated:
+        return DedupeReport(table, rows_before, rows_before, 0, applied=apply)
+
+    expected_drop = sum(row[-1] - 1 for row in duplicated)
+    key_records: list[dict[str, object]] = [
+        dict(zip(key_columns, row[:-1], strict=True)) for row in duplicated
+    ]
+    key_frame = _frame_for(  # noqa: F841 (read by name via duckdb's scan)
+        conn, table, list(key_columns), key_records
+    )
+    select_list = ", ".join(f"t.{column}" for column in columns)
+    join_on = " and ".join(f"t.{c} = k.{c}" for c in key_columns)
+    order_by = ", ".join(f"t.{c}" for c in key_columns)
+    fetched = conn.execute(
+        f"select {select_list} from {table} as t "  # noqa: S608
+        f"join key_frame as k on {join_on} order by {order_by}"
+    ).fetchall()
+    records: list[dict[str, object]] = [
+        dict(zip(columns, row, strict=True)) for row in fetched
+    ]
+    merged = _collapse_by_key(table, key_columns, records)
+    dropped = len(records) - len(merged)
+
+    if not apply:
+        return DedupeReport(
+            table, rows_before, rows_before - dropped, len(duplicated), applied=False
+        )
+
+    column_list = ", ".join(columns)
+    merged_frame = _frame_for(  # noqa: F841 (read by name via duckdb's scan)
+        conn, table, columns, merged
+    )
+    conn.execute(
+        f"delete from {table} where ({key_list}) in "  # noqa: S608
+        f"(select {key_list} from key_frame)"
+    )
+    conn.execute(
+        f"insert into {table} ({column_list}) "  # noqa: S608
+        f"select {column_list} from merged_frame"
+    )
+    rows_after = _scalar(conn, f"select count(*) from {table}")  # noqa: S608
+    still_duplicated = _scalar(
+        conn,
+        f"select count(*) from (select 1 from {table} "  # noqa: S608
+        f"group by {key_list} having count(*) > 1)",
+    )
+    if rows_after != rows_before - expected_drop:
+        msg = (
+            f"{table}: repair verification failed: {rows_after} rows after, "
+            f"expected {rows_before - expected_drop} "
+            f"({rows_before} before, {expected_drop} extra rows)"
+        )
+        raise RuntimeError(msg)
+    if still_duplicated:
+        msg = (
+            f"{table}: repair verification failed: "
+            f"{still_duplicated} keys are still duplicated"
+        )
+        raise RuntimeError(msg)
+    return DedupeReport(table, rows_before, rows_after, len(duplicated), applied=True)
+
+
+def _scalar(conn: duckdb.DuckDBPyConnection, sql: str) -> int:
+    row = conn.execute(sql).fetchone()
+    assert row is not None  # noqa: S101 (an aggregate always returns a row)
+    return int(row[0])
+
+
 def _replace(
     conn: duckdb.DuckDBPyConnection,
     table: str,
@@ -214,7 +439,25 @@ def _replace(
     start: date,
     end: date,
     records: list[dict[str, object]],
-) -> None:
+    *,
+    key_columns: tuple[str, ...] | None,
+) -> int:
+    """Replace `station`'s rows of `table` in `[start, end]` with `records`.
+
+    With `key_columns`, `records` are first collapsed to one per key; that
+    runs before the transaction opens, so a conflicting key raises with the
+    table untouched. Returns how many input records the collapse dropped
+    (0 when `key_columns` is None or nothing repeated).
+    """
+    if key_columns is not None:
+        missing = [name for name in key_columns if name not in columns]
+        if missing:
+            msg = f"{table}: key columns {missing} are not loaded columns"
+            raise ValueError(msg)
+        loaded = _collapse_by_key(table, key_columns, records)
+    else:
+        loaded = records
+    dropped = len(records) - len(loaded)
     conn.execute("begin transaction")
     try:
         conn.execute(
@@ -222,9 +465,9 @@ def _replace(
             f"and cast({date_column_sql} as date) between ? and ?",
             [station, start, end],
         )
-        if records:
+        if loaded:
             frame = _frame_for(  # noqa: F841 (read by name via duckdb's scan)
-                conn, table, columns, records
+                conn, table, columns, loaded
             )
             column_list = ", ".join(columns)
             conn.execute(
@@ -234,6 +477,7 @@ def _replace(
     except Exception:
         conn.execute("rollback")
         raise
+    return dropped
 
 
 def load_guidance(
@@ -242,7 +486,8 @@ def load_guidance(
     start: date,
     end: date,
     rows: list[GuidanceRow],
-) -> None:
+) -> int:
+    """Replace the station's guidance in `[start, end]`; return the drop."""
     columns = ["station", "runtime_utc", "ftime_utc", "cycle_hour", "txn", "xnd", "tmp"]
     records = [
         {
@@ -256,8 +501,16 @@ def load_guidance(
         }
         for row in rows
     ]
-    _replace(
-        conn, "raw.nbs_guidance", columns, station, "runtime_utc", start, end, records
+    return _replace(
+        conn,
+        "raw.nbs_guidance",
+        columns,
+        station,
+        "runtime_utc",
+        start,
+        end,
+        records,
+        key_columns=RAW_KEY_COLUMNS["raw.nbs_guidance"],
     )
 
 
@@ -267,7 +520,8 @@ def load_hourly(
     start: date,
     end: date,
     rows: list[HourlyObservation],
-) -> None:
+) -> int:
+    """Replace the station's hourly obs in `[start, end]`; return the drop."""
     columns = ["station", "valid_utc", "tmpf", "max_6h_f", "min_6h_f"]
     records = [
         {
@@ -279,8 +533,16 @@ def load_hourly(
         }
         for row in rows
     ]
-    _replace(
-        conn, "raw.asos_hourly", columns, station, "valid_utc", start, end, records
+    return _replace(
+        conn,
+        "raw.asos_hourly",
+        columns,
+        station,
+        "valid_utc",
+        start,
+        end,
+        records,
+        key_columns=RAW_KEY_COLUMNS["raw.asos_hourly"],
     )
 
 
@@ -301,7 +563,19 @@ def load_cli(
         }
         for row in rows
     ]
-    _replace(conn, "raw.cli_daily", columns, station, "local_date", start, end, records)
+    _replace(
+        conn,
+        "raw.cli_daily",
+        columns,
+        station,
+        "local_date",
+        start,
+        end,
+        records,
+        # Deliberately not collapsed: cli_daily is outside the duplicate-key
+        # change (it did not fail its dbt uniqueness test).
+        key_columns=None,
+    )
 
 
 def load_gaps(
@@ -385,7 +659,8 @@ def load_resolved_windows(
     start: date,
     end: date,
     rows: list[ResolvedWindowRow],
-) -> None:
+) -> int:
+    """Replace the station's resolved windows in `[start, end]`; return the drop."""
     columns = [
         "station",
         "runtime_utc",
@@ -425,7 +700,7 @@ def load_resolved_windows(
         }
         for row in rows
     ]
-    _replace(
+    return _replace(
         conn,
         "raw.resolved_windows",
         columns,
@@ -434,6 +709,7 @@ def load_resolved_windows(
         start,
         end,
         records,
+        key_columns=RAW_KEY_COLUMNS["raw.resolved_windows"],
     )
 
 

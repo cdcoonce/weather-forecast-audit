@@ -183,6 +183,7 @@ def raw_nbs_guidance(
     regimes = load_cycle_regimes()
     now = datetime.now(UTC).replace(tzinfo=None)
     request_count = 0
+    rows_collapsed = 0
     gaps_by_station: dict[str, list[GapRecord]] = {}
 
     with warehouse_resource.connect() as conn:
@@ -191,7 +192,9 @@ def raw_nbs_guidance(
                 station.nbm_station_id, start, end, fetcher, regimes
             )
             request_count += len(month_chunks(start, end))
-            warehouse.load_guidance(conn, station.icao, start, end, result.rows)
+            rows_collapsed += warehouse.load_guidance(
+                conn, station.icao, start, end, result.rows
+            )
             warehouse.load_gaps(
                 conn, station.icao, "nbs", start, end, result.gaps, now=now
             )
@@ -209,6 +212,7 @@ def raw_nbs_guidance(
         metadata={
             "station_count": len(station_list),
             "request_count": request_count,
+            "rows_collapsed": rows_collapsed,
             **_http_stats_metadata(fetcher),
         },
         check_results=[
@@ -241,13 +245,16 @@ def raw_asos_hourly(
     fetcher = iem.fetcher()
     now = datetime.now(UTC).replace(tzinfo=None)
     request_count = 0
+    rows_collapsed = 0
     gaps_by_station: dict[str, list[GapRecord]] = {}
 
     with warehouse_resource.connect() as conn:
         for station in station_list:
             result = fetch_hourly(station, start, end, fetcher)
             request_count += len(month_chunks(start, end))
-            warehouse.load_hourly(conn, station.icao, start, end, result.rows)
+            rows_collapsed += warehouse.load_hourly(
+                conn, station.icao, start, end, result.rows
+            )
             warehouse.load_gaps(
                 conn, station.icao, "asos", start, end, result.gaps, now=now
             )
@@ -265,6 +272,7 @@ def raw_asos_hourly(
         metadata={
             "station_count": len(station_list),
             "request_count": request_count,
+            "rows_collapsed": rows_collapsed,
             **_http_stats_metadata(fetcher),
         },
         check_results=[
@@ -360,10 +368,13 @@ def raw_resolved_windows(
     start, end = _partition_date_range(context)
     station_list = stations.stations()
     total_resolved = 0
+    rows_collapsed = 0
 
     with warehouse_resource.connect() as conn:
         for station in station_list:
-            total_resolved += resolve_station(conn, station.icao, start, end)
+            summary = resolve_station(conn, station.icao, start, end)
+            total_resolved += summary.resolved_rows
+            rows_collapsed += summary.rows_collapsed
 
     context.log.info(
         "raw/resolved_windows %s..%s: %d stations, %d resolved rows",
@@ -373,7 +384,11 @@ def raw_resolved_windows(
         total_resolved,
     )
     return dg.MaterializeResult(
-        metadata={"station_count": len(station_list), "resolved_rows": total_resolved}
+        metadata={
+            "station_count": len(station_list),
+            "resolved_rows": total_resolved,
+            "rows_collapsed": rows_collapsed,
+        }
     )
 
 
