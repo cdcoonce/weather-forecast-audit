@@ -1,4 +1,5 @@
-"""`wfa` command-line interface: `init-db`, `ingest`, `predict baseline`, and `export`.
+"""`wfa` command-line interface: `init-db`, `ingest`, `predict baseline`,
+`predict challenger`, and `export`.
 
 The DuckDB path always comes from `WFA_DUCKDB_PATH`, never a flag: one
 database per environment (local dev, CI, the tracer script), set once.
@@ -7,6 +8,7 @@ database per environment (local dev, CI, the tracer script), set once.
 import argparse
 import json
 import os
+import statistics
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -14,13 +16,15 @@ from pathlib import Path
 import duckdb
 import polars as pl
 
+from weather_forecast_audit import challenger as challenger_module
 from weather_forecast_audit import export as export_module
 from weather_forecast_audit import warehouse
 from weather_forecast_audit.baseline import MIN_PAIRS, WINDOW_DAYS, BaselineModel
+from weather_forecast_audit.challenger import ChallengerModel
 from weather_forecast_audit.iem.http import UrllibFetcher
 from weather_forecast_audit.pipeline import ingest_station
 from weather_forecast_audit.regimes import load_cycle_regimes
-from weather_forecast_audit.registry import load_registry
+from weather_forecast_audit.registry import Station, load_registry
 from weather_forecast_audit.walkforward import walk_forward
 
 
@@ -105,6 +109,93 @@ def _cmd_predict_baseline(args: argparse.Namespace) -> None:
     print("Run `dbt build` next to refresh fct_forecast_verification.")
 
 
+# The columns the walk-forward evaluator and the challenger read from
+# int_raw_verification_pairs, and nothing else: the table is ~6M rows on a
+# memory-constrained host, so `select *` is not an option here.
+_CHALLENGER_PAIR_COLUMNS = (
+    "station",
+    "run_date",
+    "runtime_utc",
+    "cycle_hour",
+    "lead_day",
+    "variable",
+    "target_date",
+    "forecast_f",
+    "spread_f",
+    "tmp_f",
+    "window_start_utc",
+    "window_end_utc",
+    "observed_f",
+    "scorable",
+)
+
+
+def _station_features(registry: dict[str, Station]) -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "station": [s.icao for s in registry.values()],
+            "latitude": [s.lat for s in registry.values()],
+            "longitude": [s.lon for s in registry.values()],
+            "elevation_m": [s.elevation_m for s in registry.values()],
+            "coastal_flag": [s.coastal_flag for s in registry.values()],
+            "climate_region": [s.climate_region for s in registry.values()],
+        }
+    )
+
+
+def _cmd_predict_challenger(args: argparse.Namespace) -> None:
+    db_path = _db_path()
+    start = date.fromisoformat(args.start)
+    end = date.fromisoformat(args.end)
+    # The minimum is read from the module at call time (not bound as a
+    # default argument) so a test can lower it; there is deliberately no CLI
+    # override of any model constant: a run is one set of pre-registered
+    # constants, recorded in `params`.
+    model = ChallengerModel(
+        _station_features(load_registry()),
+        min_train_rows=challenger_module.MIN_TRAIN_ROWS,
+    )
+
+    started = time.monotonic()
+    with duckdb.connect(db_path) as conn:
+        warehouse.init_db(conn)
+        # Rows from runs after `end` can neither be predicted nor reach a
+        # training set (their windows close after `end`'s issuance), so they
+        # are not read at all.
+        columns = ", ".join(_CHALLENGER_PAIR_COLUMNS)
+        pairs = conn.execute(
+            f"select {columns} from int_raw_verification_pairs where run_date <= ?",
+            [end],
+        ).pl()
+        result = walk_forward(pairs, model, start, end, retrain="monthly")
+        del pairs
+        params = json.dumps(model.describe_params())
+        rows_frame = result.with_columns(pl.lit(params).alias("params"))
+        warehouse.load_predictions(
+            conn,
+            model.name,
+            start,
+            end,
+            rows_frame,
+            now=datetime.now(UTC).replace(tzinfo=None),
+        )
+    wall_time = time.monotonic() - started
+
+    n = result.height
+    fallback_share = float(result["fallback"].mean()) if n > 0 else 0.0
+    fit_log = model.fit_seconds_log
+    print(
+        f"wfa predict challenger {start}..{end}: rows={n} "
+        f"fallback_share={fallback_share:.3f} retrains={model.fit_count} "
+        f"fitted={len(fit_log)} "
+        f"fit_seconds_total={sum(fit_log):.2f} "
+        f"fit_seconds_max={max(fit_log, default=0.0):.2f} "
+        f"fit_seconds_median={statistics.median(fit_log) if fit_log else 0.0:.2f} "
+        f"wall_time={wall_time:.2f}s"
+    )
+    print("Run `dbt build` next to refresh fct_forecast_verification.")
+
+
 def _cmd_export(args: argparse.Namespace) -> None:
     db_path = _db_path()
     with duckdb.connect(db_path) as conn:
@@ -151,6 +242,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--min-pairs", type=int, default=MIN_PAIRS, dest="min_pairs"
     )
     baseline_parser.set_defaults(func=_cmd_predict_baseline)
+
+    challenger_parser = predict_subparsers.add_parser(
+        "challenger",
+        help="LightGBM challenger corrector (issue #19); constants are fixed",
+    )
+    challenger_parser.add_argument("--start", required=True, help="YYYY-MM-DD")
+    challenger_parser.add_argument("--end", required=True, help="YYYY-MM-DD")
+    challenger_parser.set_defaults(func=_cmd_predict_challenger)
 
     export_parser = subparsers.add_parser(
         "export", help="Write the v1 export contract (manifest, city stats) to --out"

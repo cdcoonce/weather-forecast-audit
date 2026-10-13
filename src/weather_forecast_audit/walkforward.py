@@ -45,7 +45,9 @@ _REQUIRED_COLUMNS = (
 # What `predict` is allowed to see: guidance-side columns only. Never
 # observed_f, error_f, hourly_observed_f, cli_f, n_obs, hours_covered,
 # scorable, extreme_source or periods_found -- those are the answers.
-# cycle_hour is included only when the input frame carries it.
+# cycle_hour and tmp_f are included only when the input frame carries them.
+# tmp_f is NBS's own temperature guidance for the same run and ftime: a
+# property of the run, known at issuance, never an observation.
 _PREDICT_COLUMNS = (
     "station",
     "run_date",
@@ -56,6 +58,7 @@ _PREDICT_COLUMNS = (
     "target_date",
     "forecast_f",
     "spread_f",
+    "tmp_f",
     "window_start_utc",
     "window_end_utc",
 )
@@ -90,6 +93,9 @@ class Model(Protocol):
     `fit` always receives its `training_pairs` sorted ascending by
     `window_end_utc` (build spec #18 D2) -- a model may rely on that order
     (e.g. a rolling window via `searchsorted`) rather than re-sorting.
+
+    A model may also implement the optional `update` hook (issue #19),
+    detected with `hasattr` like `predict_detail`; see its docstring.
     """
 
     name: str
@@ -98,6 +104,28 @@ class Model(Protocol):
         """Fit on pairs with `scorable = true` and `window_end_utc < T`.
 
         `training_pairs` is sorted ascending by `window_end_utc`.
+        """
+        ...
+
+    def update(self, new_pairs: pl.DataFrame) -> None:
+        """Optional: absorb pairs that became known since the model last saw data.
+
+        Not part of every model: the evaluator detects it with `hasattr`,
+        and a model without it behaves exactly as before. After any retrain
+        and before `predict` on each run date, the evaluator hands the
+        model the scorable pairs with `seen_cutoff <= window_end_utc < T`
+        (T this run date's issuance time, strict), where `seen_cutoff` is
+        the T of the model's last `fit` (retrain date) or last `update`.
+        `new_pairs` has the same columns as `fit`'s `training_pairs` and is
+        sorted the same way (ascending by `window_end_utc`, then station,
+        runtime_utc, lead_day, variable).
+
+        Together with the prefix `fit` received at the last retrain, the
+        deltas received since cover exactly the scorable pairs with
+        `window_end_utc < T` -- no pair twice, none from the future. `update`
+        is called only when the delta is non-empty, and never on a retrain
+        date (there `fit` consumes the whole prefix, so the delta is empty
+        by construction).
         """
         ...
 
@@ -199,7 +227,11 @@ def walk_forward(
     Retraining: `"daily"` refits before every evaluated run date;
     `"monthly"` refits on the first evaluated run date of each calendar
     month (including the first evaluated date overall). Between refits,
-    the model fitted at the last retrain predicts.
+    the model fitted at the last retrain predicts; if it implements the
+    optional `update` hook it is first handed the pairs whose windows
+    closed since it last saw data (the slice of the same sorted frame from
+    where it left off to this run's cutoff), so it never sees more than
+    `fit` would have at this T.
 
     Raises `ValueError` for a missing required column, a run date whose
     rows disagree on `runtime_utc`, `start > end`, or a `predict` result
@@ -230,25 +262,33 @@ def walk_forward(
     window_end_arr = scorable_sorted.get_column("window_end_utc").to_numpy()
     predict_columns = [c for c in _PREDICT_COLUMNS if c in pairs.columns]
 
+    can_update = hasattr(model, "update")
     last_retrain_date: date | None = None
     trained_through: datetime | None = None
+    # Index into scorable_sorted: everything before it has been handed to
+    # the model, by `fit` or by an `update` delta.
+    seen_idx = 0
     outputs: list[pl.DataFrame] = []
 
     for run_date_ in run_dates:
         t = issuance_t[run_date_]
+        cutoff_idx = int(
+            np.searchsorted(window_end_arr, np.datetime64(t.replace(tzinfo=None)))
+        )
 
         if run_date_ in retrain_dates:
-            cutoff_idx = int(
-                np.searchsorted(window_end_arr, np.datetime64(t.replace(tzinfo=None)))
-            )
             training_pairs = scorable_sorted.slice(0, cutoff_idx)
             model.fit(training_pairs)
             last_retrain_date = run_date_
+            seen_idx = cutoff_idx
             trained_through = (
                 training_pairs.get_column("window_end_utc")[-1]
                 if cutoff_idx > 0
                 else None
             )
+        elif can_update and cutoff_idx > seen_idx:
+            model.update(scorable_sorted.slice(seen_idx, cutoff_idx - seen_idx))
+            seen_idx = cutoff_idx
 
         run_rows = pairs.filter(pl.col("run_date") == run_date_).sort(
             list(_PREDICT_ROW_SORT_KEYS)

@@ -19,6 +19,7 @@ import polars as pl
 import pytest
 from polars.exceptions import ColumnNotFoundError
 
+from weather_forecast_audit import walkforward
 from weather_forecast_audit.walkforward import (
     Model,
     RawNbmModel,
@@ -38,6 +39,7 @@ _PREDICT_COLUMNS = frozenset(
         "target_date",
         "forecast_f",
         "spread_f",
+        "tmp_f",
         "window_start_utc",
         "window_end_utc",
     }
@@ -134,6 +136,14 @@ def _synthetic_pairs(
                             "target_date": target,
                             "forecast_f": forecast,
                             "spread_f": 3.0,
+                            # Guidance-side and deterministic (no rng draw, so
+                            # every seeded stream is unchanged); null for lead
+                            # 3 because a null tmp is legal.
+                            "tmp_f": (
+                                None
+                                if lead == 3
+                                else 50.0 + lead + run_date_.toordinal() % 7
+                            ),
                             "window_start_utc": window_start,
                             "window_end_utc": window_end,
                             "observed_f": observed if scorable else None,
@@ -354,6 +364,7 @@ def test_lead3_closure_and_exact_boundary_excluded() -> None:
         "target_date": t,
         "forecast_f": 54.0,
         "spread_f": 3.0,
+        "tmp_f": 50.0,
         "window_start_utc": t_time - timedelta(hours=18),
         "window_end_utc": t_time,
         "observed_f": 55.0,
@@ -514,6 +525,26 @@ def test_predict_receives_exactly_the_allowed_columns() -> None:
     walk_forward(pairs, recorder, start=run_dates[0], end=run_dates[-1])
 
     assert recorder.seen_columns == _PREDICT_COLUMNS
+
+
+def test_pinned_predict_columns_match_the_evaluator_allow_list() -> None:
+    assert frozenset(walkforward._PREDICT_COLUMNS) == _PREDICT_COLUMNS
+
+
+def test_predict_gets_tmp_f_only_when_the_frame_carries_it() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 3, 1), 10)
+    pairs = _synthetic_pairs(run_dates, seed=3)
+
+    with_tmp = ColumnRecordingModel()
+    walk_forward(pairs, with_tmp, start=run_dates[0], end=run_dates[-1])
+    without_tmp = ColumnRecordingModel()
+    walk_forward(
+        pairs.drop("tmp_f"), without_tmp, start=run_dates[0], end=run_dates[-1]
+    )
+
+    assert with_tmp.seen_columns is not None
+    assert "tmp_f" in with_tmp.seen_columns
+    assert without_tmp.seen_columns == _PREDICT_COLUMNS - {"tmp_f"}
 
 
 def test_predict_reading_observed_f_raises_column_not_found() -> None:
@@ -798,3 +829,417 @@ def test_canonical_cycle_changeover() -> None:
         assert max_window_end < datetime.combine(
             date(2026, 4, 29), time(13, 0), tzinfo=UTC
         )
+
+
+# -- 11. the optional `update` hook (issue #19) --------------------------------
+
+_SORT_KEYS = ["window_end_utc", "station", "runtime_utc", "lead_day", "variable"]
+
+
+def _issuance(run_date_: date, hour: int = 13) -> datetime:
+    return datetime.combine(run_date_, time(hour, 0), tzinfo=UTC)
+
+
+def _pair_keys(frame: pl.DataFrame) -> set[tuple[object, ...]]:
+    return set(
+        frame.select("station", "run_date", "lead_day", "variable").iter_rows()
+    )
+
+
+def _expected_known(pairs: pl.DataFrame, t: datetime) -> set[tuple[object, ...]]:
+    """Independently: the scorable pairs whose window closed strictly before t."""
+    return _pair_keys(
+        pairs.filter(pl.col("scorable") & (pl.col("window_end_utc") < t))
+    )
+
+
+class UpdateRecordingModel:
+    """Tracks exactly which pairs it has been handed, via `fit` then `update`.
+
+    At every `predict` it snapshots (T, pairs known, latest window close
+    handed over), where T is the run's issuance time read off the rows it
+    is given.
+    """
+
+    name = "update_recorder"
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+        self.fit_frames: list[pl.DataFrame] = []
+        self.update_frames: list[pl.DataFrame] = []
+        self.known: set[tuple[object, ...]] = set()
+        self.max_window_end: datetime | None = None
+        self.duplicates: list[tuple[object, ...]] = []
+        self.snapshots: list[
+            tuple[datetime, frozenset[tuple[object, ...]], datetime | None]
+        ] = []
+        self.delta_for_t: dict[datetime, pl.DataFrame] = {}
+        self._pending_delta: pl.DataFrame | None = None
+
+    def _absorb(self, frame: pl.DataFrame) -> None:
+        if frame.height:
+            latest = frame.get_column("window_end_utc").max()
+            if self.max_window_end is None or latest > self.max_window_end:
+                self.max_window_end = latest
+
+    def fit(self, training_pairs: pl.DataFrame) -> None:
+        self.events.append("fit")
+        self.fit_frames.append(training_pairs)
+        self.known = _pair_keys(training_pairs)
+        self.max_window_end = None
+        self._absorb(training_pairs)
+
+    def update(self, new_pairs: pl.DataFrame) -> None:
+        self.events.append("update")
+        self.update_frames.append(new_pairs)
+        keys = _pair_keys(new_pairs)
+        self.duplicates.extend(sorted(keys & self.known, key=repr))
+        self.known |= keys
+        self._absorb(new_pairs)
+        self._pending_delta = new_pairs
+
+    def predict(self, run_rows: pl.DataFrame) -> pl.Series:
+        self.events.append("predict")
+        t = run_rows.get_column("runtime_utc").unique().item()
+        self.snapshots.append((t, frozenset(self.known), self.max_window_end))
+        if self._pending_delta is not None:
+            self.delta_for_t[t] = self._pending_delta
+            self._pending_delta = None
+        return run_rows["forecast_f"]
+
+
+class CheatingUpdateModel(CheatingModel):
+    """The memorizing cheat, now also fed by `update`."""
+
+    name = "cheating_update"
+
+    def update(self, new_pairs: pl.DataFrame) -> None:
+        for row in new_pairs.filter(pl.col("observed_f").is_not_null()).iter_rows(
+            named=True
+        ):
+            self._memo[(row["station"], row["target_date"], row["variable"])] = row[
+                "observed_f"
+            ]
+
+
+def _leaky_update_walk_forward(
+    pairs: pl.DataFrame, model: CheatingUpdateModel, start: date, end: date
+) -> pl.DataFrame:
+    """Reverse check: a monthly evaluator whose `update` is cut off by
+    `run_date`, not `window_end_utc < T`, built independently of
+    `weather_forecast_audit.walkforward`. A lead-3 target from run t-1 is
+    the same weather day as run t's own lead-2 target, so it leaks."""
+    scorable = pairs.filter(pl.col("scorable"))
+    run_dates = sorted(
+        pairs.filter((pl.col("run_date") >= start) & (pl.col("run_date") <= end))
+        .get_column("run_date")
+        .unique()
+        .to_list()
+    )
+    outputs = []
+    last_month: tuple[int, int] | None = None
+    seen_through: date | None = None
+    for run_date_ in run_dates:
+        month = (run_date_.year, run_date_.month)
+        if month != last_month:
+            model.fit(scorable.filter(pl.col("run_date") < run_date_))
+            last_month = month
+        else:
+            assert seen_through is not None
+            model.update(
+                scorable.filter(
+                    (pl.col("run_date") >= seen_through)
+                    & (pl.col("run_date") < run_date_)
+                )
+            )
+        seen_through = run_date_
+        run_rows = pairs.filter(pl.col("run_date") == run_date_).sort(
+            ["station", "lead_day", "variable"]
+        )
+        outputs.append(
+            run_rows.select(
+                "station", "run_date", "lead_day", "variable", "target_date"
+            ).with_columns(pl.Series("forecast_f", model.predict(run_rows)))
+        )
+    return pl.concat(outputs)
+
+
+def _assert_leakage_property(
+    model: UpdateRecordingModel, pairs: pl.DataFrame, run_dates: list[date]
+) -> None:
+    """For every run date d: fit prefix U deltas since == scorable w_end < T_d."""
+    assert model.duplicates == []
+    assert len(model.snapshots) == len(run_dates)
+    for run_date_, (t, known, max_window_end) in zip(
+        run_dates, model.snapshots, strict=True
+    ):
+        assert t == _issuance(run_date_)
+        assert known == _expected_known(pairs, t), run_date_
+        if max_window_end is not None:
+            assert max_window_end < t, run_date_
+    for frame in [*model.fit_frames, *model.update_frames]:
+        # Only scorable pairs, in the evaluator's sort order.
+        assert frame.get_column("scorable").all()
+        assert frame.equals(frame.sort(_SORT_KEYS))
+
+
+def test_update_hook_monthly_across_a_month_boundary() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 20), 24)
+    pairs = _synthetic_pairs(run_dates, seed=21, unscorable_frac=0.2)
+
+    model = UpdateRecordingModel()
+    walk_forward(
+        pairs, model, start=run_dates[0], end=run_dates[-1], retrain="monthly"
+    )
+
+    _assert_leakage_property(model, pairs, run_dates)
+
+    # Two retrains (Jan 20, Feb 1). `update` ran after any retrain and
+    # before `predict`, never on a retrain date, and only when the delta is
+    # non-empty (the synthetic history starts Jan 20, so nothing has closed
+    # yet at Jan 21's T).
+    feb_1 = run_dates.index(date(2026, 2, 1))
+    assert model.events.count("fit") == 2
+    expected_events: list[str] = []
+    for index, run_date_ in enumerate(run_dates):
+        if index in (0, feb_1):
+            expected_events += ["fit", "predict"]
+            continue
+        new_since_last_run = pairs.filter(
+            pl.col("scorable")
+            & (pl.col("window_end_utc") >= _issuance(run_dates[index - 1]))
+            & (pl.col("window_end_utc") < _issuance(run_date_))
+        )
+        if new_since_last_run.height:
+            expected_events += ["update"]
+        expected_events += ["predict"]
+    assert model.events == expected_events
+    assert 0 < model.events.count("update") < len(run_dates) - 2
+    assert all(frame.height > 0 for frame in model.update_frames)
+
+    # The first delta after the boundary is exactly [T(Feb 1), T(Feb 2)).
+    t_feb_1 = _issuance(date(2026, 2, 1))
+    t_feb_2 = _issuance(date(2026, 2, 2))
+    delta = model.delta_for_t[t_feb_2]
+    assert _pair_keys(delta) == _pair_keys(
+        pairs.filter(
+            pl.col("scorable")
+            & (pl.col("window_end_utc") >= t_feb_1)
+            & (pl.col("window_end_utc") < t_feb_2)
+        )
+    )
+    assert t_feb_1 not in model.delta_for_t
+
+
+def test_update_hook_daily_retrain_never_needs_an_update() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 20), 24)
+    pairs = _synthetic_pairs(run_dates, seed=22, unscorable_frac=0.2)
+
+    model = UpdateRecordingModel()
+    walk_forward(pairs, model, start=run_dates[0], end=run_dates[-1], retrain="daily")
+
+    _assert_leakage_property(model, pairs, run_dates)
+    assert model.update_frames == []
+    assert model.events == ["fit", "predict"] * len(run_dates)
+
+
+def test_update_delta_is_columns_complete_and_matches_fit_schema() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 20), 10)
+    pairs = _synthetic_pairs(run_dates, seed=23)
+
+    model = UpdateRecordingModel()
+    walk_forward(pairs, model, start=run_dates[0], end=run_dates[-1])
+
+    assert model.update_frames
+    for frame in model.update_frames:
+        assert frame.columns == pairs.columns
+        # Answer columns are present, exactly as in `fit` -- `update` is a
+        # training-side call, so observed_f must be there.
+        assert frame["observed_f"].null_count() == 0
+
+
+def test_update_lead3_closure_and_both_boundaries() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 2, 1), 40)
+    pairs = _synthetic_pairs(run_dates, stations=("KPHX", "KDEN"), seed=24)
+
+    t = date(2026, 2, 20)
+    t_time = _issuance(t)
+    t_prev = _issuance(t - timedelta(days=1))
+    t_next = _issuance(t + timedelta(days=1))
+
+    def extra(station: str, window_end: datetime, target: date) -> dict[str, object]:
+        return {
+            "station": station,
+            "run_date": date(2026, 2, 10),
+            "runtime_utc": _issuance(date(2026, 2, 10)),
+            "cycle_hour": 13,
+            "lead_day": 3,
+            "variable": "max",
+            "target_date": target,
+            "forecast_f": 54.0,
+            "spread_f": 3.0,
+            "tmp_f": 50.0,
+            "window_start_utc": window_end - timedelta(hours=18),
+            "window_end_utc": window_end,
+            "observed_f": 55.0,
+            "scorable": True,
+            "source": "raw_nbm",
+        }
+
+    # One pair closing exactly at T(t): excluded from t's delta (strict <),
+    # delivered at t+1. One closing exactly at T(t-1): excluded from t-1's
+    # delta, delivered at t (the lower bound is inclusive), and not again.
+    pairs = pl.concat(
+        [
+            pairs,
+            pl.DataFrame(
+                [extra("KPHX", t_time, t), extra("KDEN", t_prev, t)],
+                schema=pairs.schema,
+            ),
+        ],
+        how="vertical",
+    )
+
+    model = UpdateRecordingModel()
+    walk_forward(
+        pairs, model, start=run_dates[0], end=run_dates[-1], retrain="monthly"
+    )
+    _assert_leakage_property(model, pairs, run_dates)
+
+    at_t = model.delta_for_t[t_time]
+    at_prev = model.delta_for_t[t_prev]
+    at_next = model.delta_for_t[t_next]
+
+    assert at_t.filter(pl.col("window_end_utc") == t_time).height == 0
+    assert at_next.filter(pl.col("window_end_utc") == t_time).height == 1
+    assert at_prev.filter(pl.col("window_end_utc") == t_prev).height == 0
+    assert at_t.filter(pl.col("window_end_utc") == t_prev).height == 1
+    assert at_next.filter(pl.col("window_end_utc") == t_prev).height == 0
+
+    assert at_t.get_column("window_end_utc").min() >= t_prev
+    assert at_t.get_column("window_end_utc").max() < t_time
+
+    # Run t-1's lead-3 min (target t+2, closes t+2 18Z) and lead-2 max
+    # (target t+1, closes t+2 06Z) are absent from t's delta.
+    day_before = t - timedelta(days=1)
+    assert (
+        at_t.filter(
+            (pl.col("run_date") == day_before)
+            & (
+                ((pl.col("lead_day") == 3) & (pl.col("variable") == "min"))
+                | ((pl.col("lead_day") == 2) & (pl.col("variable") == "max"))
+            )
+        ).height
+        == 0
+    )
+
+    # A max window that closed at t 06Z is in it.
+    assert (
+        at_t.filter(
+            pl.col("window_end_utc") == datetime.combine(t, time(6, 0), tzinfo=UTC)
+        ).height
+        > 0
+    )
+
+
+def test_cheating_model_with_update_gains_nothing_but_leaky_update_helps() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 1), 75)
+    pairs = _synthetic_pairs(run_dates, seed=25)
+    scorable = pairs.filter(pl.col("scorable"))
+    start = run_dates[10]
+
+    raw_result = walk_forward(
+        pairs, RawNbmModel(), start=start, end=run_dates[-1], retrain="monthly"
+    )
+    cheat_result = walk_forward(
+        pairs, CheatingUpdateModel(), start=start, end=run_dates[-1], retrain="monthly"
+    )
+
+    sort_keys = ["run_date", "station", "lead_day", "variable"]
+    assert cheat_result.sort(sort_keys)["forecast_f"].equals(
+        raw_result.sort(sort_keys)["forecast_f"]
+    )
+    assert _mae(cheat_result, scorable) == pytest.approx(
+        _mae(raw_result, scorable), abs=1e-9
+    )
+
+    leaky = _leaky_update_walk_forward(
+        pairs, CheatingUpdateModel(), start=start, end=run_dates[-1]
+    )
+    leaky_mae = _mae(leaky, scorable)
+    raw_mae = _mae(raw_result, scorable)
+    assert leaky_mae < raw_mae - 0.3, (
+        f"a run_date-cut update must leak: leaky={leaky_mae:.4f} raw={raw_mae:.4f}"
+    )
+
+
+def test_update_is_skipped_when_the_delta_is_empty() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 20), 10)
+    pairs = _synthetic_pairs(run_dates, seed=26, unscorable_frac=1.0)
+
+    model = UpdateRecordingModel()
+    result = walk_forward(pairs, model, start=run_dates[0], end=run_dates[-1])
+
+    assert model.update_frames == []
+    assert "update" not in model.events
+    assert result.height > 0
+
+
+def test_models_without_update_are_unaffected() -> None:
+    run_dates = _consecutive_run_dates(date(2026, 1, 20), 40)
+    pairs = _synthetic_pairs(run_dates, seed=27)
+
+    spy = SpyModel()
+    assert not hasattr(spy, "update")
+    with_spy = walk_forward(pairs, spy, start=run_dates[0], end=run_dates[-1])
+    with_raw = walk_forward(pairs, RawNbmModel(), start=run_dates[0], end=run_dates[-1])
+
+    assert with_spy.drop("source").equals(with_raw.drop("source"))
+    assert len(spy.fit_calls) == 2  # Jan 20 and Feb 1: unchanged cadence
+
+
+# -- 12. teeth-check survivors: cadence across years, scorable vs observed_f ----
+
+
+def test_monthly_cadence_retrains_in_the_same_calendar_month_of_a_later_year() -> None:
+    run_dates = [
+        date(2026, 1, 28),
+        date(2026, 1, 29),
+        date(2027, 1, 28),
+        date(2027, 1, 29),
+    ]
+    pairs = _synthetic_pairs(run_dates, seed=31)
+
+    model = _CountingRawModel()
+    result = walk_forward(
+        pairs, model, start=run_dates[0], end=run_dates[-1], retrain="monthly"
+    )
+
+    assert model.fit_count == 2
+    for row in result.iter_rows(named=True):
+        year = row["run_date"].year
+        assert row["retrained_on"] == date(year, 1, 28)
+
+
+def test_scorable_flag_not_observed_f_decides_what_fit_and_update_receive() -> None:
+    """An unscorable pair may still carry an observed_f (a window that could
+    not be tiled has partial hourly coverage). Neither `fit` nor `update`
+    may be handed it: the `scorable` flag is the gate, not a non-null
+    `observed_f`."""
+    run_dates = _consecutive_run_dates(date(2026, 1, 20), 24)
+    pairs = _synthetic_pairs(run_dates, seed=32, unscorable_frac=0.3).with_columns(
+        observed_f=pl.when(pl.col("scorable"))
+        .then(pl.col("observed_f"))
+        .otherwise(pl.lit(99.0))
+    )
+    assert pairs.filter(~pl.col("scorable"))["observed_f"].null_count() == 0
+
+    model = UpdateRecordingModel()
+    walk_forward(
+        pairs, model, start=run_dates[0], end=run_dates[-1], retrain="monthly"
+    )
+
+    _assert_leakage_property(model, pairs, run_dates)
+    assert model.update_frames
+    for frame in [*model.fit_frames, *model.update_frames]:
+        assert frame.filter(pl.col("observed_f") == 99.0).height == 0

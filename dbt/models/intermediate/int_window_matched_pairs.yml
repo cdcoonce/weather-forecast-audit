@@ -1,0 +1,68 @@
+version: 2
+
+models:
+  - name: int_window_matched_pairs
+    description: >
+      Guidance txn rows joined to their resolved verification window, with a
+      CLI cross-check. Carries the guidance-side `tmp_f` (NBS temperature
+      guidance for the same run and ftime) next to `forecast_f` and
+      `spread_f`, so a model can use it as a feature (issue #19).
+    columns:
+      - name: tmp_f
+        description: >
+          NBS's own temperature guidance (degrees F) at this row's ftime_utc.
+          Guidance-side, known at issuance. Null when the raw guidance row
+          has no tmp.
+
+unit_tests:
+  - name: test_guidance_tmp_f_follows_its_own_ftime
+    description: >
+      Two guidance rows of one run with different tmp_f (and one null) join
+      to their own resolved windows by (station, runtime_utc, ftime_utc):
+      each pair carries the tmp_f of its own ftime, not another row's.
+    model: int_window_matched_pairs
+    given:
+      - input: ref('stg_nbs_guidance')
+        rows:
+          - station: KPHX
+            runtime_utc: "2024-07-01 13:00:00"
+            ftime_utc: "2024-07-02 06:00:00"
+            cycle_hour: 13
+            forecast_f: 108.0
+            spread_f: 3.0
+            tmp_f: 96.0
+          - station: KPHX
+            runtime_utc: "2024-07-01 13:00:00"
+            ftime_utc: "2024-07-02 12:00:00"
+            cycle_hour: 13
+            forecast_f: 80.0
+            spread_f: 2.0
+            tmp_f: null
+      - input: ref('stg_resolved_windows')
+        rows:
+          - station: KPHX
+            runtime_utc: "2024-07-01 13:00:00"
+            ftime_utc: "2024-07-02 06:00:00"
+            variable: max
+            target_date: "2024-07-01"
+            lead_day: 0
+            scorable: false
+          - station: KPHX
+            runtime_utc: "2024-07-01 13:00:00"
+            ftime_utc: "2024-07-02 12:00:00"
+            variable: min
+            target_date: "2024-07-02"
+            lead_day: 1
+            scorable: false
+      - input: ref('stg_cli_daily')
+        rows: []
+    expect:
+      rows:
+        - station: KPHX
+          ftime_utc: "2024-07-02 06:00:00"
+          forecast_f: 108.0
+          tmp_f: 96.0
+        - station: KPHX
+          ftime_utc: "2024-07-02 12:00:00"
+          forecast_f: 80.0
+          tmp_f: null

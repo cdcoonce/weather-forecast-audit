@@ -1,0 +1,54 @@
+## warm-up: run_date < 2021-09-29 (first 12 months)
+  max lead1 n=187696 skill=0.0109 [-0.0081, 0.0301]
+  max lead2 n=181079 skill=0.0088 [-0.0101, 0.0270]
+  min lead1 n=194564 skill=-0.0093 [-0.0227, 0.0013]
+  min lead2 n=187951 skill=-0.0060 [-0.0159, 0.0029]
+  min lead3 n=181282 skill=-0.0072 [-0.0178, 0.0005]
+## after warm-up: run_date >= 2021-09-29
+  max lead1 n=936876 skill=0.0368 [0.0305, 0.0435]
+  max lead2 n=903773 skill=0.0273 [0.0214, 0.0332]
+  min lead1 n=971335 skill=0.0215 [0.0184, 0.0249]
+  min lead2 n=937647 skill=0.0176 [0.0146, 0.0205]
+  min lead3 n=904552 skill=0.0133 [0.0107, 0.0159]
+## EXPLORATORY by calendar year 2021
+  max lead1 n=188223 skill=0.0192 [-0.0005, 0.0368]
+  max lead2 n=181608 skill=0.0167 [-0.0023, 0.0362]
+  min lead1 n=195061 skill=0.0118 [0.0016, 0.0226]
+  min lead2 n=188433 skill=0.0117 [0.0035, 0.0205]
+  min lead3 n=181770 skill=0.0091 [0.0007, 0.0174]
+## EXPLORATORY by calendar year 2022
+  max lead1 n=189015 skill=0.0246 [0.0157, 0.0331]
+  max lead2 n=182367 skill=0.0174 [0.0063, 0.0275]
+  min lead1 n=195912 skill=0.0169 [0.0092, 0.0257]
+  min lead2 n=189246 skill=0.0153 [0.0088, 0.0227]
+  min lead3 n=182583 skill=0.0118 [0.0062, 0.0189]
+## EXPLORATORY by calendar year 2023
+  max lead1 n=188945 skill=0.0466 [0.0293, 0.0652]
+  max lead2 n=182281 skill=0.0354 [0.0200, 0.0528]
+  min lead1 n=195933 skill=0.0198 [0.0140, 0.0258]
+  min lead2 n=189267 skill=0.0163 [0.0105, 0.0222]
+  min lead3 n=182615 skill=0.0120 [0.0069, 0.0173]
+## EXPLORATORY by calendar year 2024
+  max lead1 n=187584 skill=0.0369 [0.0227, 0.0525]
+  max lead2 n=180945 skill=0.0276 [0.0147, 0.0416]
+  min lead1 n=194076 skill=0.0271 [0.0184, 0.0360]
+  min lead2 n=187448 skill=0.0230 [0.0164, 0.0301]
+  min lead3 n=180824 skill=0.0184 [0.0115, 0.0257]
+## EXPLORATORY by calendar year 2025
+  max lead1 n=186475 skill=0.0449 [0.0320, 0.0587]
+  max lead2 n=179918 skill=0.0327 [0.0209, 0.0463]
+  min lead1 n=193283 skill=0.0210 [0.0145, 0.0266]
+  min lead2 n=186704 skill=0.0159 [0.0111, 0.0208]
+  min lead3 n=180159 skill=0.0115 [0.0080, 0.0147]
+## EXPLORATORY by calendar year 2026
+  max lead1 n=137001 skill=0.0284 [0.0171, 0.0409] MIN_SAMPLE_FLAG
+  max lead2 n=132074 skill=0.0187 [0.0088, 0.0299] MIN_SAMPLE_FLAG
+  min lead1 n=142042 skill=0.0153 [0.0106, 0.0209] MIN_SAMPLE_FLAG
+  min lead2 n=137125 skill=0.0102 [0.0053, 0.0156] MIN_SAMPLE_FLAG
+  min lead3 n=132184 skill=0.0067 [0.0025, 0.0113] MIN_SAMPLE_FLAG
+## fallback share by month (challenger), months with fallback > 0
+  2020-09 n=5730 fallback_share=1.000
+  2020-10 n=88790 fallback_share=1.000
+months total 73 overall (0.01509391779946903,)
+## challenger vs raw: row-set parity
+(6262125, 6262125)

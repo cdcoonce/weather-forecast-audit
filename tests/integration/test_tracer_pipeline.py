@@ -226,6 +226,65 @@ def test_tracer_pipeline_known_answers(
         assert row[6] == periods
 
 
+def _fixture_tmp_by_target() -> dict[tuple[date, str], float]:
+    """`tmp` of the 13Z 2023-07-14 guidance row each known answer verifies.
+
+    Read straight from the guidance fixture CSV with the methodology's
+    ftime rule (a `min` is reported at `D 12Z`, a `max` at `D+1 00Z`), not
+    through the warehouse, so this is not an echo of the models under test.
+    """
+    expected: dict[tuple[date, str], float] = {}
+    with (FIXTURES / "nbs_kphx_2023-07-14.csv").open(newline="") as handle:
+        for record in csv.DictReader(handle):
+            if record["runtime"] != "2023-07-14 13:00:00" or record["txn"] == "":
+                continue
+            ftime = datetime.strptime(record["ftime"], "%Y-%m-%d %H:%M:%S").replace(
+                tzinfo=UTC
+            )
+            if ftime.hour == 12:
+                expected[(ftime.date(), "min")] = float(record["tmp"])
+            elif ftime.hour == 0:
+                expected[(ftime.date() - timedelta(days=1), "max")] = float(
+                    record["tmp"]
+                )
+    return expected
+
+
+def test_tracer_pipeline_tmp_f_reaches_the_verification_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "tracer.duckdb"
+    _run_ingest(db_path)
+    _dbt_build(tmp_path, db_path, monkeypatch)
+
+    expected = _fixture_tmp_by_target()
+    assert len(expected) == len(KNOWN_ANSWERS)
+
+    with duckdb.connect(str(db_path)) as conn:
+        rows = conn.execute(
+            "select target_date, variable, tmp_f from fct_forecast_verification "
+            "where station = 'KPHX' and run_date = '2023-07-14'"
+        ).fetchall()
+        # Every fct row carries its pair's own guidance tmp, for any run.
+        mismatches = conn.execute(
+            "select count(*) from fct_forecast_verification as f "
+            "inner join int_window_matched_pairs as m "
+            "on f.station = m.station and f.runtime_utc = m.runtime_utc "
+            "and f.lead_day = m.lead_day and f.variable = m.variable "
+            "inner join raw.nbs_guidance as g "
+            "on m.station = g.station and m.runtime_utc = g.runtime_utc "
+            "and m.ftime_utc = g.ftime_utc "
+            "where f.tmp_f is distinct from g.tmp"
+        ).fetchone()
+        n_with_tmp = conn.execute(
+            "select count(*) from fct_forecast_verification where tmp_f is not null"
+        ).fetchone()
+
+    assert {(r[0], r[1]): r[2] for r in rows} == pytest.approx(expected)
+    assert mismatches == (0,)
+    assert n_with_tmp is not None and n_with_tmp[0] > 0
+
+
 def test_tracer_pipeline_2026_rows_carry_cycle_hour_and_are_unscorable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

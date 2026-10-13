@@ -27,6 +27,7 @@ with base as (
         target_date,
         forecast_f,
         spread_f,
+        tmp_f,
         observed_f,
         window_start_utc,
         window_end_utc,
