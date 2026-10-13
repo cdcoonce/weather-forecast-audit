@@ -1,0 +1,135 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/dbt/test_dbt_build.py",
+    "tests/integration/test_tracer_pipeline.py::test_tracer_pipeline_tmp_f_reaches_the_verification_rows",
+    "tests/integration/test_baseline_pipeline.py::test_every_source_carries_the_same_tmp_f_per_pair"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "tests/dbt/test_dbt_build.py",
+    "tests/integration/test_tracer_pipeline.py::test_tracer_pipeline_tmp_f_reaches_the_verification_rows",
+    "tests/integration/test_baseline_pipeline.py::test_every_source_carries_the_same_tmp_f_per_pair"
+  ],
+  "mutants": [
+    {
+      "label": "staging: tmp_f always null",
+      "file": "../../../dbt/models/staging/stg_nbs_guidance.sql",
+      "oracle": "real",
+      "find": "tmp as tmp_f",
+      "replace": "cast(null as double) as tmp_f"
+    },
+    {
+      "label": "staging: tmp_f taken from xnd (spread) instead of tmp",
+      "file": "../../../dbt/models/staging/stg_nbs_guidance.sql",
+      "oracle": "real",
+      "find": "tmp as tmp_f",
+      "replace": "xnd as tmp_f"
+    },
+    {
+      "label": "staging: tmp_f taken from txn (forecast) instead of tmp",
+      "file": "../../../dbt/models/staging/stg_nbs_guidance.sql",
+      "oracle": "real",
+      "find": "tmp as tmp_f",
+      "replace": "txn as tmp_f"
+    },
+    {
+      "label": "matched pairs: tmp_f not selected",
+      "file": "../../../dbt/models/intermediate/int_window_matched_pairs.sql",
+      "oracle": "real",
+      "find": "guidance.spread_f,\n        guidance.tmp_f",
+      "replace": "guidance.spread_f"
+    },
+    {
+      "label": "matched pairs: tmp_f always null",
+      "file": "../../../dbt/models/intermediate/int_window_matched_pairs.sql",
+      "oracle": "real",
+      "find": "guidance.tmp_f",
+      "replace": "cast(null as double) as tmp_f"
+    },
+    {
+      "label": "matched pairs: tmp_f taken from spread_f",
+      "file": "../../../dbt/models/intermediate/int_window_matched_pairs.sql",
+      "oracle": "real",
+      "find": "guidance.tmp_f",
+      "replace": "guidance.spread_f as tmp_f"
+    },
+    {
+      "label": "raw pairs: tmp_f not selected",
+      "file": "../../../dbt/models/intermediate/int_raw_verification_pairs.sql",
+      "oracle": "real",
+      "find": "        spread_f,\n        tmp_f,\n        observed_f,",
+      "replace": "        spread_f,\n        observed_f,"
+    },
+    {
+      "label": "raw pairs: tmp_f taken from spread_f",
+      "file": "../../../dbt/models/intermediate/int_raw_verification_pairs.sql",
+      "oracle": "real",
+      "find": "        tmp_f,\n        observed_f,",
+      "replace": "        spread_f as tmp_f,\n        observed_f,"
+    },
+    {
+      "label": "raw pairs: tmp_f listed before spread_f (positional union misaligns prediction rows)",
+      "file": "../../../dbt/models/intermediate/int_raw_verification_pairs.sql",
+      "oracle": "real",
+      "find": "        spread_f,\n        tmp_f,\n        observed_f,",
+      "replace": "        tmp_f,\n        spread_f,\n        observed_f,"
+    },
+    {
+      "label": "fct: prediction rows omit tmp_f",
+      "file": "../../../dbt/models/marts/fct_forecast_verification.sql",
+      "oracle": "real",
+      "find": "        raw_pairs.spread_f,\n        raw_pairs.tmp_f,\n        raw_pairs.observed_f,",
+      "replace": "        raw_pairs.spread_f,\n        raw_pairs.observed_f,"
+    },
+    {
+      "label": "fct: prediction rows tmp_f always null",
+      "file": "../../../dbt/models/marts/fct_forecast_verification.sql",
+      "oracle": "real",
+      "find": "        raw_pairs.tmp_f,\n",
+      "replace": "        cast(null as double) as tmp_f,\n"
+    },
+    {
+      "label": "fct: prediction rows tmp_f taken from spread_f",
+      "file": "../../../dbt/models/marts/fct_forecast_verification.sql",
+      "oracle": "real",
+      "find": "        raw_pairs.tmp_f,\n",
+      "replace": "        raw_pairs.spread_f as tmp_f,\n"
+    },
+    {
+      "label": "fct: prediction rows list tmp_f after observed_f (positional union swaps them)",
+      "file": "../../../dbt/models/marts/fct_forecast_verification.sql",
+      "oracle": "real",
+      "find": "        raw_pairs.tmp_f,\n        raw_pairs.observed_f,",
+      "replace": "        raw_pairs.observed_f,\n        raw_pairs.tmp_f,"
+    },
+    {
+      "label": "fct: prediction rows list tmp_f before spread_f (positional union swaps them)",
+      "file": "../../../dbt/models/marts/fct_forecast_verification.sql",
+      "oracle": "real",
+      "find": "        raw_pairs.spread_f,\n        raw_pairs.tmp_f,",
+      "replace": "        raw_pairs.tmp_f,\n        raw_pairs.spread_f,"
+    },
+    {
+      "label": "[control] matched pairs: reorder two independent named columns",
+      "file": "../../../dbt/models/intermediate/int_window_matched_pairs.sql",
+      "oracle": "real",
+      "find": "        resolved.n_obs,\n        resolved.hours_covered,",
+      "replace": "        resolved.hours_covered,\n        resolved.n_obs,",
+      "expect": "survived",
+      "why": "Every consumer of int_window_matched_pairs selects its columns by name (int_raw_verification_pairs lists them explicitly, the dbt unit tests compare named rows), and the only positional operation in the lineage, fct's union all, reads int_raw_verification_pairs whose select list is unchanged. Inert while no model reads int_window_matched_pairs with select * into a union; it would stop being inert if one did."
+    }
+  ]
+}

@@ -32,7 +32,8 @@ matched as (
         resolved.hourly_observed_f,
         guidance.cycle_hour,
         guidance.forecast_f,
-        guidance.spread_f
+        guidance.spread_f,
+        guidance.tmp_f
     from resolved
     inner join guidance
         on

@@ -15,3 +15,46 @@ models:
               - station
               - runtime_utc
               - ftime_utc
+    columns:
+      - name: tmp_f
+        description: >
+          NBS's own temperature guidance (`tmp`, degrees F) for this
+          (station, runtime_utc, ftime_utc) row. A property of the run and
+          forecast time, known at issuance -- never an observation. Null is
+          legal (the raw column is nullable).
+
+unit_tests:
+  - name: test_tmp_is_exposed_as_tmp_f
+    description: >
+      The raw `tmp` column is exposed as `tmp_f` (the `_f` unit suffix every
+      other degrees-F column carries), with null passed through.
+    model: stg_nbs_guidance
+    given:
+      - input: source('raw', 'nbs_guidance')
+        rows:
+          - station: KPHX
+            runtime_utc: "2024-07-01 13:00:00"
+            ftime_utc: "2024-07-02 06:00:00"
+            cycle_hour: 13
+            txn: 108.0
+            xnd: 3.0
+            tmp: 96.0
+          - station: KPHX
+            runtime_utc: "2024-07-01 13:00:00"
+            ftime_utc: "2024-07-02 12:00:00"
+            cycle_hour: 13
+            txn: 80.0
+            xnd: 2.0
+            tmp: null
+    expect:
+      rows:
+        - station: KPHX
+          ftime_utc: "2024-07-02 06:00:00"
+          forecast_f: 108.0
+          spread_f: 3.0
+          tmp_f: 96.0
+        - station: KPHX
+          ftime_utc: "2024-07-02 12:00:00"
+          forecast_f: 80.0
+          spread_f: 2.0
+          tmp_f: null
