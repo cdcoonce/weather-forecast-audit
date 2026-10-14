@@ -497,7 +497,10 @@ def _station_stats(scored: pl.DataFrame) -> dict[str, list[dict[str, object]]]:
 
 
 def _write_json(path: Path, payload: object) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    # allow_nan=False: NaN/Infinity are not JSON, and a browser's JSON.parse
+    # would reject the whole file. Better the export fails than publishes it.
+    text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
+    path.write_text(text + "\n")
 
 
 def export(

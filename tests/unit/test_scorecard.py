@@ -923,3 +923,35 @@ def test_sources_disagreeing_on_the_raw_forecast_are_refused_not_tie_broken(
 
     with pytest.raises(ValueError, match="raw_forecast_f"):
         scorecard.build_scorecard(connection)
+
+
+def test_a_non_finite_observation_is_not_graded_and_never_reaches_the_json(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """A NaN observed_f flagged scorable passed `is_not_null` and poisoned
+    every MAE of its group with NaN; strict JSON parsers (a browser's
+    `JSON.parse`) then reject the whole file."""
+    window = scorecard.build_scorecard(conn).window
+    assert window is not None
+    conn.execute(
+        "update int_raw_verification_pairs set observed_f = 'NaN'::double, "
+        "scorable = true where station = 'KPHX' and variable = 'max' "
+        "and lead_day = 1 and target_date between ? and ?",
+        [window[0], window[1]],
+    )
+    poisoned = conn.execute(
+        "select count(*) from int_raw_verification_pairs "
+        "where isnan(observed_f) and station = 'KPHX'"
+    ).fetchone()
+    assert poisoned is not None and poisoned[0] > 0  # the fixture is not vacuous
+
+    card = scorecard.build_scorecard(conn)
+
+    json.dumps(
+        {"national": card.national, "stations": card.stations}, allow_nan=False
+    )
+
+
+def test_export_refuses_to_write_non_finite_numbers(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="JSON"):
+        export._write_json(tmp_path / "x.json", {"a": float("nan")})

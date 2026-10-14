@@ -54,7 +54,8 @@ _KEY = ("station", "run_date", "lead_day", "variable")
 _LOGGED_QUERY = """
     select l.station, l.run_date, l.lead_day, l.variable, l.source,
            l.target_date, l.forecast_f, l.raw_forecast_f, p.observed_f,
-           coalesce(p.scorable, false) and p.observed_f is not null as scorable
+           coalesce(p.scorable, false)
+               and coalesce(isfinite(p.observed_f), false) as scorable
     from live.prediction_log as l
     left join int_raw_verification_pairs as p
         on p.station = l.station
@@ -71,7 +72,7 @@ _LATEST_GRADED_QUERY = """
         and p.run_date = l.run_date
         and p.lead_day = l.lead_day
         and p.variable = l.variable
-    where p.scorable and p.observed_f is not null
+    where p.scorable and coalesce(isfinite(p.observed_f), false)
 """
 
 _FRAME_SCHEMA = {
