@@ -871,6 +871,24 @@
         "src/pages/Scorecard.test.tsx"
       ],
       "cwd": "site"
+    },
+    {
+      "label": "graded-observation-may-be-non-finite",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "coalesce(isfinite(p.observed_f), false) as scorable",
+      "replace": "p.observed_f is not null as scorable",
+      "why": "NaN passes is-not-null; a NaN observation then poisons every MAE of its group and the file is not valid JSON",
+      "expect": "test_a_non_finite_observation_is_not_graded_and_never_reaches_the_json"
+    },
+    {
+      "label": "writer-allows-nan",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "sort_keys=True, allow_nan=False)",
+      "replace": "sort_keys=True)",
+      "why": "the exporter must fail rather than publish NaN/Infinity, which a browser's JSON.parse rejects",
+      "expect": "test_export_refuses_to_write_non_finite_numbers"
     }
   ]
 }
