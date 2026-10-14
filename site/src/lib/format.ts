@@ -124,6 +124,41 @@ export function formatTypicalMissLine(typicalMiss: TypicalMiss): string | null {
   return `Typical miss, day-ahead: ${parts.join(" · ")}`;
 }
 
+/**
+ * A signed fixed-decimal number with a true minus sign, e.g. "+0.50",
+ * "−0.04". A value that rounds to zero at `digits` prints as plain "0.00",
+ * never as a signed zero.
+ */
+export function formatSignedFixed(value: number, digits = 2): string {
+  const text = Math.abs(value).toFixed(digits);
+  if (Number(text) === 0) return text;
+  return `${value > 0 ? "+" : MINUS}${text}`;
+}
+
+/** `"lo to hi"` through `format`, or null when either endpoint is missing.
+ * Never "±": a percentile interval need not be symmetric. */
+export function formatInterval(
+  lo: number | null,
+  hi: number | null,
+  format: (value: number) => string
+): string | null {
+  if (lo == null || hi == null) return null;
+  return `${format(lo)} to ${format(hi)}`;
+}
+
+/** A skill fraction as a signed percentage, e.g. "+12.3%", "−5.0%". */
+export function formatSkillPercent(skill: number | null): string | null {
+  if (skill == null) return null;
+  const text = (Math.abs(skill) * 100).toFixed(1);
+  if (Number(text) === 0) return `${text}%`;
+  return `${skill > 0 ? "+" : MINUS}${text}%`;
+}
+
+/** A mean absolute error (degrees F) to two decimals, e.g. "2.00". */
+export function formatMae(value: number): string {
+  return value.toFixed(2);
+}
+
 /** `"2026-09-27T14:03:00Z"` -> `"2026-09-27 14:03 UTC"`. */
 export function formatGeneratedAt(iso: string): string {
   const date = new Date(iso);

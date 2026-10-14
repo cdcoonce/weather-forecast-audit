@@ -4,9 +4,11 @@
     "manifest.json",
     "city_index.json",
     "completeness.json",
-    "cities/KPHX.json"
+    "scorecard.json",
+    "cities/KPHX.json",
+    "scorecard_cities/KPHX.json"
   ],
-  "generated_at": "2026-09-27T18:10:47Z",
-  "schema_version": "1.0.0",
+  "generated_at": "2026-10-14T02:02:55Z",
+  "schema_version": "1.1.0",
   "station_count": 1
 }

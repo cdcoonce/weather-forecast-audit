@@ -1,12 +1,17 @@
-"""Export contract v1: manifest, city index, per-city stats, completeness stub.
+"""Export contract v1: manifest, city index, per-city stats, completeness stub,
+and (1.1.0, additive) the live scorecard.
 
-Turns `fct_forecast_verification` (source `raw_nbm` only in v1) and the
-station registry into the versioned static JSON files the site reads.
-`SCHEMA_VERSION` is embedded in every file. The four schemas under
+Turns `fct_forecast_verification` (source `raw_nbm` only) and the station
+registry into the versioned static JSON files the site reads, and
+`weather_forecast_audit.scorecard` (the append-only prediction log graded
+against observations) into `scorecard.json` and `scorecard_cities/`.
+`SCHEMA_VERSION` is embedded in every file. The six schemas under
 `export_schema/v1/` and their content-hash lock (`export_schema/lock.json`)
 are the versioning guard: editing a schema without bumping
 `SCHEMA_VERSION` and appending a new lock entry fails
 `tests/unit/test_export.py::test_schema_matches_lock_for_current_version`.
+The log is verified before anything is written: a scorecard is never
+published over a log that fails its own immutability check.
 
 No Dagster asset here by design -- another builder is editing
 `definitions.py` in parallel (issue #10); the export asset lands with #16.
@@ -23,10 +28,11 @@ from pathlib import Path
 import duckdb
 import polars as pl
 
+from weather_forecast_audit import scorecard as scorecard_module
 from weather_forecast_audit.registry import Station, load_registry
 from weather_forecast_audit.scoring import score
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_DIR = REPO_ROOT / "export_schema" / "v1"
@@ -37,6 +43,8 @@ _SCHEMA_FILENAMES = (
     "city_index.schema.json",
     "city.schema.json",
     "completeness.schema.json",
+    "scorecard.schema.json",
+    "scorecard_city.schema.json",
 )
 
 _RAW_SOURCE = "raw_nbm"
@@ -56,7 +64,7 @@ _VERIFICATION_QUERY = """
 
 
 def schema_files() -> dict[str, Path]:
-    """The four v1 schema files, keyed by filename (as `lock.json` keys them)."""
+    """The v1 schema files, keyed by filename (as `lock.json` keys them)."""
     return {name: SCHEMA_DIR / name for name in _SCHEMA_FILENAMES}
 
 
@@ -310,8 +318,10 @@ def _round2(value: object) -> float | None:
     return None if value is None else round(float(value), 2)  # type: ignore[arg-type]
 
 
-def _round_sign_preserving(value: float, *, exclude_zero: bool) -> float:
-    """Round one bias value to 2 dp, never letting the rounding land on or
+def _round_sign_preserving(
+    value: float, *, exclude_zero: bool, ndigits: int = 2
+) -> float:
+    """Round one value to `ndigits`, never letting the rounding land on or
     cross 0 when the *unrounded* CI excludes 0 (`exclude_zero`, i.e.
     `no_detectable_bias` is false).
 
@@ -319,25 +329,62 @@ def _round_sign_preserving(value: float, *, exclude_zero: bool) -> float:
     estimate) to 0.00, which reads as "spans zero" even though the
     unrounded value was, say, -0.0041 -- the exact opposite of what
     `no_detectable_bias: false` claims. When that would happen, this emits
-    the smallest 2-dp value with the value's own sign instead (+0.01 or
-    -0.01), nudging the published number by less than 0.01F toward the
-    excluded side. The published data must never contradict its own flag.
+    the smallest `ndigits` value with the value's own sign instead (+0.01 or
+    -0.01 at 2 dp), nudging the published number by less than one unit in
+    the last place toward the excluded side. The published data must never
+    contradict its own flag.
 
     When `exclude_zero` is false (the CI spans 0), plain rounding can never
     break that: a value <= 0 rounds to something <= 0, and a value >= 0
-    rounds to something >= 0 (nearest-2dp rounding never crosses 0 for an
+    rounds to something >= 0 (nearest rounding never crosses 0 for an
     input that is already on the non-strict side of it) -- asserted by
     `test_rounding_never_breaks_the_spans_zero_invariant` rather than
     assumed here.
     """
-    rounded = round(value, 2)
+    rounded = round(value, ndigits)
     if not exclude_zero:
         return rounded
+    smallest = round(10.0**-ndigits, ndigits)
     if value > 0 and rounded <= 0:
-        return 0.01
+        return smallest
     if value < 0 and rounded >= 0:
-        return -0.01
+        return -smallest
     return rounded
+
+
+def _round_interval(
+    point: object,
+    lo: object,
+    hi: object,
+    *,
+    exclude_zero: bool,
+    ndigits: int = 2,
+) -> tuple[float | None, float | None, float | None]:
+    """Round a (point, lo, hi) triple sign-preservingly and keep the point
+    estimate inside the rounded interval.
+
+    Sign-preserving rounding of the endpoints alone could still leave the
+    rounded point estimate outside `[lo, hi]` (e.g. a point that
+    plain-rounds to 0.00 while a nudged `hi` sits at -0.01), so the point
+    is rounded the same way and, as a last resort, clamped into the rounded
+    interval. Returns `(point, lo, hi)`.
+    """
+
+    def _one(value: object) -> float | None:
+        if value is None:
+            return None
+        return _round_sign_preserving(
+            float(value),  # type: ignore[arg-type]
+            exclude_zero=exclude_zero,
+            ndigits=ndigits,
+        )
+
+    rounded_lo, rounded_hi, rounded_point = _one(lo), _one(hi), _one(point)
+    if rounded_point is not None and rounded_lo is not None:
+        rounded_point = max(rounded_point, rounded_lo)
+    if rounded_point is not None and rounded_hi is not None:
+        rounded_point = min(rounded_point, rounded_hi)
+    return rounded_point, rounded_lo, rounded_hi
 
 
 def round_stat(stat: Mapping[str, object]) -> dict[str, object]:
@@ -347,48 +394,61 @@ def round_stat(stat: Mapping[str, object]) -> dict[str, object]:
     `scoring.score` from unrounded values and passed through unchanged here:
     rounding must never be able to flip a flag. Endpoints (and the point
     estimate) are rounded sign-preservingly instead of plainly, via
-    `_round_sign_preserving`, precisely so that reading the flag back off
-    the *rounded, exported* numbers (`bias_lo_f <= 0 <= bias_hi_f`) always
-    agrees with `no_detectable_bias` -- see its docstring.
-
-    Sign-preserving rounding of `bias_lo_f`/`bias_hi_f` alone would fix the
-    endpoints but could still leave the rounded `bias_f` point estimate
-    outside `[bias_lo_f, bias_hi_f]` (e.g. a `bias_f` that plain-rounds to
-    0.00 while a nudged `bias_hi_f` sits at -0.01). `bias_f` is rounded the
-    same sign-preserving way, and as a last resort clamped into the rounded
-    interval, so the point estimate never contradicts its own CI either.
+    `_round_interval`, precisely so that reading the flag back off the
+    *rounded, exported* numbers (`bias_lo_f <= 0 <= bias_hi_f`) always
+    agrees with `no_detectable_bias` -- see `_round_sign_preserving`.
     """
-    exclude_zero = not stat["no_detectable_bias"]
-
-    bias_lo_f = stat["bias_lo_f"]
-    bias_hi_f = stat["bias_hi_f"]
-    bias_f = stat["bias_f"]
-
-    rounded_lo = (
-        None
-        if bias_lo_f is None
-        else _round_sign_preserving(float(bias_lo_f), exclude_zero=exclude_zero)  # type: ignore[arg-type]
+    bias_f, bias_lo_f, bias_hi_f = _round_interval(
+        stat["bias_f"],
+        stat["bias_lo_f"],
+        stat["bias_hi_f"],
+        exclude_zero=not stat["no_detectable_bias"],
     )
-    rounded_hi = (
-        None
-        if bias_hi_f is None
-        else _round_sign_preserving(float(bias_hi_f), exclude_zero=exclude_zero)  # type: ignore[arg-type]
-    )
-    rounded_bias = (
-        None
-        if bias_f is None
-        else _round_sign_preserving(float(bias_f), exclude_zero=exclude_zero)  # type: ignore[arg-type]
-    )
-    if rounded_bias is not None and rounded_lo is not None:
-        rounded_bias = max(rounded_bias, rounded_lo)
-    if rounded_bias is not None and rounded_hi is not None:
-        rounded_bias = min(rounded_bias, rounded_hi)
-
     rounded = dict(stat)
-    rounded["bias_f"] = rounded_bias
-    rounded["bias_lo_f"] = rounded_lo
-    rounded["bias_hi_f"] = rounded_hi
+    rounded["bias_f"] = bias_f
+    rounded["bias_lo_f"] = bias_lo_f
+    rounded["bias_hi_f"] = bias_hi_f
     rounded["mae_f"] = _round2(stat["mae_f"])
+    return rounded
+
+
+def _interval_excludes_zero(lo: object, hi: object) -> bool:
+    if lo is None or hi is None:
+        return False
+    return float(lo) > 0 or float(hi) < 0  # type: ignore[arg-type]
+
+
+def round_scorecard_stat(stat: Mapping[str, object]) -> dict[str, object]:
+    """Round one scorecard stat for JSON output (bias, MAE, skill).
+
+    Bias and skill intervals are both rounded sign-preservingly: the
+    exported endpoints must agree with "does the interval exclude 0" as
+    judged on the unrounded values, for skill as well as bias. Skill is a
+    fraction, so it keeps 3 decimals (0.1% steps); bias and MAE keep 2.
+    Counts and flags pass through untouched.
+    """
+    rounded = dict(stat)
+    bias_f, bias_lo_f, bias_hi_f = _round_interval(
+        stat["bias_f"],
+        stat["bias_lo_f"],
+        stat["bias_hi_f"],
+        exclude_zero=not stat["no_detectable_bias"],
+    )
+    rounded["bias_f"] = bias_f
+    rounded["bias_lo_f"] = bias_lo_f
+    rounded["bias_hi_f"] = bias_hi_f
+    skill, skill_lo, skill_hi = _round_interval(
+        stat["skill"],
+        stat["skill_lo"],
+        stat["skill_hi"],
+        exclude_zero=_interval_excludes_zero(stat["skill_lo"], stat["skill_hi"]),
+        ndigits=3,
+    )
+    rounded["skill"] = skill
+    rounded["skill_lo"] = skill_lo
+    rounded["skill_hi"] = skill_hi
+    for name in ("mae_f", "mae_lo_f", "mae_hi_f"):
+        rounded[name] = _round2(stat[name])
     return rounded
 
 
@@ -455,9 +515,17 @@ def export(
     a `completeness.json` stub. `registry` defaults to the checked-in seed
     (`weather_forecast_audit.registry.load_registry`); tests may pass a
     smaller one.
+
+    The live scorecard (`scorecard.json`, `scorecard_cities/{ICAO}.json`) is
+    built from the prediction log, not from `fct_forecast_verification`. The
+    log is verified first and `LogIntegrityError` propagates before any file
+    is written.
     """
     if registry is None:
         registry = load_registry()
+
+    log_report = scorecard_module.verified_log_report(conn)
+    card = scorecard_module.build_scorecard(conn, log_report)
 
     rows = _load_verification_rows(conn)
     scored = score(rows, by=("station", "variable", "lead_day", "season"))
@@ -466,6 +534,17 @@ def export(
     out_dir.mkdir(parents=True, exist_ok=True)
     cities_dir = out_dir / "cities"
     cities_dir.mkdir(exist_ok=True)
+    scorecard_cities_dir = out_dir / "scorecard_cities"
+    scorecard_cities_dir.mkdir(exist_ok=True)
+
+    window: dict[str, object] | None = None
+    if card.window is not None:
+        window = {
+            "days": scorecard_module.WINDOW_DAYS,
+            "basis": scorecard_module.WINDOW_BASIS,
+            "start": card.window[0].isoformat(),
+            "end": card.window[1].isoformat(),
+        }
 
     city_index_entries: list[dict[str, object]] = []
     for icao in sorted(registry):
@@ -490,6 +569,19 @@ def export(
             },
         )
 
+        _write_json(
+            scorecard_cities_dir / f"{icao}.json",
+            {
+                "schema_version": SCHEMA_VERSION,
+                "icao": station.icao,
+                "label": label,
+                "window": window,
+                "stats": [
+                    round_scorecard_stat(stat) for stat in card.stations.get(icao, [])
+                ],
+            },
+        )
+
         city_index_entries.append(
             {
                 "icao": station.icao,
@@ -510,12 +602,25 @@ def export(
         {"schema_version": SCHEMA_VERSION, "stations": []},
     )
 
+    _write_json(
+        out_dir / "scorecard.json",
+        {
+            "schema_version": SCHEMA_VERSION,
+            "window": window,
+            "intervals": scorecard_module.intervals_block(),
+            "log": card.log,
+            "national": [round_scorecard_stat(stat) for stat in card.national],
+        },
+    )
+
     data_through = _data_through(conn)
     files = [
         "manifest.json",
         "city_index.json",
         "completeness.json",
+        "scorecard.json",
         *(f"cities/{icao}.json" for icao in sorted(registry)),
+        *(f"scorecard_cities/{icao}.json" for icao in sorted(registry)),
     ]
     _write_json(
         out_dir / "manifest.json",

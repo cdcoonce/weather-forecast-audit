@@ -8,6 +8,9 @@ export function Header({ manifest }: { manifest: Manifest | null }): JSX.Element
       <a href="#/" className="site-header__brand">
         Forecast Audit
       </a>
+      <nav aria-label="Primary" className="site-header__nav">
+        <a href="#/scorecard">Live scorecard</a>
+      </nav>
       {manifest ? <LastUpdated manifest={manifest} /> : null}
       <ThemeToggle />
     </header>

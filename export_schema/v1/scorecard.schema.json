@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weather-forecast-audit.example/export_schema/v1/scorecard.schema.json",
+  "title": "scorecard",
+  "description": "The live scorecard: rolling-window MAE, bias and skill with intervals for raw NBM, baseline and challenger, graded from the append-only prediction log.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "window",
+    "intervals",
+    "log",
+    "national"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "window": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/window"
+        }
+      ],
+      "description": "Null when no logged prediction has been graded yet."
+    },
+    "intervals": {
+      "$ref": "#/$defs/intervals"
+    },
+    "log": {
+      "$ref": "#/$defs/log"
+    },
+    "national": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stat"
+      }
+    }
+  },
+  "$defs": {
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "days",
+        "basis",
+        "start",
+        "end"
+      ],
+      "description": "The inclusive window of target_dates scored: `days` consecutive dates ending at the latest target_date with a scorable observation among logged keys.",
+      "properties": {
+        "days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "basis": {
+          "const": "target_date"
+        },
+        "start": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "format": "date",
+          "description": "First target_date in the window (YYYY-MM-DD, inclusive)."
+        },
+        "end": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "format": "date",
+          "description": "Last target_date in the window (YYYY-MM-DD, inclusive)."
+        }
+      }
+    },
+    "intervals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "block_days",
+        "n_boot",
+        "level",
+        "min_sample_blocks",
+        "note"
+      ],
+      "properties": {
+        "method": {
+          "const": "date-block bootstrap"
+        },
+        "block_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_boot": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "level": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "min_sample_blocks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The prediction log's own integrity summary at export time. `verified` is the result of `verify_immutability`; an export is never written when it is false.",
+      "required": [
+        "partitions",
+        "rows",
+        "first_run_date",
+        "last_run_date",
+        "late_rejected_total",
+        "head_chain_sha256",
+        "verified"
+      ],
+      "properties": {
+        "partitions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "first_run_date": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "format": "date"
+            }
+          ]
+        },
+        "last_run_date": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "format": "date"
+            }
+          ]
+        },
+        "late_rejected_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "head_chain_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "verified": {
+          "type": "boolean"
+        }
+      }
+    },
+    "stat": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One variable x lead_day x source slice over the window. Intervals are date-block bootstrap percentile intervals at the file's `intervals.level`; `skill` is 1 - MAE/MAE_raw on matched pairs (0.0 for raw_nbm itself). `min_sample_flag` true means too few bootstrap blocks for a significance call.",
+      "required": [
+        "variable",
+        "lead_day",
+        "source",
+        "n",
+        "n_dates",
+        "n_blocks",
+        "mae_f",
+        "mae_lo_f",
+        "mae_hi_f",
+        "bias_f",
+        "bias_lo_f",
+        "bias_hi_f",
+        "skill",
+        "skill_lo",
+        "skill_hi",
+        "min_sample_flag",
+        "no_detectable_bias"
+      ],
+      "properties": {
+        "variable": {
+          "type": "string",
+          "enum": [
+            "max",
+            "min"
+          ]
+        },
+        "lead_day": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "raw_nbm",
+            "baseline",
+            "challenger"
+          ]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_dates": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_blocks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mae_f": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mae_lo_f": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mae_hi_f": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "bias_f": {
+          "type": "number"
+        },
+        "bias_lo_f": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "bias_hi_f": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "skill": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "skill_lo": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "skill_hi": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "min_sample_flag": {
+          "type": "boolean"
+        },
+        "no_detectable_bias": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

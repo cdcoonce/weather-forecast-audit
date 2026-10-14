@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
@@ -77,5 +78,45 @@ describe("App (committed fixture export)", () => {
 
     await waitFor(() => expect(screen.getByText(/city not found/i)).toBeInTheDocument());
     expect(screen.getByRole("link", { name: /back to search/i })).toBeInTheDocument();
+  });
+
+  it("links to the scorecard from the header", async () => {
+    window.location.hash = "#/";
+    render(<App />);
+
+    const link = await screen.findByRole("link", { name: /live scorecard/i });
+    expect(link).toHaveAttribute("href", "#/scorecard");
+  });
+
+  it("renders the scorecard from the real exported files, flagged and honest", async () => {
+    window.location.hash = "#/scorecard";
+    render(<App />);
+
+    await screen.findByRole("heading", { name: /live scorecard/i });
+    expect(screen.getByText(/2023-06-17 to 2023-07-16/)).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Highs" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Lows" })).toBeInTheDocument();
+    // One issuance date is one bootstrap block: the floor speaks.
+    expect(
+      screen.getAllByText(/too short for a significance call/i).length
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/no interval/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/3 partitions/)).toBeInTheDocument();
+    expect(screen.getByText(/verified: yes/i)).toBeInTheDocument();
+  });
+
+  it("loads KPHX's scorecard file only after the city is chosen", async () => {
+    window.location.hash = "#/scorecard";
+    render(<App />);
+    await screen.findByRole("heading", { name: /live scorecard/i });
+
+    const fetchMock = vi.mocked(globalThis.fetch);
+    const asked = () => fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(asked().some((url) => url.includes("scorecard_cities"))).toBe(false);
+
+    await userEvent.type(screen.getByRole("combobox"), "KPHX{Enter}");
+    const region = await screen.findByRole("region", { name: /Phoenix\/Sky Harbor/ });
+    expect(within(region).getByRole("table", { name: "Highs" })).toBeInTheDocument();
+    expect(asked().some((url) => url.endsWith("scorecard_cities/KPHX.json"))).toBe(true);
   });
 });

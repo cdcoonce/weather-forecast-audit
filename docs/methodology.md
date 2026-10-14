@@ -827,6 +827,53 @@ the shorter log still verifies. That is only detectable by comparing the
 head hash (`head=` in the CLI output) with a value recorded outside the
 database.
 
+## Live scorecard
+
+`weather_forecast_audit.scorecard` (issue #20) grades the prediction log above
+against observations and exports `scorecard.json` and
+`scorecard_cities/{ICAO}.json` (contract 1.1.0, additive over 1.0.0). It is
+where the site shows baseline and challenger on forecasts that existed before
+their outcome did.
+
+### Window and rows
+
+- **Window.** `WINDOW_DAYS = 30` consecutive `target_date`s ending at the
+  latest `target_date` with a scorable observation among logged keys. A date
+  still awaiting its observation never moves it. With no scorable logged key
+  the scorecard is empty (no window), not an error.
+- **Rows.** `baseline` and `challenger` come from `live.prediction_log`,
+  joined to `int_raw_verification_pairs` for `observed_f` and `scorable`.
+- **Raw comes from the log.** `raw_nbm` is the log's own `raw_forecast_f`, one
+  row per logged key, never the warehouse's current `forecast_f`: the log
+  records what was issued, and a later re-ingest must not move a published
+  number. All three sources are then compared on identical keys.
+- **Integrity first.** `export` runs `assert_immutable` before writing
+  anything; a scorecard is never published over a log that fails its own
+  check. The file carries the log's partitions, rows, run-date span,
+  late-rejected total and head hash.
+
+### Intervals, and why they are always flagged
+
+Scoring is `scoring.score` at library defaults (14-day blocks, 2000
+replicates, 95%); nothing is tuned. A 30-day window holds only three or four
+14-day blocks, far below `MIN_SAMPLE_BLOCKS = 21`, so every cell has
+`min_sample_flag = true`. The "Limitation 3" replay measured nominal 95%
+intervals covering only 0.73-0.80 at 30 dates. The intervals are shown as the
+best available description of spread, each labelled approximate. The site
+never words or colours a flagged result as significant. Bias and skill
+endpoints are rounded sign-preservingly, so exported numbers never
+contradict whether the interval spans zero.
+
+### Skill, and what is not included
+
+`skill = 1 - MAE_source / MAE_raw_nbm` on matched pairs, as above: positive
+means the corrected forecast missed by less than raw guidance on the same
+cases. Raw is the reference and shows as "reference", not 0%.
+
+Backfill and walk-forward predictions are **not** mixed in. They were not
+issued prospectively, so the late rule would have refused them; including
+them would turn "forecast before the weather" into "forecast with hindsight".
+
 ## Regime boundaries
 
 Every `fct_forecast_verification` row is tagged with two independent
