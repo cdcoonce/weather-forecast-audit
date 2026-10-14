@@ -11,6 +11,7 @@ from support.synthetic_pairs import make_pairs, runtime_of
 
 from weather_forecast_audit import challenger, warehouse
 from weather_forecast_audit.assets import live_predictions
+from weather_forecast_audit.definitions import defs
 from weather_forecast_audit.prediction_log import verify_immutability
 from weather_forecast_audit.registry import load_registry
 from weather_forecast_audit.resources import ClockResource, WarehouseResource
@@ -66,6 +67,22 @@ def test_materializing_a_partition_issues_and_seals_its_run_date(
         assert verify_immutability(conn).ok
     assert n_rows is not None
     assert metadata["rows_appended"].value == n_rows[0] > 0
+    with duckdb.connect(str(path)) as conn:
+        chain = conn.execute(
+            "select chain_sha256 from live.partition_seals where run_date = ?",
+            [RUN_DAY],
+        ).fetchone()
+        stored = conn.execute(
+            "select retrained_on, fit_seconds from live.challenger_models"
+        ).fetchone()
+    assert chain is not None
+    assert stored is not None
+    assert metadata["run_date"].value == RUN_DATE
+    assert metadata["chain_sha256"].value == chain[0]
+    assert metadata["challenger_retrained_on"].value == str(stored[0]) == RUN_DATE
+    assert metadata["fit_seconds"].value == stored[1] > 0.0
+    assert metadata["history_rows"].value > 0
+    assert metadata["wall_seconds"].value > 0.0
 
 
 def test_late_rows_fail_the_run_without_retries_and_leave_the_seal(
@@ -91,3 +108,29 @@ def test_late_rows_fail_the_run_without_retries_and_leave_the_seal(
         assert verify_immutability(conn).ok
     assert sealed is not None
     assert sealed[0] == 6
+
+
+def test_the_late_failure_is_not_retryable_and_names_the_late_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(challenger, "MIN_TRAIN_ROWS", 50)
+    path = _db(tmp_path)
+    now = runtime_of(RUN_DAY).replace(tzinfo=UTC) + timedelta(hours=30)
+
+    with pytest.raises(dg.Failure) as raised:
+        live_predictions(
+            dg.build_asset_context(partition_key=RUN_DATE),
+            WarehouseResource(duckdb_path=str(path)),
+            ClockResource(now_override=now.isoformat()),
+        )
+
+    assert raised.value.allow_retries is False
+    assert len(raised.value.metadata["late_keys"].value) == 6
+
+
+def test_the_issuing_job_selects_only_the_live_predictions_asset() -> None:
+    job = defs.resolve_job_def("issue_predictions_job")
+
+    assert {key.to_user_string() for key in job.asset_layer.executable_asset_keys} == {
+        "live_predictions"
+    }

@@ -11,7 +11,7 @@ models, so no in-process state can carry a result across nights.
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +26,13 @@ from support.synthetic_pairs import (
     station_features,
 )
 
-from weather_forecast_audit import challenger, cli, issuance, warehouse
+from weather_forecast_audit import challenger, cli, issuance, walkforward, warehouse
 from weather_forecast_audit.baseline import BaselineModel
-from weather_forecast_audit.challenger import PAIR_COLUMNS, ChallengerModel
+from weather_forecast_audit.challenger import (
+    PAIR_COLUMNS,
+    ChallengerModel,
+    station_feature_frame,
+)
 from weather_forecast_audit.issuance import (
     IssueResult,
     ModelArtifactError,
@@ -250,10 +254,11 @@ def _oracle_challenger(pairs: pl.DataFrame, issued: list[date]) -> pl.DataFrame:
 
 
 def _db_pairs(path: Path) -> pl.DataFrame:
+    # `select *`, deliberately NOT PAIR_COLUMNS: the oracle must see every
+    # column, so a column missing from the production projection moves the
+    # live rows away from it instead of vanishing from both sides.
     with duckdb.connect(str(path)) as conn:
-        return conn.execute(
-            f"select {', '.join(PAIR_COLUMNS)} from int_raw_verification_pairs"  # noqa: S608
-        ).pl()
+        return conn.execute("select * from int_raw_verification_pairs").pl()
 
 
 @pytest.fixture(autouse=True)
@@ -882,6 +887,444 @@ def test_row_params_record_the_artifact_and_the_baseline_constants(
     ]
 
 
+# -- what the night reports, and what the artifact records --------------------------
+
+
+def test_retrain_nights_count_the_pairs_they_read_and_restore_nights_fit_nothing(
+    main_scenario: Scenario,
+) -> None:
+    pairs = main_scenario.pairs
+    with duckdb.connect(str(main_scenario.path)) as conn:
+        stored = dict(
+            conn.execute(
+                "select retrained_on, fit_seconds from live.challenger_models"
+            ).fetchall()
+        )
+        n_train = dict(
+            conn.execute(
+                "select retrained_on, n_train_rows from live.challenger_models"
+            ).fetchall()
+        )
+
+    for result in main_scenario.results:
+        if result.retrained:
+            runtime = runtime_of(result.run_date)
+            closed = pairs.filter(
+                pl.col("scorable")
+                & (pl.col("window_end_utc") < runtime)
+                & (pl.col("run_date") != result.run_date)
+            )
+            # strict `<`: a pair closing exactly at this issuance is not read
+            assert result.n_history_rows == closed.height, result.run_date
+            assert result.fit_seconds == stored[result.run_date] > 0.0
+            trainable = closed.filter(
+                pl.col("forecast_f").is_not_null() & pl.col("observed_f").is_not_null()
+            )
+            assert n_train[result.run_date] == trainable.height
+        else:
+            assert result.fit_seconds == 0.0, result.run_date
+
+
+def test_a_pair_closing_exactly_at_issuance_is_not_read_by_that_night(
+    main_scenario: Scenario,
+) -> None:
+    # The scenario really has one: KEEE min lead 1 of 03-02 closes at 03-03 13:00.
+    runtime = runtime_of(date(2026, 3, 3))
+    exact = main_scenario.pairs.filter(
+        pl.col("scorable") & (pl.col("window_end_utc") == runtime)
+    )
+    assert exact.height > 0
+    night = next(r for r in main_scenario.results if r.run_date == date(2026, 3, 3))
+    assert night.retrained
+    closed_before = main_scenario.pairs.filter(
+        pl.col("scorable")
+        & (pl.col("window_end_utc") < runtime)
+        & (pl.col("run_date") != date(2026, 3, 3))
+    )
+    assert night.n_history_rows == closed_before.height
+
+
+# -- bounded loading, with data the main scenario does not have -----------------
+
+
+def _update(path: Path, statements: list[tuple[str, list[Any]]]) -> None:
+    with duckdb.connect(str(path)) as conn:
+        for sql, params in statements:
+            conn.execute(sql, params)
+
+
+_ROW_KEY = "run_date = ? and station = ? and variable = ? and lead_day = ?"
+
+
+def _assert_live_equals_walk_forward(
+    path: Path,
+    issued: list[date],
+    *,
+    late: tuple[tuple[date, str, str, int], ...] = (),
+) -> None:
+    """Both sources equal the walk-forward, minus rows the log rejected as late."""
+    pairs = _db_pairs(path)
+    for source, oracle in (
+        ("baseline", _oracle_baseline(pairs, issued)),
+        ("challenger", _oracle_challenger(pairs, issued)),
+    ):
+        for run_date, station, variable, lead in late:
+            oracle = oracle.filter(
+                ~(
+                    (pl.col("run_date") == run_date)
+                    & (pl.col("station") == station)
+                    & (pl.col("variable") == variable)
+                    & (pl.col("lead_day") == lead)
+                )
+            )
+        assert_frame_equal(
+            _canon(_live(path, source)), oracle, check_exact=True, check_dtypes=False
+        )
+
+
+def test_baseline_window_is_anchored_on_the_last_scorable_close_before_issuance(
+    tmp_path: Path,
+) -> None:
+    path = _scratch_db(tmp_path)
+    run_date = date(2026, 2, 12)
+    issuance_time = runtime_of(run_date)
+    _update(
+        path,
+        [
+            # Y: a scorable outlier closing 4h INSIDE the 30-day window of the
+            # real anchor (02-12 06:00), i.e. at 01-13 10:00 > 01-13 06:00.
+            (
+                "update int_raw_verification_pairs set window_end_utc = ?, "
+                f"forecast_f = forecast_f + 300 where {_ROW_KEY}",
+                [datetime(2026, 1, 13, 10, 0), date(2026, 1, 20), "KAAA", "max", 1],
+            ),
+            # X: a scorable pair closing exactly AT issuance (not before it).
+            (
+                "update int_raw_verification_pairs set window_end_utc = ? "
+                f"where {_ROW_KEY}",
+                [issuance_time, date(2026, 2, 9), "KBBB", "max", 2],
+            ),
+            # Z: an UNscorable pair closing between the anchor and issuance.
+            (
+                "update int_raw_verification_pairs set window_end_utc = ?, "
+                f"scorable = false, observed_f = null where {_ROW_KEY}",
+                [datetime(2026, 2, 12, 12, 0), date(2026, 2, 9), "KCCC", "min", 1],
+            ),
+        ],
+    )
+
+    _issue(path, run_date)
+
+    pairs = _db_pairs(path)
+    live = _canon(_live(path, "baseline"))
+    oracle = _oracle_baseline(pairs, [run_date])
+    assert_frame_equal(live, oracle, check_exact=True, check_dtypes=False)
+    # Not vacuous: Y is inside the window and moves a prediction.
+    without_y = pairs.filter(
+        ~(
+            (pl.col("run_date") == date(2026, 1, 20))
+            & (pl.col("station") == "KAAA")
+            & (pl.col("variable") == "max")
+            & (pl.col("lead_day") == 1)
+        )
+    )
+    assert not _oracle_baseline(without_y, [run_date]).equals(oracle)
+
+
+def test_a_first_night_with_no_closed_pair_falls_back_to_raw_everywhere(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "wfa.duckdb"
+    run_date = date(2026, 2, 10)
+    _create_db(path, _pairs(run_date, run_date))
+
+    result = _issue(path, run_date)
+
+    assert result.append.sealed
+    assert result.n_history_rows == 0
+    for source in ("baseline", "challenger"):
+        live = _live(path, source)
+        assert live.height > 0
+        assert live["fallback"].all()
+        assert live["forecast_f"].to_list() == live["raw_forecast_f"].to_list()
+    _assert_live_equals_walk_forward(path, [run_date])
+
+
+def test_history_is_the_trim_of_the_filtered_pairs_for_sparse_groups(
+    tmp_path: Path,
+) -> None:
+    # KCCC reports weekly, so its 7th-newest pair is only kept by the "last 7"
+    # clause. Its newest pair has no observation (still scorable) and the
+    # newest pair of its other group is unscorable: neither may take a slot.
+    path = tmp_path / "wfa.duckdb"
+    pairs = make_pairs(
+        _days(date(2025, 11, 1), date(2026, 2, 20)),
+        STATIONS[:3],
+        active=lambda station, run_date: station != "KCCC" or run_date.day % 7 == 0,
+    )
+    _create_db(path, pairs)
+    _update(
+        path,
+        [
+            (
+                "update int_raw_verification_pairs set observed_f = null "
+                f"where {_ROW_KEY}",
+                [date(2026, 2, 7), "KCCC", "max", 1],
+            ),
+            (
+                "update int_raw_verification_pairs set scorable = false "
+                f"where {_ROW_KEY}",
+                [date(2026, 2, 7), "KCCC", "max", 2],
+            ),
+        ],
+    )
+    issued = [date(2026, 2, 10), date(2026, 2, 14)]
+
+    _issue_all(path, issued)
+
+    live = _canon(_live(path, "challenger"))
+    assert (live["station"] == "KCCC").any()
+    assert_frame_equal(
+        live,
+        _oracle_challenger(_db_pairs(path), issued),
+        check_exact=True,
+        check_dtypes=False,
+    )
+
+
+def test_run_rows_that_closed_before_issuance_are_seen_exactly_once(
+    tmp_path: Path,
+) -> None:
+    path = _scratch_db(tmp_path)
+    issued = [date(2026, 2, 10), date(2026, 2, 11), date(2026, 2, 12)]
+    _update(
+        path,
+        [
+            # closed just before the 02-10 retrain: already in the booster's
+            # history, so the 02-12 delta (and update) must not take it again
+            (
+                "update int_raw_verification_pairs set window_end_utc = ? "
+                f"where {_ROW_KEY}",
+                [datetime(2026, 2, 10, 12, 59), date(2026, 2, 12), "KAAA", "max", 1],
+            ),
+            # closed between the retrain and 02-11: arrives with the 02-12 run
+            # rows AND would match the delta's date filter
+            (
+                "update int_raw_verification_pairs set window_end_utc = ? "
+                f"where {_ROW_KEY}",
+                [datetime(2026, 2, 11, 8, 0), date(2026, 2, 12), "KBBB", "max", 1],
+            ),
+        ],
+    )
+
+    results = _issue_all(path, issued)
+
+    # Their windows closed before their own issuance, so the log rejects the
+    # two rows as late; they still train, once, like any closed pair.
+    assert [r.append.n_late_rejected for r in results] == [0, 0, 4]
+    _assert_live_equals_walk_forward(
+        path,
+        issued,
+        late=(
+            (date(2026, 2, 12), "KAAA", "max", 1),
+            (date(2026, 2, 12), "KBBB", "max", 1),
+        ),
+    )
+
+
+# -- the bounded projection and the registry frame ----------------------------------
+
+
+def test_pair_columns_cover_everything_the_evaluator_and_model_read(
+    tmp_path: Path,
+) -> None:
+    needed = (
+        set(walkforward._REQUIRED_COLUMNS)  # noqa: SLF001
+        | set(walkforward._PREDICT_COLUMNS)  # noqa: SLF001
+        | set(challenger._TRAIN_COLUMNS)  # noqa: SLF001
+    )
+    assert needed <= set(PAIR_COLUMNS)
+    path = _scratch_db(tmp_path)
+    assert set(PAIR_COLUMNS) <= set(_db_pairs(path).columns)
+
+
+def test_station_feature_frame_carries_each_registry_field_in_its_own_column() -> None:
+    registry = load_registry()
+
+    frame = station_feature_frame(registry)
+
+    assert frame.height == len(registry) > 0
+    for row in frame.iter_rows(named=True):
+        station = registry[row["station"]]
+        assert row["latitude"] == station.lat
+        assert row["longitude"] == station.lon
+        assert row["elevation_m"] == station.elevation_m
+        assert row["coastal_flag"] == station.coastal_flag
+        assert row["climate_region"] == station.climate_region
+    assert set(frame["station"]) == set(registry)
+    assert frame["latitude"].to_list() != frame["longitude"].to_list()
+
+
+def test_restore_applies_the_fit_null_filter_and_trim_and_n_train_rows_is_exact() -> None:
+    pairs = _pairs(date(2025, 12, 15), date(2026, 3, 3))
+    cutoff = runtime_of(date(2026, 3, 3))
+    training = pairs.filter(
+        pl.col("scorable") & (pl.col("window_end_utc") < cutoff)
+    ).sort("window_end_utc", "station", "runtime_utc", "lead_day", "variable")
+    n_null_forecast = training.filter(pl.col("forecast_f").is_null()).height
+    assert n_null_forecast > 0
+    features = station_features(STATIONS)
+    model = ChallengerModel(features, min_train_rows=MIN_TRAIN_ROWS)
+    model.fit(training)
+
+    restored = ChallengerModel.restore(
+        features, model.dump_booster(), training, min_train_rows=MIN_TRAIN_ROWS
+    )
+
+    assert model.n_train_rows == training.height - n_null_forecast
+    assert restored.n_train_rows is None
+    assert model.history.height < model.n_train_rows  # the trim is binding
+    assert restored.history.height == model.history.height
+    columns = model.history.columns
+    assert_frame_equal(
+        restored.history.sort(columns),
+        model.history.sort(columns),
+        check_exact=True,
+    )
+
+
+# -- the artifact lookup, probed directly ------------------------------------------
+
+
+def _artifact_row(conn: duckdb.DuckDBPyConnection, retrained_on: date) -> None:
+    conn.execute(
+        "insert into live.challenger_models values (?, ?, null, 0, '', ?, '{}', "
+        "'{}', 0.0, ?)",
+        [
+            retrained_on,
+            datetime.combine(retrained_on, time(13, 0)),
+            issuance._sha256(""),  # noqa: SLF001
+            datetime(2026, 1, 1),
+        ],
+    )
+
+
+def _seal_row(conn: duckdb.DuckDBPyConnection, run_date: date) -> None:
+    conn.execute(
+        "insert into live.partition_seals values (?, 0, 0, 'x', 'x', 'x', 1, ?, ?)",
+        [run_date, datetime(2026, 1, 1), datetime(2026, 1, 1)],
+    )
+
+
+def test_the_month_artifact_is_the_earliest_sealed_or_own_one_of_the_calendar_month(
+    tmp_path: Path,
+) -> None:
+    with duckdb.connect(str(tmp_path / "wfa.duckdb")) as conn:
+        warehouse.init_db(conn)
+        sealed = [
+            date(2025, 2, 10),  # a year earlier, same month number
+            date(2025, 12, 31),
+            date(2026, 1, 20),
+            date(2026, 3, 3),
+            date(2026, 3, 5),  # a second sealed one: the earliest governs
+            date(2026, 5, 10),
+        ]
+        for d in sealed:
+            _artifact_row(conn, d)
+            _seal_row(conn, d)
+        _artifact_row(conn, date(2026, 4, 2))  # an orphan: persisted, never sealed
+
+        def month_of(run_date: date) -> date | None:
+            artifact = issuance._month_artifact(conn, run_date)  # noqa: SLF001
+            return None if artifact is None else artifact.retrained_on
+
+        assert month_of(date(2026, 1, 31)) == date(2026, 1, 20)
+        assert month_of(date(2026, 1, 1)) is None  # not the 12-31 one of December
+        assert month_of(date(2026, 2, 1)) is None  # not "within the last 30 days"
+        assert month_of(date(2026, 2, 20)) is None  # nor last February's
+        assert month_of(date(2025, 2, 20)) == date(2025, 2, 10)
+        assert month_of(date(2025, 12, 31)) == date(2025, 12, 31)
+        assert month_of(date(2026, 3, 10)) == date(2026, 3, 3)
+        assert month_of(date(2026, 4, 5)) is None  # unsealed orphan, not its date
+        assert month_of(date(2026, 4, 2)) == date(2026, 4, 2)  # its own rerun
+        assert month_of(date(2026, 5, 9)) is None  # a later artifact never governs
+
+
+# -- refusals that must not depend on the model ----------------------------------
+
+
+def test_a_repeated_date_is_refused_before_its_artifact_is_read(
+    tmp_path: Path,
+) -> None:
+    path = _scratch_db(tmp_path)
+    _issue_all(path, [date(2026, 2, 10), date(2026, 2, 11)])
+    _update(
+        path,
+        [("update live.challenger_models set model_text = model_text || ' '", [])],
+    )
+
+    with pytest.raises(PartitionSealedError):
+        _issue(path, date(2026, 2, 11))
+
+    # A populated partition whose seal is missing is refused the same way, and
+    # not by the (tampered) booster it would otherwise have been checked against.
+    _update(
+        path,
+        [
+            (
+                "delete from live.partition_seals where run_date = ?",
+                [date(2026, 2, 11)],
+            )
+        ],
+    )
+    with pytest.raises(PartitionSealedError):
+        _issue(path, date(2026, 2, 11))
+
+
+def test_now_equal_to_the_issuance_time_is_a_legal_instant(tmp_path: Path) -> None:
+    path = _scratch_db(tmp_path)
+    now = runtime_of(date(2026, 2, 10)).replace(tzinfo=UTC)
+
+    result = _issue(path, date(2026, 2, 10), now=now)
+
+    assert result.append.sealed
+    assert result.append.n_late_rejected == 0
+
+
+def test_a_non_utc_aware_now_is_refused_before_any_fit(
+    tmp_path: Path, count_train: _CountTrain
+) -> None:
+    path = _scratch_db(tmp_path)
+    phoenix_like = timezone(timedelta(hours=5))
+    now = datetime(2026, 2, 10, 19, 0, tzinfo=phoenix_like)  # 14:00Z, after 13:00Z
+
+    with pytest.raises(ValueError, match="timezone-aware UTC"):
+        _issue(path, date(2026, 2, 10), now=now)
+    assert count_train.calls == 0
+
+
+def test_duplicate_run_keys_are_refused_and_leave_no_artifact(
+    tmp_path: Path, count_train: _CountTrain
+) -> None:
+    path = _scratch_db(tmp_path)
+    with duckdb.connect(str(path)) as conn:
+        conn.execute(
+            "insert into int_raw_verification_pairs select * from "
+            "int_raw_verification_pairs where run_date = '2026-02-10' "
+            "and station = 'KAAA' and variable = 'max' and lead_day = 1"
+        )
+
+    with pytest.raises(ValueError, match="not unique"):
+        _issue(path, date(2026, 2, 10))
+
+    assert count_train.calls == 0
+    with duckdb.connect(str(path)) as conn:
+        for table in ("challenger_models", "partition_seals", "prediction_log"):
+            assert conn.execute(f"select count(*) from live.{table}").fetchone() == (  # noqa: S608
+                0,
+            )
+
+
 # -- the CLI ----------------------------------------------------------------------
 
 
@@ -939,6 +1382,12 @@ def test_cli_log_issue_smoke_prints_a_summary_and_the_log_verifies(
     assert "wall_seconds=" in out
     cli.main(["log", "verify"])
     assert "OK partitions=1" in capsys.readouterr().out
+    with duckdb.connect(str(path)) as conn:
+        text, n_rows = conn.execute(
+            "select model_text, n_train_rows from live.challenger_models"
+        ).fetchone()
+    assert text != ""  # MIN_TRAIN_ROWS was lowered to 50 and the CLI honoured it
+    assert 50 <= n_rows
 
 
 def test_cli_log_issue_exits_1_when_rows_were_rejected_as_late(

@@ -1,0 +1,558 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_issuance.py",
+    "tests/dagster/test_live_predictions.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_issuance.py",
+    "tests/dagster/test_live_predictions.py"
+  ],
+  "mutants": [
+    {
+      "label": "month-window-previous-30-days",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "[run_date.replace(day=1), run_date, run_date],",
+      "replace": "[run_date - timedelta(days=30), run_date, run_date],",
+      "why": "the month's artifact is the one of the same CALENDAR month, not any retrain in the previous 30 days: 03-03 must not reuse the 02-10 booster"
+    },
+    {
+      "label": "month-key-ignores-year",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"where retrained_on >= ? and retrained_on <= ? \"",
+      "replace": "\"where extract(month from retrained_on) = month(?) and retrained_on <= ? \"",
+      "why": "keying the month on its number alone lets a booster of last year's same month govern"
+    },
+    {
+      "label": "own-artifact-excluded-by-strict-upper-bound",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"where retrained_on >= ? and retrained_on <= ? \"",
+      "replace": "\"where retrained_on >= ? and retrained_on < ? \"",
+      "why": "a rerun after a crash between persist and append must find its own date's artifact"
+    },
+    {
+      "label": "orphan-artifact-governs-later-date",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"(select run_date from live.partition_seals)) \"",
+      "replace": "\"(select run_date from live.partition_seals) or true) \"",
+      "why": "an artifact of a never-issued date must be ignored: the month retrains at its first ISSUED date"
+    },
+    {
+      "label": "retrain-closed-bound-inclusive",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "clauses = [\"scorable\", \"window_end_utc < ?\", \"run_date <> ?\"]",
+      "replace": "clauses = [\"scorable\", \"window_end_utc <= ?\", \"run_date <> ?\"]",
+      "why": "a pair closing exactly at runtime_utc is not in that night's fit (strict <); n_history_rows must not count it"
+    },
+    {
+      "label": "history-cutoff-inclusive",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"where scorable and window_end_utc < ? \"",
+      "replace": "\"where scorable and window_end_utc <= ? \"",
+      "why": "a pair closing exactly at artifact.cutoff_utc belongs to the delta, not the restored history (double count)"
+    },
+    {
+      "label": "history-bounded-at-run-time-not-cutoff",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "history = _bounded_history(conn, artifact.cutoff_utc)",
+      "replace": "history = _bounded_history(conn, runtime)",
+      "why": "restore night must rebuild history as of the retrain, else the delta is applied twice"
+    },
+    {
+      "label": "delta-has-no-lower-bound",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "conn, run_date, before=runtime, since=artifact.cutoff_utc",
+      "replace": "conn, run_date, before=runtime",
+      "why": "the delta must be bounded below by the artifact cutoff (bounded load)"
+    },
+    {
+      "label": "adapter-cutoff-filter-removed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "training_pairs.filter(pl.col(\"window_end_utc\") >= self._cutoff)",
+      "replace": "training_pairs",
+      "why": "a run row that closed before the artifact cutoff is already in the restored history; update must not take it again -- equivalent in the log: a run row already closed before the artifact cutoff is, by the late rule, always rejected (window_end <= now), and a duplicated pair can only shift its own group, whose single night row it is; the filter is defence in depth",
+      "expect": "survived"
+    },
+    {
+      "label": "run-date-rows-not-excluded-from-closed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "clauses = [\"scorable\", \"window_end_utc < ?\", \"run_date <> ?\"]",
+      "replace": "clauses = [\"scorable\", \"window_end_utc < ?\", \"? is not null\"]",
+      "why": "the run date's own closed pair arrives with the run rows; it must be seen once"
+    },
+    {
+      "label": "baseline-bound-too-narrow",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "after=anchor - timedelta(days=model.window_days),",
+      "replace": "after=anchor - timedelta(days=model.window_days - 5),",
+      "why": "bounded load must still cover the whole 30-day window"
+    },
+    {
+      "label": "baseline-bound-inclusive",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "clauses.append(\"window_end_utc > ?\")",
+      "replace": "clauses.append(\"window_end_utc >= ?\")",
+      "why": "fit keeps window_end > anchor - 30d strictly; reading the boundary pair loads more than the window"
+    },
+    {
+      "label": "baseline-anchor-inclusive",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"where scorable and window_end_utc < ?\",",
+      "replace": "\"where scorable and window_end_utc <= ?\",",
+      "why": "the anchor is the last close strictly before T; a pair closing at T shifts the 30-day bound later"
+    },
+    {
+      "label": "baseline-anchor-ignores-scorable",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"where scorable and window_end_utc < ?\",",
+      "replace": "\"where window_end_utc < ?\",",
+      "why": "the anchor is the last SCORABLE close; an unscorable later close shifts the bound"
+    },
+    {
+      "label": "baseline-first-night-no-history-crash",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    if anchor is None:\n        closed = run_rows.clear()",
+      "replace": "    if False:\n        closed = run_rows.clear()",
+      "why": "a first night with no closed pair has no anchor: baseline falls back to raw"
+    },
+    {
+      "label": "history-last-n-clause-dropped",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "f\"or row_number() over (partition by {_GROUP_SQL} \"\n        f\"order by window_end_utc desc, runtime_utc desc) <= {last_n}\",",
+      "replace": "f\"or false\",",
+      "why": "a silent group keeps its last 7 pairs however old"
+    },
+    {
+      "label": "history-last-n-keeps-oldest",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "order by window_end_utc desc, runtime_utc desc) <= {last_n}",
+      "replace": "order by window_end_utc asc, runtime_utc asc) <= {last_n}",
+      "why": "the keep clause is the NEWEST 7, not the oldest"
+    },
+    {
+      "label": "history-null-forecast-kept",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"and forecast_f is not null and observed_f is not null \"",
+      "replace": "\"and observed_f is not null \"",
+      "why": "fit's null filter drops a null-forecast pair before the trim"
+    },
+    {
+      "label": "history-null-observed-kept",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"and forecast_f is not null and observed_f is not null \"",
+      "replace": "\"and forecast_f is not null \"",
+      "why": "fit's null filter drops a null-observation pair before the trim"
+    },
+    {
+      "label": "history-unscorable-kept",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"where scorable and window_end_utc < ? \"",
+      "replace": "\"where window_end_utc < ? \"",
+      "why": "only scorable pairs train"
+    },
+    {
+      "label": "unfitted-sentinel-parsed-as-booster",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "text = None if artifact.model_text == _UNFITTED_TEXT else artifact.model_text",
+      "replace": "text = artifact.model_text",
+      "why": "an unfitted month's '' model_text must restore as raw-fallback, not be parsed"
+    },
+    {
+      "label": "sha256-verification-skipped",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "if _sha256(artifact.model_text) != artifact.model_sha256:",
+      "replace": "if False:",
+      "why": "a tampered booster text must never be used"
+    },
+    {
+      "label": "region-code-verification-skipped",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "if json.loads(artifact.region_codes) != model_codes:",
+      "replace": "if False:",
+      "why": "a registry change shifts categorical codes under the persisted booster"
+    },
+    {
+      "label": "artifact-provenance-override-dropped",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "        override=True,",
+      "replace": "        override=False,",
+      "why": "restore nights must stamp retrained_on/trained_through from the artifact, not the adapter's one-date walk"
+    },
+    {
+      "label": "params-lack-model-sha256",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    recorded[\"model_sha256\"] = artifact.model_sha256\n",
+      "replace": "",
+      "why": "challenger params must carry the booster's sha256"
+    },
+    {
+      "label": "params-lack-retrained-on",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    recorded[\"retrained_on\"] = artifact.retrained_on.isoformat()\n",
+      "replace": "",
+      "why": "challenger params must carry the retrain date"
+    },
+    {
+      "label": "precheck-removed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    _precheck(conn, run_date, runtime, naive_now)\n",
+      "replace": "",
+      "why": "refusals come before any fit"
+    },
+    {
+      "label": "precheck-sealed-clause-removed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    if sealed is not None or logged is not None:",
+      "replace": "    if False:",
+      "why": "a sealed partition is refused before the artifact/model is touched"
+    },
+    {
+      "label": "precheck-logged-clause-removed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    if sealed is not None or logged is not None:",
+      "replace": "    if sealed is not None:",
+      "why": "a populated-but-unsealed partition is refused before a fit"
+    },
+    {
+      "label": "precheck-later-seal-removed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    if later is not None and later[0] is not None:",
+      "replace": "    if False:",
+      "why": "an out-of-order date is refused before a fit"
+    },
+    {
+      "label": "precheck-now-before-runtime-removed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    if runtime > naive_now:",
+      "replace": "    if False:",
+      "why": "now before the run's own issuance is refused before a fit"
+    },
+    {
+      "label": "precheck-now-equal-runtime-refused",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    if runtime > naive_now:",
+      "replace": "    if runtime >= naive_now:",
+      "why": "now == runtime_utc is a legal issuance instant"
+    },
+    {
+      "label": "non-utc-aware-now-accepted",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "if now.tzinfo is None or now.utcoffset() != timedelta(0):",
+      "replace": "if now.tzinfo is None:",
+      "why": "now must be UTC, not just aware"
+    },
+    {
+      "label": "mixed-cycles-accepted",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "if len(runtimes) != 1:",
+      "replace": "if len(runtimes) < 1:",
+      "why": "a run date with two runtime_utc values is refused -- equivalent: walk_forward re-raises the identical mixed-cycles ValueError before any fit; _issuance_time is a redundant first guard",
+      "expect": "survived"
+    },
+    {
+      "label": "artifact-not-persisted",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    conn.execute(\n        \"insert into live.challenger_models (retrained_on, cutoff_utc, \"",
+      "replace": "    (lambda *_a: None)(\n        \"insert into live.challenger_models (retrained_on, cutoff_utc, \"",
+      "why": "the booster is persisted at the retrain, before the append"
+    },
+    {
+      "label": "artifact-cutoff-is-now-not-runtime",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "        cutoff=runtime,",
+      "replace": "        cutoff=now,",
+      "why": "the artifact cutoff is the retrain's issuance time T, not wall-clock now"
+    },
+    {
+      "label": "artifact-trained-through-dropped",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "        trained_through=trained_naive,",
+      "replace": "        trained_through=None,",
+      "why": "trained_through of the retrain is persisted and re-stamped on later nights"
+    },
+    {
+      "label": "restore-night-reports-artifact-fit-seconds",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "fit_seconds=artifact.fit_seconds if just_retrained else 0.0,",
+      "replace": "fit_seconds=artifact.fit_seconds,",
+      "why": "a restore night did not fit: fit_seconds is 0.0"
+    },
+    {
+      "label": "retrain-night-history-count-zeroed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    n_history = closed.height\n",
+      "replace": "    n_history = 0\n",
+      "why": "n_history_rows on a retrain night is the closed pairs read"
+    },
+    {
+      "label": "artifact-n-train-rows-zeroed",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "n_train_rows=int(model.n_train_rows or 0),",
+      "replace": "n_train_rows=0,",
+      "why": "the artifact records the rows the fit saw"
+    },
+    {
+      "label": "duplicate-run-key-check-dropped",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "    if frame.height != result.height:",
+      "replace": "    if False:",
+      "why": "run rows must be unique per (station, lead_day, variable)"
+    },
+    {
+      "label": "challenger-n-train-rows-off-by-one",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        self.n_train_rows = rows.height\n",
+      "replace": "        self.n_train_rows = rows.height + 1\n",
+      "why": "n_train_rows is the post-null-filter row count the fit saw"
+    },
+    {
+      "label": "restore-null-filter-dropped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        rows = history_pairs.select(columns).filter(\n            pl.col(\"observed_f\").is_not_null() & pl.col(\"forecast_f\").is_not_null()\n        )\n",
+      "replace": "        rows = history_pairs.select(columns)\n",
+      "why": "restored history passes fit's own null filter"
+    },
+    {
+      "label": "restore-trim-skipped",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        model._trim()  # noqa: SLF001\n        return model",
+      "replace": "        return model",
+      "why": "restored history is trimmed exactly as fit leaves it"
+    },
+    {
+      "label": "dump-unfitted-returns-empty-string",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        if self._booster is None:\n            msg = \"cannot dump an unfitted model (below min_train_rows)\"\n            raise ValueError(msg)\n",
+      "replace": "        if self._booster is None:\n            return \"\"\n",
+      "why": "an unfitted model cannot be dumped (empty string would be indistinguishable from corruption)"
+    },
+    {
+      "label": "pair-columns-lack-tmp-f",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "    \"spread_f\",\n    \"tmp_f\",\n    \"window_start_utc\",\n    \"window_end_utc\",\n    \"observed_f\",\n    \"scorable\",\n)\n\"\"\"The columns",
+      "replace": "    \"spread_f\",\n    \"window_start_utc\",\n    \"window_end_utc\",\n    \"observed_f\",\n    \"scorable\",\n)\n\"\"\"The columns",
+      "why": "the bounded SELECT must carry every column the model reads"
+    },
+    {
+      "label": "station-frame-swaps-lat-lon",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "\"latitude\": [s.lat for s in stations],",
+      "replace": "\"latitude\": [s.lon for s in stations],",
+      "why": "station_feature_frame maps registry fields to the model's feature columns"
+    },
+    {
+      "label": "cli-late-exit-code-0",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "        raise SystemExit(1)\n\n\ndef build_parser",
+      "replace": "        raise SystemExit(0)\n\n\ndef build_parser",
+      "why": "rows rejected as late make `wfa log issue` exit 1"
+    },
+    {
+      "label": "cli-late-no-exit",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    if appended.n_late_rejected > 0:\n        # The schedule ran after those windows closed",
+      "replace": "    if False:\n        # The schedule ran after those windows closed",
+      "why": "rows rejected as late make `wfa log issue` exit 1"
+    },
+    {
+      "label": "cli-min-train-rows-pinned",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "min_train_rows=challenger_module.MIN_TRAIN_ROWS,\n        )\n\n    appended",
+      "replace": "min_train_rows=10**9,\n        )\n\n    appended",
+      "why": "the CLI reads the model constant at call time (no override, no hard-coded copy)"
+    },
+    {
+      "label": "asset-now-left-naive",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "now = clock.now().replace(tzinfo=UTC)",
+      "replace": "now = clock.now()",
+      "why": "issue_predictions wants an aware UTC now"
+    },
+    {
+      "label": "asset-failure-allows-retries",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            allow_retries=False,",
+      "replace": "            allow_retries=True,",
+      "why": "a retry only runs later, so a late failure must not be retried"
+    },
+    {
+      "label": "asset-late-rows-do-not-fail",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "    if appended.n_late_rejected > 0:\n        # Not retryable",
+      "replace": "    if False:\n        # Not retryable",
+      "why": "late rows fail the run"
+    },
+    {
+      "label": "asset-metadata-chain-sha-blank",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "\"chain_sha256\": dg.MetadataValue.text(str(appended.chain_sha256)),",
+      "replace": "\"chain_sha256\": dg.MetadataValue.text(\"\"),",
+      "why": "the materialization carries the seal's chain hash"
+    },
+    {
+      "label": "asset-metadata-retrained-on-blank",
+      "file": "../../../src/weather_forecast_audit/assets.py",
+      "oracle": "real",
+      "find": "            str(result.challenger_retrained_on)\n",
+      "replace": "            \"None\"\n",
+      "why": "the materialization carries the booster's retrain date"
+    },
+    {
+      "label": "month-picks-latest-artifact-not-earliest",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "\"order by retrained_on limit 1\",",
+      "replace": "\"order by retrained_on desc limit 1\",",
+      "why": "the month's retrain is its FIRST issued date"
+    },
+    {
+      "label": "history-retention-boundary-exclusive",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "f\"qualify window_end_utc >= max(window_end_utc) over \"",
+      "replace": "f\"qualify window_end_utc > max(window_end_utc) over \"",
+      "why": "_trim keeps pairs closed within RETENTION_DAYS inclusive"
+    },
+    {
+      "label": "history-retention-one-day-short",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "f\"(partition by {_GROUP_SQL}) - interval {RETENTION_DAYS} day \"",
+      "replace": "f\"(partition by {_GROUP_SQL}) - interval {RETENTION_DAYS - 1} day \"",
+      "why": "the retention horizon is exactly RETENTION_DAYS"
+    },
+    {
+      "label": "history-last-n-one-short",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "order by window_end_utc desc, runtime_utc desc) <= {last_n}",
+      "replace": "order by window_end_utc desc, runtime_utc desc) < {last_n}",
+      "why": "a group keeps its last max(LAG_COUNTS) pairs, not one fewer"
+    },
+    {
+      "label": "baseline-bound-too-wide",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "after=anchor - timedelta(days=model.window_days),",
+      "replace": "after=anchor - timedelta(days=model.window_days + 10),",
+      "why": "bounded load reads only the 30-day window, not more"
+    },
+    {
+      "label": "unfitted-persist-dumps-booster",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "text = model.dump_booster() if model.is_fitted else _UNFITTED_TEXT",
+      "replace": "text = model.dump_booster()",
+      "why": "an unfitted month persists the '' sentinel (nothing to dump)"
+    },
+    {
+      "label": "retrain-closed-keeps-unscorable",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "clauses = [\"scorable\", \"window_end_utc < ?\", \"run_date <> ?\"]",
+      "replace": "clauses = [\"true\", \"window_end_utc < ?\", \"run_date <> ?\"]",
+      "why": "only scorable pairs are read for a retrain (n_history_rows)"
+    },
+    {
+      "label": "delta-lower-bound-exclusive",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "clauses.append(\"window_end_utc >= ?\")",
+      "replace": "clauses.append(\"window_end_utc > ?\")",
+      "why": "a pair closing exactly at the artifact cutoff is in the delta, not the history"
+    },
+    {
+      "label": "adapter-cutoff-filter-exclusive",
+      "file": "../../../src/weather_forecast_audit/issuance.py",
+      "oracle": "real",
+      "find": "training_pairs.filter(pl.col(\"window_end_utc\") >= self._cutoff)",
+      "replace": "training_pairs.filter(pl.col(\"window_end_utc\") > self._cutoff)",
+      "why": "a pair closing exactly at the cutoff must be applied by update"
+    },
+    {
+      "label": "restore-ignores-model-text",
+      "file": "../../../src/weather_forecast_audit/challenger.py",
+      "oracle": "real",
+      "find": "        if model_text is not None:\n            model._booster",
+      "replace": "        if False:\n            model._booster",
+      "why": "a restored model predicts with the persisted booster, not raw"
+    },
+    {
+      "label": "job-selects-every-asset",
+      "file": "../../../src/weather_forecast_audit/jobs.py",
+      "oracle": "real",
+      "find": "selection=AssetSelection.assets(LIVE_PREDICTIONS_KEY),",
+      "replace": "selection=AssetSelection.all(),",
+      "why": "the issuing job selects live_predictions only (test_definitions resolved its own selection, never the job's)"
+    }
+  ]
+}
