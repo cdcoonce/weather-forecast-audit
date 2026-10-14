@@ -322,6 +322,12 @@ def append_partition(
     leave a populated-but-unsealed partition, which `verify_immutability`
     would (rightly) report as tampering.
     """
+    # `datetime` is-a `date`; one would be hashed into the chain as
+    # 'YYYY-MM-DDTHH:MM:SS' while the stored DATE reads back without the time,
+    # so a freshly sealed log would fail its own verification.
+    if isinstance(run_date, datetime):
+        msg = f"run_date must be a date, not a datetime: {run_date!r}"
+        raise ValueError(msg)
     naive_now = _naive_utc_now(now)
     frame = _normalize(rows)
     _validate(frame, run_date, naive_now)
@@ -447,16 +453,27 @@ def verify_immutability(conn: duckdb.DuckDBPyConnection) -> VerifyReport:
                 f"(this verifier knows {HASH_VERSION}); partition hash not checked"
             )
         else:
-            stored_n, recomputed = partition_hash(conn, run_date)
-            if stored_n != n_rows:
+            try:
+                stored_n, recomputed = partition_hash(conn, run_date)
+            except ValueError as error:
+                # A stored NaN/inf (or an unencodable string) cannot be
+                # canonically encoded; that is itself the tampering, and the
+                # other partitions must still be reported.
                 problems.append(
-                    f"{run_date}: seal records {n_rows} rows but {stored_n} are stored"
+                    f"{run_date}: stored rows cannot be hashed "
+                    f"(not the sealed values): {error}"
                 )
-            if recomputed != part_sha:
-                problems.append(
-                    f"{run_date}: partition hash mismatch "
-                    f"(seal {part_sha[:12]}, stored rows {recomputed[:12]})"
-                )
+            else:
+                if stored_n != n_rows:
+                    problems.append(
+                        f"{run_date}: seal records {n_rows} rows but "
+                        f"{stored_n} are stored"
+                    )
+                if recomputed != part_sha:
+                    problems.append(
+                        f"{run_date}: partition hash mismatch "
+                        f"(seal {part_sha[:12]}, stored rows {recomputed[:12]})"
+                    )
         if prev_sha != expected_prev:
             problems.append(
                 f"{run_date}: chain broken, prev_chain_sha256 "

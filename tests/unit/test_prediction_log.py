@@ -694,3 +694,403 @@ def test_init_db_creates_log_tables_and_is_idempotent(
     assert tables == {"prediction_log", "partition_seals"}
     assert _count(conn, "prediction_log") == 3
     assert verify_immutability(conn).ok
+
+
+# 11. teeth additions: guards the first suite did not exercise ----------------
+
+
+def _forge_consistent_seals(conn: duckdb.DuckDBPyConnection) -> None:
+    """Rewrite every seal's counts, hashes and links from the stored rows.
+
+    This is a careful forger: afterwards the only thing that can still give
+    the edit away is a check that is not a pure function of the row bytes.
+    Hashing is re-done here independently of the module's private helpers.
+    """
+    dates = [
+        r[0]
+        for r in conn.execute(
+            "select run_date from live.partition_seals order by run_date"
+        ).fetchall()
+    ]
+    prev = GENESIS
+    for run_date in dates:
+        n_rows, part = partition_hash(conn, run_date)
+        chain = hashlib.sha256(
+            f"{prev}:{run_date.isoformat()}:{part}".encode()
+        ).hexdigest()
+        conn.execute(
+            "update live.partition_seals set n_rows = ?, partition_sha256 = ?, "
+            "prev_chain_sha256 = ?, chain_sha256 = ? where run_date = ?",
+            [n_rows, part, prev, chain, run_date],
+        )
+        prev = chain
+
+
+def test_extra_tamper_shapes_are_detected(conn: duckdb.DuckDBPyConnection) -> None:
+    # A seal whose row count was edited but whose hash still matches.
+    _three_partitions(conn)
+    conn.execute(
+        "update live.partition_seals set n_rows = n_rows + 1 "
+        "where run_date = date '2026-03-02'"
+    )
+    problems = verify_immutability(conn).problems
+    assert any("2026-03-02" in p and "seal records" in p for p in problems)
+
+
+def test_edited_head_chain_is_detected(conn: duckdb.DuckDBPyConnection) -> None:
+    # Nothing follows the head seal, so only recomputing its chain can see this.
+    _three_partitions(conn)
+    conn.execute(
+        "update live.partition_seals set chain_sha256 = repeat('c', 64) "
+        "where run_date = date '2026-03-03'"
+    )
+    problems = verify_immutability(conn).problems
+    assert any("2026-03-03" in p and "does not match its inputs" in p for p in problems)
+
+
+def test_removing_a_middle_partition_whole_breaks_the_chain(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _three_partitions(conn)
+    conn.execute("delete from live.prediction_log where run_date = date '2026-03-02'")
+    conn.execute("delete from live.partition_seals where run_date = date '2026-03-02'")
+
+    report = verify_immutability(conn)
+    assert not report.ok
+    assert any("2026-03-03" in p and "chain broken" in p for p in report.problems)
+
+
+def test_removing_the_newest_partition_whole_verifies_but_moves_the_head(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    # The documented limit: self-consistency cannot see a truncated tail.
+    # What does see it is the published head, which must therefore move.
+    _three_partitions(conn)
+    published_head = verify_immutability(conn).head_chain_sha256
+    conn.execute("delete from live.prediction_log where run_date = date '2026-03-03'")
+    conn.execute("delete from live.partition_seals where run_date = date '2026-03-03'")
+
+    report = verify_immutability(conn)
+    assert report.ok
+    assert report.partitions == 2
+    assert report.head_chain_sha256 != published_head
+
+
+def test_forged_seals_still_expose_issued_at_different_from_seal(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _three_partitions(conn)
+    conn.execute(
+        "update live.prediction_log set issued_at = issued_at - interval 1 day "
+        "where run_date = date '2026-03-03'"
+    )
+    _forge_consistent_seals(conn)
+
+    report = verify_immutability(conn)
+    assert not report.ok
+    assert any(
+        "2026-03-03" in p and "different from the seal's issued_at" in p
+        for p in report.problems
+    )
+    assert not any("hash" in p or "chain" in p for p in report.problems)
+
+
+@pytest.mark.parametrize("offset_seconds", [0, 1])
+def test_forged_issued_at_not_before_window_end_is_detected(
+    conn: duckdb.DuckDBPyConnection, offset_seconds: int
+) -> None:
+    # issued_at == window_end_utc is already too late (strict), as is after.
+    _three_partitions(conn)
+    conn.execute(
+        "update live.prediction_log set issued_at = window_end_utc + "
+        f"interval {offset_seconds} second where run_date = date '2026-03-03'"
+    )
+    conn.execute(
+        "update live.partition_seals set issued_at = (select min(issued_at) "
+        "from live.prediction_log where run_date = date '2026-03-03') "
+        "where run_date = date '2026-03-03'"
+    )
+    _forge_consistent_seals(conn)
+
+    report = verify_immutability(conn)
+    assert not report.ok
+    assert [p for p in report.problems if "2026-03-03" in p] == [
+        "2026-03-03: 3 row(s) have issued_at at or after window_end_utc"
+    ]
+
+
+def test_unsupported_hash_version_is_reported(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _three_partitions(conn)
+    conn.execute(
+        "update live.partition_seals set hash_version = 2 "
+        "where run_date = date '2026-03-02'"
+    )
+    report = verify_immutability(conn)
+    assert not report.ok
+    assert any(
+        "2026-03-02" in p and "unsupported hash_version 2" in p for p in report.problems
+    )
+
+
+def test_seal_without_rows_still_blocks_append(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _append(conn, D1)
+    conn.execute("delete from live.prediction_log")
+    with pytest.raises(PartitionSealedError):
+        _append(conn, D1)
+    assert _count(conn, "prediction_log") == 0
+    assert _count(conn, "partition_seals") == 1
+
+
+def test_failed_seal_rolls_back_rows_and_leaves_connection_usable(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    # Make the seal insert fail after the rows went in: the whole append must
+    # vanish, and the connection must not be stuck in an aborted transaction.
+    conn.execute("drop table live.partition_seals")
+    conn.execute(
+        "create table live.partition_seals (run_date date primary key, "
+        "n_rows integer not null, n_late_rejected integer not null, "
+        "partition_sha256 varchar not null, prev_chain_sha256 varchar not null, "
+        "chain_sha256 varchar not null, hash_version integer not null, "
+        "issued_at timestamp not null, sealed_at timestamp not null, "
+        "check (n_rows < 0))"
+    )
+    with pytest.raises(duckdb.ConstraintException):
+        _append(conn, D1)
+
+    assert _count(conn, "prediction_log") == 0
+    assert _count(conn, "partition_seals") == 0
+    conn.execute("drop table live.partition_seals")
+    warehouse.init_db(conn)
+    retry = _append(conn, D1)
+    assert retry.sealed is True
+    assert verify_immutability(conn).ok
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_forecast_is_refused_by_the_validator_itself(
+    conn: duckdb.DuckDBPyConnection, bad: float
+) -> None:
+    # The hash also refuses NaN, which would mask a missing validator if the
+    # message were not pinned.
+    records = _records(D1)
+    records[1]["raw_forecast_f"] = bad
+    with pytest.raises(ValueError, match="must be finite"):
+        _append(conn, D1, _frame(records))
+    assert _count(conn, "prediction_log") == 0
+
+
+def test_nan_in_a_stored_cell_is_refused_by_the_hash(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _append(conn, D1)
+    conn.execute(
+        "update live.prediction_log set forecast_f = 'NaN'::double "
+        "where station = 'KSEA'"
+    )
+    with pytest.raises(ValueError, match="JSON"):
+        partition_hash(conn, D1)
+
+
+def test_null_in_a_required_column_is_a_value_error(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    records = _records(D1)
+    records[0]["forecast_f"] = None
+    with pytest.raises(ValueError, match="must not contain nulls") as excinfo:
+        _append(conn, D1, _frame(records))
+    assert type(excinfo.value) is ValueError
+    assert _count(conn, "prediction_log") == 0
+
+
+def test_uncastable_column_is_a_value_error(conn: duckdb.DuckDBPyConnection) -> None:
+    bad = _rows(D1).with_columns(pl.lit("not-a-number").alias("lead_day"))
+    with pytest.raises(ValueError, match="cannot be cast") as excinfo:
+        _append(conn, D1, bad)
+    assert type(excinfo.value) is ValueError
+    assert _count(conn, "prediction_log") == 0
+
+
+def test_runtime_exactly_now_is_accepted(conn: duckdb.DuckDBPyConnection) -> None:
+    now = _now_for(D1)
+    records = _records(D1)
+    records[0]["runtime_utc"] = _naive(now)
+    assert _append(conn, D1, _frame(records), now).sealed is True
+
+
+def test_late_keys_are_sorted_whatever_the_input_order(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    now = _now_for(D1)
+    late = _rows(D1, window_end=_naive(now))
+    reversed_rows = late.reverse()
+    result = _append(conn, D1, reversed_rows, now)
+    assert result.late_keys == (
+        ("KPHX", 1, "high", "baseline"),
+        ("KPHX", 1, "high", "challenger"),
+        ("KSEA", 2, "low", "baseline"),
+    )
+
+
+def test_sub_second_now_is_kept_in_issued_at_and_seal(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    now = datetime(2026, 3, 1, 12, 0, 0, 123456, tzinfo=UTC)
+    _append(conn, D1, now=now)
+    stored = conn.execute(
+        "select distinct issued_at from live.prediction_log"
+    ).fetchall()
+    assert stored == [(_naive(now),)]
+    assert verify_immutability(conn).ok
+
+
+def _pin_key_order_frame() -> pl.DataFrame:
+    def row(station: str, lead: int, variable: str, source: str) -> dict[str, Any]:
+        return {
+            "station": station,
+            "run_date": D1,
+            "runtime_utc": _utc_naive(2026, 3, 1, 6, 0, 0),
+            "lead_day": lead,
+            "variable": variable,
+            "target_date": D1 + timedelta(days=lead),
+            "source": source,
+            "forecast_f": 1.5,
+            "raw_forecast_f": 2.5,
+            "window_end_utc": _utc_naive(2026, 3, 5, 0, 0, 0),
+            "retrained_on": None,
+            "trained_through": None,
+            "fallback": False,
+            "params": None,
+        }
+
+    # Handed over scrambled: no key order but the documented one reproduces
+    # the expected body below.
+    return _frame(
+        [
+            row("KBBB", 1, "high", "baseline"),
+            row("KAAA", 2, "low", "challenger"),
+            row("KAAA", 1, "low", "baseline"),
+            row("KAAA", 2, "high", "baseline"),
+            row("KAAA", 2, "low", "baseline"),
+        ]
+    )
+
+
+def test_hash_orders_rows_by_station_lead_variable_source(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    now = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
+    append_partition(conn, D1, _pin_key_order_frame(), now=now)
+
+    def line(station: str, lead: int, variable: str, source: str) -> str:
+        target = f"2026-03-0{1 + lead}"
+        return (
+            f'["{station}","2026-03-01","2026-03-01T06:00:00.000000",{lead},'
+            f'"{variable}","{target}","{source}",1.5,2.5,'
+            '"2026-03-05T00:00:00.000000","2026-03-01T12:00:00.000000",'
+            "null,null,false,null]"
+        )
+
+    expected_order = [
+        line("KAAA", 1, "low", "baseline"),
+        line("KAAA", 2, "high", "baseline"),
+        line("KAAA", 2, "low", "baseline"),
+        line("KAAA", 2, "low", "challenger"),
+        line("KBBB", 1, "high", "baseline"),
+    ]
+    body = "wfa-prediction-log-v1\n" + "\n".join(expected_order)
+    assert partition_hash(conn, D1) == (
+        5,
+        hashlib.sha256(body.encode("utf-8")).hexdigest(),
+    )
+
+
+def test_hash_escapes_non_ascii_and_awkward_strings(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    now = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
+    records = _records(D1)[:1]
+    records[0]["station"] = 'K,"X'
+    records[0]["params"] = "café ☃\nline\\two"
+    result = append_partition(conn, D1, _frame(records), now=now)
+
+    expected_row = (
+        '["K,\\"X","2026-03-01","2026-03-01T06:00:00.000000",1,"high",'
+        '"2026-03-02","baseline",70.0,69.0,"2026-03-03T00:00:00.000000",'
+        '"2026-03-01T12:00:00.000000","2026-02-28","2026-03-01T00:00:00.000000",'
+        'false,"caf\\u00e9 \\u2603\\nline\\\\two"]'
+    )
+    body = "wfa-prediction-log-v1\n" + expected_row
+    assert result.partition_sha256 == hashlib.sha256(body.encode()).hexdigest()
+    assert verify_immutability(conn).ok
+
+
+def test_engine_enforces_key_uniqueness_independently_of_the_writer(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _append(conn, D1)
+    with pytest.raises(duckdb.ConstraintException):
+        conn.execute(
+            "insert into live.prediction_log select * from live.prediction_log "
+            "where station = 'KSEA'"
+        )
+    with pytest.raises(duckdb.ConstraintException):
+        conn.execute(
+            "insert into live.partition_seals select * from live.partition_seals"
+        )
+
+
+def test_issued_at_problems_are_reported_alongside_hash_problems(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _three_partitions(conn)
+    conn.execute(
+        "update live.prediction_log set issued_at = issued_at - interval 1 day "
+        "where run_date = date '2026-03-03'"
+    )
+    _forge_consistent_seals(conn)
+    # After the forger is done, a plain row edit in an earlier partition.
+    conn.execute(
+        "update live.prediction_log set forecast_f = forecast_f + 1 "
+        "where run_date = date '2026-03-01' and station = 'KPHX'"
+    )
+
+    problems = verify_immutability(conn).problems
+    assert any("2026-03-01" in p and "partition hash mismatch" in p for p in problems)
+    assert any("2026-03-03" in p and "issued_at different" in p for p in problems)
+
+
+# 12. defects found by the teeth probe, now fixed and pinned ------------------
+
+
+def test_datetime_run_date_argument_is_refused_and_writes_nothing(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    # datetime is-a date, so the type hint alone does not stop it.
+    as_datetime = datetime.combine(D1, time(0, 0))
+    with pytest.raises(ValueError, match="datetime"):
+        append_partition(conn, as_datetime, _rows(D1), now=_now_for(D1))
+    assert conn.execute("select count(*) from live.prediction_log").fetchone() == (0,)
+    assert verify_immutability(conn).ok
+
+
+def test_verify_reports_a_non_finite_stored_cell_instead_of_raising(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    _three_partitions(conn)
+    conn.execute(
+        "update live.prediction_log set forecast_f = 'NaN'::double "
+        "where run_date = date '2026-03-01' and station = 'KSEA'"
+    )
+    conn.execute(
+        "update live.prediction_log set forecast_f = forecast_f + 1 "
+        "where run_date = date '2026-03-03' and station = 'KPHX'"
+    )
+    report = verify_immutability(conn)
+    assert not report.ok
+    assert any("2026-03-01" in p for p in report.problems)
+    assert any("2026-03-03" in p for p in report.problems)
