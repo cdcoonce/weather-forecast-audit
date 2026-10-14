@@ -160,4 +160,69 @@ describe("ScorecardTable", () => {
     expect(whiskers).toHaveLength(3);
     expect(whiskers[0]).toHaveAccessibleName(/−0.20 to \+0.90/);
   });
+
+  it("draws no whisker at all when the interval is missing", () => {
+    render(
+      <ScorecardTable
+        stats={slice("max", 1, { bias_lo_f: null, bias_hi_f: null })}
+        windowDays={30}
+      />
+    );
+    expect(screen.queryAllByRole("img")).toHaveLength(0);
+    expect(document.querySelector(".scorecard__whisker")).toBeNull();
+  });
+
+  it("never calls out an interval that spans zero, even when the group is unflagged", () => {
+    render(
+      <ScorecardTable
+        stats={slice("max", 1, { min_sample_flag: false, no_detectable_bias: true })}
+        windowDays={30}
+      />
+    );
+    expect(screen.queryByText(/interval excludes zero/i)).toBeNull();
+    expect(document.querySelector(".scorecard__cell--significant")).toBeNull();
+  });
+
+  it("puts the approximate note on a group when any one source is flagged", () => {
+    const group = slice("max", 1, { min_sample_flag: false }).map((s) =>
+      s.source === "challenger" ? { ...s, min_sample_flag: true } : s
+    );
+    render(<ScorecardTable stats={group} windowDays={30} />);
+    expect(screen.getByText(/too short for a significance call/i)).toBeInTheDocument();
+  });
+
+  it("names the window length it was given in the approximate note", () => {
+    render(<ScorecardTable stats={slice("max", 1)} windowDays={21} />);
+    expect(screen.getByText(/21-day window is too short/i)).toBeInTheDocument();
+  });
+
+  it("keeps the zero tick and the point estimate on the whisker's scale", () => {
+    // every interval is strictly positive: zero is outside the data range, but
+    // the shared scale must still include it so the tick is drawn on screen
+    render(
+      <ScorecardTable
+        stats={slice("max", 1, {
+          bias_f: 1.0,
+          bias_lo_f: 0.5,
+          bias_hi_f: 1.8,
+          no_detectable_bias: false,
+        })}
+        windowDays={30}
+      />
+    );
+    const svg = document.querySelector(".scorecard__whisker") as SVGSVGElement;
+    const width = Number(svg.getAttribute("width"));
+    const zero = svg.querySelector(".scorecard__whisker-zero") as SVGLineElement;
+    const span = svg.querySelector(".scorecard__whisker-span") as SVGLineElement;
+    const point = svg.querySelector(".scorecard__whisker-point") as SVGCircleElement;
+    const x0 = Number(zero.getAttribute("x1"));
+    const lo = Number(span.getAttribute("x1"));
+    const hi = Number(span.getAttribute("x2"));
+    const cx = Number(point.getAttribute("cx"));
+    expect(x0).toBeGreaterThanOrEqual(0);
+    expect(x0).toBeLessThanOrEqual(width);
+    expect(x0).toBeLessThan(lo); // zero is left of a positive interval
+    expect(lo).toBeLessThan(cx);
+    expect(cx).toBeLessThan(hi);
+  });
 });

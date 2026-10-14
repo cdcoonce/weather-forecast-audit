@@ -7,8 +7,9 @@ Expected numbers are recomputed in the test from plain Python records and
 under test, not a copy of it.
 """
 
+import copy
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -333,6 +334,61 @@ def test_window_end_is_the_latest_scorable_target_date_not_the_latest_logged(
     assert scorecard.build_scorecard(conn).window[1] == end  # type: ignore[index]
 
 
+_TAIL_CUTOFF = RUN_START + timedelta(days=38)  # last target_date still observed
+
+
+@pytest.mark.parametrize("mode", ["unobserved", "unscorable", "unpaired"])
+def test_window_ignores_a_tail_of_dates_that_cannot_be_graded_yet(
+    tmp_path: Path, keys: list[Key], mode: str
+) -> None:
+    """Logged target_dates after the cutoff have no usable observation, in
+    three different ways. None may anchor, shift or shorten the window, and
+    none may be graded: the scorecard equals the one for keys that simply
+    end at the cutoff."""
+    graded = [
+        replace(k, observed=None) if k.target_date > _TAIL_CUTOFF else k
+        for k in keys
+    ]
+    latest_logged = max(k.target_date for k in _logged(keys))
+    start, end = _expected_window(graded)
+    assert end <= _TAIL_CUTOFF < latest_logged
+    assert any(k.target_date > _TAIL_CUTOFF and k.observed is not None for k in keys)
+
+    connection = duckdb.connect(str(tmp_path / f"{mode}.duckdb"))
+    warehouse.init_db(connection)
+    _populate(connection, graded if mode == "unobserved" else keys)
+    if mode == "unscorable":
+        # an observation is present but the pair is not scorable
+        connection.execute(
+            "update int_raw_verification_pairs set scorable = false "
+            "where target_date > ?",
+            [_TAIL_CUTOFF],
+        )
+    elif mode == "unpaired":
+        connection.execute(
+            "delete from int_raw_verification_pairs where target_date > ?",
+            [_TAIL_CUTOFF],
+        )
+
+    card = scorecard.build_scorecard(connection)
+    assert card.window == (start, end)
+    expected = score(
+        _expected_frame(graded, start, end),
+        by=("variable", "lead_day"),
+        reference="raw_nbm",
+    )
+    _assert_stats_match(card.national, expected)
+    per_station = score(
+        _expected_frame(graded, start, end),
+        by=("station", "variable", "lead_day"),
+        reference="raw_nbm",
+    )
+    for station in STATIONS:
+        _assert_stats_match(
+            card.stations[station], per_station.filter(pl.col("station") == station)
+        )
+
+
 # -- (b) equals score() computed independently ------------------------------
 
 
@@ -490,6 +546,80 @@ def test_log_block_reports_the_chain_and_the_late_refusals(
         "head_chain_sha256": seal[0],
         "verified": True,
     }
+
+
+def test_an_observed_but_unscorable_pair_inside_the_window_is_not_graded(
+    tmp_path: Path, keys: list[Key]
+) -> None:
+    """`scorable` is the warehouse's verdict, not "an observation exists": a
+    pair that carries an observed_f but is flagged not scorable (e.g. an
+    incomplete observation day) must not be graded, anywhere in the window."""
+    start, end = _expected_window(keys)
+
+    def _flagged(k: Key) -> bool:
+        return (
+            k.station == "KPHX"
+            and k.variable == "max"
+            and k.lead_day == 1
+            and start <= k.target_date <= end
+            and k.run_date.toordinal() % 3 == 0
+            and k.observed is not None
+        )
+
+    flagged = [k for k in keys if _flagged(k)]
+    assert len(flagged) >= 5
+    graded = [replace(k, observed=None) if _flagged(k) else k for k in keys]
+
+    connection = duckdb.connect(str(tmp_path / "flagged.duckdb"))
+    warehouse.init_db(connection)
+    _populate(connection, keys)  # observed_f is present for every flagged key
+    for k in flagged:
+        connection.execute(
+            "update int_raw_verification_pairs set scorable = false "
+            "where station = ? and run_date = ? and lead_day = ? and variable = ?",
+            [k.station, k.run_date, k.lead_day, k.variable],
+        )
+
+    card = scorecard.build_scorecard(connection)
+    assert card.window == _expected_window(graded)
+    _assert_stats_match(
+        card.national,
+        score(
+            _expected_frame(graded, start, end),
+            by=("variable", "lead_day"),
+            reference="raw_nbm",
+        ),
+    )
+    expected_n = sum(
+        1 for k in graded if k.scorable and start <= k.target_date <= end
+        and (k.station, k.variable, k.lead_day) == ("KPHX", "max", 1)
+    )
+    by = _by_key(card.stations["KPHX"])
+    for source in ("raw_nbm", "baseline", "challenger"):
+        assert by[("max", 1, source)]["n"] == expected_n
+
+
+def test_build_scorecard_called_directly_refuses_a_tampered_log(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """The verification lives in `build_scorecard` too, not only in `export`:
+    a caller that passes no report must still never score a tampered log."""
+    conn.execute(
+        "update live.prediction_log set forecast_f = forecast_f + 1.0 "
+        "where run_date = ? and station = 'KPHX'",
+        [RUN_START + timedelta(days=10)],
+    )
+    with pytest.raises(LogIntegrityError):
+        scorecard.build_scorecard(conn)
+
+
+def test_intervals_note_carries_the_window_the_blocks_and_the_floor() -> None:
+    note = scorecard.intervals_note()
+    assert f"{scorecard.WINDOW_DAYS}-day window" in note
+    assert f"{BLOCK_DAYS}-day blocks" in note
+    assert f"min_sample_blocks ({MIN_SAMPLE_BLOCKS})" in note
+    assert "too short for a significance call" in note
+    assert scorecard.intervals_block()["note"] == note
 
 
 # -- (e) empty log ----------------------------------------------------------
@@ -711,6 +841,49 @@ def test_schemas_reject_unknown_and_missing_fields(
     bad_date = json.loads(json.dumps(payload))
     bad_date["window"]["start"] = "June 1"
     assert list(validator.iter_errors(bad_date))
+
+
+def _object_paths(
+    node: object, path: tuple[object, ...] = ()
+) -> list[tuple[object, ...]]:
+    paths: list[tuple[object, ...]] = []
+    if isinstance(node, dict):
+        paths.append(path)
+        for key, value in node.items():
+            paths.extend(_object_paths(value, (*path, key)))
+    elif isinstance(node, list) and node:
+        paths.extend(_object_paths(node[0], (*path, 0)))
+    return paths
+
+
+@pytest.mark.parametrize(
+    ("schema_name", "payload_path"),
+    [
+        ("scorecard.schema.json", "scorecard.json"),
+        ("scorecard_city.schema.json", "scorecard_cities/KPHX.json"),
+    ],
+)
+def test_schemas_reject_an_unknown_field_at_every_object_level(
+    conn: duckdb.DuckDBPyConnection,
+    tmp_path: Path,
+    schema_name: str,
+    payload_path: str,
+) -> None:
+    out, _ = _export(conn, tmp_path)
+    validator = Draft202012Validator(
+        json.loads(export.schema_files()[schema_name].read_text())
+    )
+    payload = json.loads((out / payload_path).read_text())
+    validator.validate(payload)
+    paths = _object_paths(payload)
+    assert len(paths) >= 3, paths  # top level, window and a stat at least
+    for path in paths:
+        mutated = copy.deepcopy(payload)
+        target: Any = mutated
+        for step in path:
+            target = target[step]
+        target["surprise"] = 1
+        assert list(validator.iter_errors(mutated)), f"open at {path}"
 
 
 def test_lock_entry_matches_the_canonical_hash_of_all_six_files() -> None:

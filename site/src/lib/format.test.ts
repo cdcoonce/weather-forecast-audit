@@ -211,4 +211,10 @@ describe("formatSkillPercent", () => {
   it("is null for a missing skill", () => {
     expect(formatSkillPercent(null)).toBeNull();
   });
+
+  it("prints a skill that rounds to zero as plain 0.0%, never a signed zero", () => {
+    expect(formatSkillPercent(-0.0001)).toBe("0.0%");
+    expect(formatSkillPercent(0.0004)).toBe("0.0%");
+    expect(formatSkillPercent(0)).toBe("0.0%");
+  });
 });

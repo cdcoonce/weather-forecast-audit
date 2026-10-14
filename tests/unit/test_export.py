@@ -425,6 +425,37 @@ def test_scorecard_bias_rounding_agrees_with_no_detectable_bias(
     assert rounded["bias_lo_f"] <= rounded["bias_f"] <= rounded["bias_hi_f"]  # type: ignore[operator]
 
 
+def test_scorecard_point_estimate_is_clamped_into_the_rounded_interval() -> None:
+    """A percentile interval need not contain its own point estimate; the
+    exported point is clamped so it never sits outside the exported interval."""
+    above = export.round_scorecard_stat(
+        _scorecard_stat(bias_f=1.0, bias_lo_f=0.2, bias_hi_f=0.9, skill=0.5,
+                        skill_lo=0.1, skill_hi=0.3)
+    )
+    assert above["bias_f"] == 0.9
+    assert above["skill"] == 0.3
+    below = export.round_scorecard_stat(
+        _scorecard_stat(bias_f=-0.5, bias_lo_f=0.2, bias_hi_f=0.9, skill=-0.5,
+                        skill_lo=0.1, skill_hi=0.3)
+    )
+    assert below["bias_f"] == 0.2
+    assert below["skill"] == 0.1
+
+
+def test_skill_nudge_off_zero_is_one_unit_of_the_third_decimal() -> None:
+    positive = export.round_scorecard_stat(
+        _scorecard_stat(skill=0.0004, skill_lo=0.0001, skill_hi=0.0009)
+    )
+    assert (positive["skill_lo"], positive["skill"]) == (0.001, 0.001)
+    assert positive["skill_hi"] == 0.001
+    negative = export.round_scorecard_stat(
+        _scorecard_stat(skill=-0.0004, skill_lo=-0.0009, skill_hi=-0.0001)
+    )
+    assert (negative["skill_lo"], negative["skill"], negative["skill_hi"]) == (
+        -0.001, -0.001, -0.001,
+    )
+
+
 # -- typical miss (lead-1 MAE pooled over seasons) -------------------------
 
 

@@ -120,6 +120,30 @@ describe("Scorecard page", () => {
     expect(within(log).getByText(/verified: yes/i)).toBeInTheDocument();
   });
 
+  it("words the interval level and shows the file's standing caveat", async () => {
+    stubFetch({ "scorecard.json": ok(scorecard()) });
+    render(<Scorecard cityIndex={CITY_INDEX} />);
+    await screen.findByRole("table", { name: "Highs" });
+    expect(screen.getByText(/95% date-block bootstrap intervals/)).toBeInTheDocument();
+    expect(
+      screen.getByText("The 30-day window spans only a few 14-day blocks.")
+    ).toBeInTheDocument();
+  });
+
+  it("names the file's own window length in the national approximate note", async () => {
+    stubFetch({
+      "scorecard.json": ok(
+        scorecard({
+          window: { days: 21, basis: "target_date", start: "2026-06-10", end: "2026-06-30" },
+        })
+      ),
+    });
+    render(<Scorecard cityIndex={CITY_INDEX} />);
+    await screen.findByRole("table", { name: "Highs" });
+    expect(screen.getAllByText(/21-day window is too short/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/30-day window is too short/i)).toBeNull();
+  });
+
   it("says plainly that nothing has been logged when the window is empty", async () => {
     stubFetch({
       "scorecard.json": ok(
@@ -207,6 +231,37 @@ describe("Scorecard page", () => {
     expect(
       within(section).getAllByText("3.25", { selector: "span" }).length
     ).toBeGreaterThan(0);
+  });
+
+  it("retries a failed city fetch from the city's own retry button", async () => {
+    let calls = 0;
+    const city: ScorecardCity = {
+      schema_version: "1.1.0",
+      icao: "KPHX",
+      label: "Phoenix/Sky Harbor, AZ",
+      window: scorecard().window,
+      stats: nationalStats().map((s) => ({ ...s, mae_f: 3.25 })),
+    };
+    stubFetch({
+      "scorecard.json": ok(scorecard()),
+      "scorecard_cities/KPHX.json": () => {
+        calls += 1;
+        return calls === 1 ? { status: 500, body: {} } : { status: 200, body: city };
+      },
+    });
+    render(<Scorecard cityIndex={CITY_INDEX} />);
+    await screen.findByRole("table", { name: "Highs" });
+    await userEvent.type(screen.getByRole("combobox"), "Phoenix{Enter}");
+
+    const section = await screen.findByRole("region", { name: /Phoenix\/Sky Harbor/ });
+    const alert = await within(section).findByRole("alert");
+    await userEvent.click(within(alert).getByRole("button", { name: /retry/i }));
+    await waitFor(() =>
+      expect(
+        within(section).getAllByText("3.25", { selector: "span" }).length
+      ).toBeGreaterThan(0)
+    );
+    expect(calls).toBe(2);
   });
 
   it("says so when a chosen city has no graded predictions", async () => {
