@@ -33,7 +33,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import dagster as dg
 
-from weather_forecast_audit import warehouse
+from weather_forecast_audit import challenger, issuance, warehouse
 from weather_forecast_audit.checks import (
     GAP_RATE_WARN,
     GUIDANCE_MAX_AGE_HOURS,
@@ -52,6 +52,7 @@ from weather_forecast_audit.pipeline import (
     resolve_station,
 )
 from weather_forecast_audit.regimes import load_archive_start, load_cycle_regimes
+from weather_forecast_audit.registry import load_registry
 from weather_forecast_audit.resources import (
     ClockResource,
     IemResource,
@@ -76,6 +77,8 @@ RAW_ASOS_HOURLY_KEY = dg.AssetKey(["raw", "asos_hourly"])
 RAW_CLI_DAILY_KEY = dg.AssetKey(["raw", "cli_daily"])
 RAW_RESOLVED_WINDOWS_KEY = dg.AssetKey(["raw", "resolved_windows"])
 RAW_INGEST_GAPS_KEY = dg.AssetKey(["raw", "ingest_gaps"])
+LIVE_PREDICTIONS_KEY = dg.AssetKey("live_predictions")
+VERIFICATION_PAIRS_KEY = dg.AssetKey("int_raw_verification_pairs")
 
 
 def _http_stats_metadata(fetcher: object) -> dict[str, int | float | str]:
@@ -398,6 +401,93 @@ RAW_INGEST_ASSETS = [
     raw_cli_daily,
     raw_resolved_windows,
 ]
+
+
+# -- live issuance (issue #20, slice B): one partition = one run date ---------
+
+
+@dg.asset(
+    key=LIVE_PREDICTIONS_KEY,
+    partitions_def=daily_partitions,
+    deps=[VERIFICATION_PAIRS_KEY],
+    description=(
+        "One run date's baseline and challenger predictions, appended to the "
+        "append-only live.prediction_log and sealed. Challenger retrains once "
+        "per calendar month (persisted in live.challenger_models) and "
+        "otherwise restores that booster; the rows equal the evaluated "
+        "walk-forward's. A partition is written once: re-materializing a "
+        "sealed date fails. Unscheduled until #16: a run must happen before "
+        "the run date's earliest verification window closes (lead-0 max "
+        "windows close 06Z the next day), else those rows are rejected as "
+        "late and the run fails."
+    ),
+)
+def live_predictions(
+    context: dg.AssetExecutionContext,
+    warehouse_resource: WarehouseResource,
+    clock: ClockResource,
+) -> dg.MaterializeResult:
+    run_date = date.fromisoformat(context.partition_key)
+    # The clock resource speaks naive UTC (repo convention); the log wants an
+    # aware one so a stray local-time clock can never be mistaken for UTC.
+    now = clock.now().replace(tzinfo=UTC)
+    features = challenger.station_feature_frame(load_registry())
+
+    with warehouse_resource.connect() as conn:
+        result = issuance.issue_predictions(
+            conn,
+            run_date,
+            now=now,
+            station_features=features,
+            min_train_rows=challenger.MIN_TRAIN_ROWS,
+        )
+
+    appended = result.append
+    metadata: dict[str, dg.MetadataValue] = {
+        "run_date": dg.MetadataValue.text(run_date.isoformat()),
+        "rows_appended": dg.MetadataValue.int(appended.n_appended),
+        "late_rejected": dg.MetadataValue.int(appended.n_late_rejected),
+        "sealed": dg.MetadataValue.bool(appended.sealed),
+        "retrained": dg.MetadataValue.bool(result.retrained),
+        "challenger_retrained_on": dg.MetadataValue.text(
+            str(result.challenger_retrained_on)
+        ),
+        "fit_seconds": dg.MetadataValue.float(result.fit_seconds),
+        "history_rows": dg.MetadataValue.int(result.n_history_rows),
+        "wall_seconds": dg.MetadataValue.float(result.wall_seconds),
+        "chain_sha256": dg.MetadataValue.text(str(appended.chain_sha256)),
+    }
+    context.log.info(
+        "live_predictions %s: appended=%d late_rejected=%d retrained=%s "
+        "fit_seconds=%.1f wall_seconds=%.1f",
+        run_date,
+        appended.n_appended,
+        appended.n_late_rejected,
+        result.retrained,
+        result.fit_seconds,
+        result.wall_seconds,
+    )
+    if appended.n_late_rejected > 0:
+        # Not retryable: a retry only runs later, and every row it would
+        # issue is later still. The late rows are in the log's own record
+        # (`n_late_rejected` of the seal) and listed here.
+        raise dg.Failure(
+            description=(
+                f"{appended.n_late_rejected} row(s) of {run_date} were rejected "
+                "as late: their verification windows had closed before this "
+                "run. The partition was "
+                f"{'sealed with the rest' if appended.sealed else 'not sealed'}; "
+                "the schedule must issue before the earliest window closes."
+            ),
+            metadata={
+                **metadata,
+                "late_keys": dg.MetadataValue.json(
+                    [list(key) for key in appended.late_keys]
+                ),
+            },
+            allow_retries=False,
+        )
+    return dg.MaterializeResult(metadata=metadata)
 
 
 # -- D7: checks wired to the pure evaluators in weather_forecast_audit.checks

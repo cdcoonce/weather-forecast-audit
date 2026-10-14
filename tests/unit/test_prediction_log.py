@@ -691,7 +691,8 @@ def test_init_db_creates_log_tables_and_is_idempotent(
             "where table_schema = 'live'"
         ).fetchall()
     }
-    assert tables == {"prediction_log", "partition_seals"}
+    # The two log tables, plus the issuance module's persisted boosters.
+    assert tables == {"prediction_log", "partition_seals", "challenger_models"}
     assert _count(conn, "prediction_log") == 3
     assert verify_immutability(conn).ok
 

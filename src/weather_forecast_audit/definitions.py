@@ -21,6 +21,7 @@ from weather_forecast_audit.assets import (
     FRESHNESS_CHECKS,
     RAW_INGEST_ASSETS,
     ingest_gaps_spec,
+    live_predictions,
 )
 from weather_forecast_audit.dbt_assets import dbt_resource, dbt_transform_assets
 from weather_forecast_audit.jobs import (
@@ -29,6 +30,7 @@ from weather_forecast_audit.jobs import (
     MAX_RUNTIME_SECONDS,
     freshness_check_job,
     ingest_job,
+    issue_predictions_job,
     transform_job,
 )
 from weather_forecast_audit.platform_smoke import PlatformSmokeError, run_platform_smoke
@@ -46,6 +48,7 @@ __all__ = [
     "defs",
     "freshness_check_job",
     "ingest_job",
+    "issue_predictions_job",
     "transform_job",
 ]
 
@@ -94,10 +97,17 @@ defs = Definitions(
         platform_smoke,
         *RAW_INGEST_ASSETS,
         ingest_gaps_spec,
+        live_predictions,
         dbt_transform_assets,
     ],
     asset_checks=FRESHNESS_CHECKS,
-    jobs=[platform_smoke_job, ingest_job, transform_job, freshness_check_job],
+    jobs=[
+        platform_smoke_job,
+        ingest_job,
+        transform_job,
+        freshness_check_job,
+        issue_predictions_job,
+    ],
     sensors=[national_backfill_sensor],
     resources={
         "warehouse_resource": WarehouseResource(),

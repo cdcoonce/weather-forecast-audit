@@ -1,5 +1,5 @@
 """`wfa` command-line interface: `init-db`, `ingest`, `predict baseline`,
-`predict challenger`, `export`, and `log verify`.
+`predict challenger`, `export`, `log verify`, and `log issue`.
 
 The DuckDB path always comes from `WFA_DUCKDB_PATH`, never a flag: one
 database per environment (local dev, CI, the tracer script), set once.
@@ -18,9 +18,13 @@ import polars as pl
 
 from weather_forecast_audit import challenger as challenger_module
 from weather_forecast_audit import export as export_module
-from weather_forecast_audit import prediction_log, warehouse
+from weather_forecast_audit import issuance, prediction_log, warehouse
 from weather_forecast_audit.baseline import MIN_PAIRS, WINDOW_DAYS, BaselineModel
-from weather_forecast_audit.challenger import ChallengerModel
+from weather_forecast_audit.challenger import (
+    PAIR_COLUMNS,
+    ChallengerModel,
+    station_feature_frame,
+)
 from weather_forecast_audit.iem.http import UrllibFetcher
 from weather_forecast_audit.pipeline import ingest_station
 from weather_forecast_audit.regimes import load_cycle_regimes
@@ -109,38 +113,8 @@ def _cmd_predict_baseline(args: argparse.Namespace) -> None:
     print("Run `dbt build` next to refresh fct_forecast_verification.")
 
 
-# The columns the walk-forward evaluator and the challenger read from
-# int_raw_verification_pairs, and nothing else: the table is ~6M rows on a
-# memory-constrained host, so `select *` is not an option here.
-_CHALLENGER_PAIR_COLUMNS = (
-    "station",
-    "run_date",
-    "runtime_utc",
-    "cycle_hour",
-    "lead_day",
-    "variable",
-    "target_date",
-    "forecast_f",
-    "spread_f",
-    "tmp_f",
-    "window_start_utc",
-    "window_end_utc",
-    "observed_f",
-    "scorable",
-)
-
-
 def _station_features(registry: dict[str, Station]) -> pl.DataFrame:
-    return pl.DataFrame(
-        {
-            "station": [s.icao for s in registry.values()],
-            "latitude": [s.lat for s in registry.values()],
-            "longitude": [s.lon for s in registry.values()],
-            "elevation_m": [s.elevation_m for s in registry.values()],
-            "coastal_flag": [s.coastal_flag for s in registry.values()],
-            "climate_region": [s.climate_region for s in registry.values()],
-        }
-    )
+    return station_feature_frame(registry)
 
 
 def _cmd_predict_challenger(args: argparse.Namespace) -> None:
@@ -162,7 +136,7 @@ def _cmd_predict_challenger(args: argparse.Namespace) -> None:
         # Rows from runs after `end` can neither be predicted nor reach a
         # training set (their windows close after `end`'s issuance), so they
         # are not read at all.
-        columns = ", ".join(_CHALLENGER_PAIR_COLUMNS)
+        columns = ", ".join(PAIR_COLUMNS)
         pairs = conn.execute(
             f"select {columns} from int_raw_verification_pairs where run_date <= ?",
             [end],
@@ -227,6 +201,41 @@ def _cmd_log_verify(args: argparse.Namespace) -> None:
     raise SystemExit(1)
 
 
+def _cmd_log_issue(args: argparse.Namespace) -> None:
+    db_path = _db_path()
+    run_date = date.fromisoformat(args.run_date)
+    # Read at call time (not a default argument) so a test can lower it; like
+    # `predict challenger` there is no override of any model constant.
+    features = _station_features(load_registry())
+
+    with duckdb.connect(db_path) as conn:
+        warehouse.init_db(conn)
+        result = issuance.issue_predictions(
+            conn,
+            run_date,
+            now=datetime.now(UTC),
+            station_features=features,
+            min_train_rows=challenger_module.MIN_TRAIN_ROWS,
+        )
+
+    appended = result.append
+    print(
+        f"wfa log issue {run_date}: appended={appended.n_appended} "
+        f"late_rejected={appended.n_late_rejected} "
+        f"retrained={'yes' if result.retrained else 'no'} "
+        f"challenger_retrained_on={result.challenger_retrained_on} "
+        f"history_rows={result.n_history_rows} "
+        f"fit_seconds={result.fit_seconds:.2f} "
+        f"wall_seconds={result.wall_seconds:.2f}"
+    )
+    for station, lead_day, variable, source in appended.late_keys:
+        print(f"late: {station} lead={lead_day} {variable} {source}")
+    if appended.n_late_rejected > 0:
+        # The schedule ran after those windows closed: the strict late rule
+        # refused them, so the run is not a clean one.
+        raise SystemExit(1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="wfa")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -286,6 +295,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Recompute every seal and the hash chain; exit 1 on any mismatch",
     )
     verify_parser.set_defaults(func=_cmd_log_verify)
+    issue_parser = log_subparsers.add_parser(
+        "issue",
+        help="Issue one run date's baseline and challenger predictions into the log",
+    )
+    issue_parser.add_argument("--run-date", required=True, dest="run_date")
+    issue_parser.set_defaults(func=_cmd_log_issue)
 
     return parser
 

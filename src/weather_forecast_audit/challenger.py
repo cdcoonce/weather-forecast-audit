@@ -27,11 +27,14 @@ implementation, driven only through `walk_forward`.
 
 import importlib.metadata
 import time
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, Self
 
 import lightgbm
 import numpy as np
 import polars as pl
+
+from weather_forecast_audit.registry import Station
 
 # -- pre-registered constants (never tuned on evaluation skill) ----------------
 
@@ -152,6 +155,26 @@ _HISTORY_SCHEMA = {
     "observed_f": pl.Float64,
 }
 
+PAIR_COLUMNS = (
+    "station",
+    "run_date",
+    "runtime_utc",
+    "cycle_hour",
+    "lead_day",
+    "variable",
+    "target_date",
+    "forecast_f",
+    "spread_f",
+    "tmp_f",
+    "window_start_utc",
+    "window_end_utc",
+    "observed_f",
+    "scorable",
+)
+"""The columns the walk-forward evaluator and this model read from
+`int_raw_verification_pairs`, and nothing else: the table is ~6M rows on a
+memory-constrained host, so `select *` is not an option there."""
+
 _NAN = float("nan")
 _MICROSECONDS_PER_DAY = 86_400_000_000
 
@@ -174,6 +197,21 @@ def booster_params() -> dict[str, Any]:
         "seed": SEED,
         "verbose": -1,
     }
+
+
+def station_feature_frame(registry: Mapping[str, Station]) -> pl.DataFrame:
+    """The registry as the one-row-per-station frame `ChallengerModel` takes."""
+    stations = list(registry.values())
+    return pl.DataFrame(
+        {
+            "station": [s.icao for s in stations],
+            "latitude": [s.lat for s in stations],
+            "longitude": [s.lon for s in stations],
+            "elevation_m": [s.elevation_m for s in stations],
+            "coastal_flag": [s.coastal_flag for s in stations],
+            "climate_region": [s.climate_region for s in stations],
+        }
+    )
 
 
 # -- the legal lagged-error features -----------------------------------------
@@ -395,6 +433,9 @@ class ChallengerModel:
         self._stats: pl.DataFrame | None = None
         self.fit_seconds_log: list[float] = []
         self.fit_count = 0
+        self.n_train_rows: int | None = None
+        """Rows the last `fit` saw after its null filter (None before a fit,
+        and on a model built by `restore`)."""
 
     # -- state ---------------------------------------------------------------
 
@@ -406,6 +447,60 @@ class ChallengerModel:
     @property
     def is_fitted(self) -> bool:
         return self._booster is not None
+
+    @property
+    def region_codes(self) -> dict[str, float]:
+        """Climate region -> categorical code the booster was trained on.
+
+        The codes are positions in the sorted registry regions, so a registry
+        change silently re-labels them; a persisted booster is only valid
+        against the codes it was trained with.
+        """
+        return dict(self._region_codes)
+
+    def dump_booster(self) -> str:
+        """The fitted booster as LightGBM's text model (`model_to_string`).
+
+        Raises `ValueError` for an unfitted model: there is nothing to dump,
+        and an empty string would be indistinguishable from a corrupt file.
+        """
+        if self._booster is None:
+            msg = "cannot dump an unfitted model (below min_train_rows)"
+            raise ValueError(msg)
+        return self._booster.model_to_string()
+
+    @classmethod
+    def restore(
+        cls,
+        station_features: pl.DataFrame,
+        model_text: str | None,
+        history_pairs: pl.DataFrame,
+        *,
+        min_train_rows: int = MIN_TRAIN_ROWS,
+    ) -> Self:
+        """Rebuild a model from a persisted booster, without training.
+
+        `model_text` is `dump_booster()`'s output, or None for a model that
+        was unfitted (below `min_train_rows`) when persisted, which then
+        falls back to raw exactly as the original did. `history_pairs` are
+        what `fit` would have been handed (the scorable pairs closed before
+        the retrain's issuance time); they pass through `fit`'s own null
+        filter and the same `_trim`, so the maintained history is the one
+        `fit` left behind. Only the pairs `_trim` keeps are needed, so a
+        caller may pre-trim them (the trim is compositional: trimming the
+        trimmed set again changes nothing).
+        """
+        model = cls(station_features, min_train_rows=min_train_rows)
+        if model_text is not None:
+            model._booster = lightgbm.Booster(model_str=model_text)  # noqa: SLF001
+        columns = [c for c in _TRAIN_COLUMNS if c in history_pairs.columns]
+        rows = history_pairs.select(columns).filter(
+            pl.col("observed_f").is_not_null() & pl.col("forecast_f").is_not_null()
+        )
+        model._history = cls._as_history(rows)  # noqa: SLF001
+        model._stats = None  # noqa: SLF001
+        model._trim()  # noqa: SLF001
+        return model
 
     def describe_params(self) -> dict[str, Any]:
         """Every pre-registered constant plus the runtime versions, for `params`."""
@@ -485,6 +580,7 @@ class ChallengerModel:
         )
         self._history = self._as_history(rows)
         self._stats = None
+        self.n_train_rows = rows.height
 
         if rows.height >= self.min_train_rows:
             self._booster = self._train(rows)
