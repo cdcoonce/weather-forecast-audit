@@ -996,7 +996,7 @@ def test_baseline_window_is_anchored_on_the_last_scorable_close_before_issuance(
             (
                 "update int_raw_verification_pairs set window_end_utc = ?, "
                 f"forecast_f = forecast_f + 300 where {_ROW_KEY}",
-                [datetime(2026, 1, 13, 10, 0), date(2026, 1, 20), "KAAA", "max", 1],
+                [datetime(2026, 1, 13, 10, 0), date(2026, 1, 20), "KAAA", "max", 1],  # noqa: DTZ001
             ),
             # X: a scorable pair closing exactly AT issuance (not before it).
             (
@@ -1008,7 +1008,7 @@ def test_baseline_window_is_anchored_on_the_last_scorable_close_before_issuance(
             (
                 "update int_raw_verification_pairs set window_end_utc = ?, "
                 f"scorable = false, observed_f = null where {_ROW_KEY}",
-                [datetime(2026, 2, 12, 12, 0), date(2026, 2, 9), "KCCC", "min", 1],
+                [datetime(2026, 2, 12, 12, 0), date(2026, 2, 9), "KCCC", "min", 1],  # noqa: DTZ001
             ),
         ],
     )
@@ -1105,14 +1105,14 @@ def test_run_rows_that_closed_before_issuance_are_seen_exactly_once(
             (
                 "update int_raw_verification_pairs set window_end_utc = ? "
                 f"where {_ROW_KEY}",
-                [datetime(2026, 2, 10, 12, 59), date(2026, 2, 12), "KAAA", "max", 1],
+                [datetime(2026, 2, 10, 12, 59), date(2026, 2, 12), "KAAA", "max", 1],  # noqa: DTZ001
             ),
             # closed between the retrain and 02-11: arrives with the 02-12 run
             # rows AND would match the delta's date filter
             (
                 "update int_raw_verification_pairs set window_end_utc = ? "
                 f"where {_ROW_KEY}",
-                [datetime(2026, 2, 11, 8, 0), date(2026, 2, 12), "KBBB", "max", 1],
+                [datetime(2026, 2, 11, 8, 0), date(2026, 2, 12), "KBBB", "max", 1],  # noqa: DTZ001
             ),
         ],
     )
@@ -1165,7 +1165,7 @@ def test_station_feature_frame_carries_each_registry_field_in_its_own_column() -
     assert frame["latitude"].to_list() != frame["longitude"].to_list()
 
 
-def test_restore_applies_the_fit_null_filter_and_trim_and_n_train_rows_is_exact() -> None:
+def test_restore_applies_fit_null_filter_and_trim_and_exact_n_train_rows() -> None:
     pairs = _pairs(date(2025, 12, 15), date(2026, 3, 3))
     cutoff = runtime_of(date(2026, 3, 3))
     training = pairs.filter(
@@ -1204,7 +1204,7 @@ def _artifact_row(conn: duckdb.DuckDBPyConnection, retrained_on: date) -> None:
             retrained_on,
             datetime.combine(retrained_on, time(13, 0)),
             issuance._sha256(""),  # noqa: SLF001
-            datetime(2026, 1, 1),
+            datetime(2026, 1, 1),  # noqa: DTZ001
         ],
     )
 
@@ -1212,7 +1212,7 @@ def _artifact_row(conn: duckdb.DuckDBPyConnection, retrained_on: date) -> None:
 def _seal_row(conn: duckdb.DuckDBPyConnection, run_date: date) -> None:
     conn.execute(
         "insert into live.partition_seals values (?, 0, 0, 'x', 'x', 'x', 1, ?, ?)",
-        [run_date, datetime(2026, 1, 1), datetime(2026, 1, 1)],
+        [run_date, datetime(2026, 1, 1), datetime(2026, 1, 1)],  # noqa: DTZ001
     )
 
 
