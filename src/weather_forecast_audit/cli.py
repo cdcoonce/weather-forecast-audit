@@ -1,5 +1,5 @@
 """`wfa` command-line interface: `init-db`, `ingest`, `predict baseline`,
-`predict challenger`, and `export`.
+`predict challenger`, `export`, and `log verify`.
 
 The DuckDB path always comes from `WFA_DUCKDB_PATH`, never a flag: one
 database per environment (local dev, CI, the tracer script), set once.
@@ -18,7 +18,7 @@ import polars as pl
 
 from weather_forecast_audit import challenger as challenger_module
 from weather_forecast_audit import export as export_module
-from weather_forecast_audit import warehouse
+from weather_forecast_audit import prediction_log, warehouse
 from weather_forecast_audit.baseline import MIN_PAIRS, WINDOW_DAYS, BaselineModel
 from weather_forecast_audit.challenger import ChallengerModel
 from weather_forecast_audit.iem.http import UrllibFetcher
@@ -207,6 +207,26 @@ def _cmd_export(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_log_verify(args: argparse.Namespace) -> None:
+    db_path = _db_path()
+    with duckdb.connect(db_path) as conn:
+        # An old database has no `live` schema: that is an empty log, which
+        # verifies, not a failure to find a table.
+        prediction_log.init_log(conn)
+        report = prediction_log.verify_immutability(conn)
+    head = report.head_chain_sha256[:12]
+    if report.ok:
+        print(f"OK partitions={report.partitions} rows={report.rows} head={head}")
+        return
+    print(
+        f"FAIL partitions={report.partitions} rows={report.rows} head={head} "
+        f"problems={len(report.problems)}"
+    )
+    for problem in report.problems:
+        print(problem)
+    raise SystemExit(1)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="wfa")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -256,6 +276,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     export_parser.add_argument("--out", required=True, help="Output directory")
     export_parser.set_defaults(func=_cmd_export)
+
+    log_parser = subparsers.add_parser(
+        "log", help="Live prediction log (append-only, sealed per run date)"
+    )
+    log_subparsers = log_parser.add_subparsers(dest="log_command", required=True)
+    verify_parser = log_subparsers.add_parser(
+        "verify",
+        help="Recompute every seal and the hash chain; exit 1 on any mismatch",
+    )
+    verify_parser.set_defaults(func=_cmd_log_verify)
 
     return parser
 

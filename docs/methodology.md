@@ -760,6 +760,73 @@ older); a group whose pairs stopped arriving keeps its last values with a
 growing `lag_age_days` rather than going missing. A caller that fits once and never calls `update` gets features that
 are stale by the time since the fit, and the age feature says so.
 
+## Live prediction log and immutability
+
+`raw.model_predictions` is a rebuildable cache: the backfill deletes and
+re-inserts it, so it cannot show that a forecast existed before its outcome.
+The `live` schema is the record that can. It is written by
+`weather_forecast_audit.prediction_log` only, and nothing in it is ever
+rebuilt.
+
+### Schema and rules
+
+- `live.prediction_log`: one row per `(station, run_date, lead_day, variable,
+  source)` with `source` in `baseline` / `challenger`, carrying the
+  prediction columns of `raw.model_predictions` plus `window_end_utc` and
+  `issued_at`.
+- `live.partition_seals`: one row per `run_date` (a partition): row count,
+  late-rejected count, `partition_sha256`, the previous and own
+  `chain_sha256`, `hash_version`, and the issue and seal times.
+- A partition is written once, in one transaction with its seal. A sealed
+  partition, or one that merely has rows, refuses every later append,
+  identical rows included.
+- `issued_at` is stamped by the writer from its own UTC clock; the caller's
+  frame has no such column and one supplied is ignored.
+- Append-only means date order: appending a `run_date` earlier than an
+  existing seal is refused, because the new seal would sit mid-chain and
+  change every later seal's `prev_chain_sha256`.
+
+### The late-row rule
+
+A row is issuable only while `issued_at < window_end_utc`, strictly: a row
+whose window closed at or before `now` is not written, is counted in
+`n_late_rejected` and returned by key. A prediction made after its window
+closed could have seen its own answer, so the log never holds one. If no row
+is issuable nothing is written and nothing is sealed.
+
+### Canonical hash (`hash_version` 1)
+
+Computed in Python, not SQL, because float-to-text casts depend on the
+engine version and an upgrade must not invalidate sealed hashes.
+
+1. Read the partition ordered by `(station, lead_day, variable, source)`,
+   columns in the fixed order: station, run_date, runtime_utc, lead_day,
+   variable, target_date, source, forecast_f, raw_forecast_f, window_end_utc,
+   issued_at, retrained_on, trained_through, fallback, params.
+2. Each row is a compact JSON array (`separators=(",", ":")`, ASCII, NaN
+   refused): dates `YYYY-MM-DD`, timestamps `YYYY-MM-DDTHH:MM:SS.ffffff`
+   (naive UTC, six fractional digits), doubles in Python float repr, NULL as
+   `null`.
+3. `partition_sha256 = sha256("wfa-prediction-log-v1\n" + rows joined by "\n")`.
+4. `chain_sha256 = sha256("{prev_chain}:{run_date}:{partition_sha256}")`; the
+   first seal's `prev_chain` is 64 zeros.
+
+Any change to this layout is a new `hash_version`, never an edit.
+
+### What `wfa log verify` proves
+
+It recomputes every partition hash and the chain from the stored rows and
+lists every problem: a row updated, deleted or inserted after sealing, a
+seal edited or deleted, rows with no seal, and `issued_at` differing from
+its seal or not before `window_end_utc`. Exit code 0 / 1.
+
+It proves the log is self-consistent, that nothing changed after sealing.
+It does not prove the rows were honest when written, and it cannot see a
+log truncated cleanly: delete the newest seal together with its rows and
+the shorter log still verifies. That is only detectable by comparing the
+head hash (`head=` in the CLI output) with a value recorded outside the
+database.
+
 ## Regime boundaries
 
 Every `fct_forecast_verification` row is tagged with two independent

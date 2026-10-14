@@ -30,6 +30,7 @@ import polars as pl
 from weather_forecast_audit.gaps import GapRecord
 from weather_forecast_audit.iem.guidance import GuidanceRow
 from weather_forecast_audit.iem.observations import CliDaily, HourlyObservation
+from weather_forecast_audit.prediction_log import init_log
 from weather_forecast_audit.resolver import ExtremeSource, Variable
 
 DDL = """
@@ -138,6 +139,9 @@ def init_db(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(DDL)
     conn.execute("alter table raw.asos_hourly add column if not exists max_6h_f double")
     conn.execute("alter table raw.asos_hourly add column if not exists min_6h_f double")
+    # The append-only `live` schema is created on every connection path but
+    # owned by `prediction_log`: nothing in this module may write to it.
+    init_log(conn)
     conn.execute(
         "alter table raw.resolved_windows add column if not exists "
         "extreme_source varchar"
