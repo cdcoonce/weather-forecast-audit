@@ -311,6 +311,151 @@ def test_schema_matches_lock_for_current_version() -> None:
         )
 
 
+# -- scorecard stats: the same sign-preserving rounding, for bias AND skill --
+
+
+def _scorecard_stat(**overrides: object) -> dict[str, object]:
+    stat: dict[str, object] = {
+        "variable": "max",
+        "lead_day": 1,
+        "source": "baseline",
+        "n": 100,
+        "n_dates": 30,
+        "n_blocks": 3,
+        "mae_f": 2.0,
+        "mae_lo_f": 1.5,
+        "mae_hi_f": 2.5,
+        "bias_f": 0.5,
+        "bias_lo_f": 0.1,
+        "bias_hi_f": 0.9,
+        "skill": 0.1,
+        "skill_lo": 0.02,
+        "skill_hi": 0.2,
+        "min_sample_flag": True,
+        "no_detectable_bias": False,
+    }
+    stat.update(overrides)
+    return stat
+
+
+def test_round_scorecard_stat_rounds_every_float_and_keeps_counts_and_flags() -> None:
+    rounded = export.round_scorecard_stat(
+        _scorecard_stat(
+            mae_f=2.34567,
+            mae_lo_f=1.2349,
+            mae_hi_f=3.5051,
+            bias_f=0.51234,
+            bias_lo_f=0.11111,
+            bias_hi_f=0.98765,
+            skill=0.123456,
+            skill_lo=0.0234,
+            skill_hi=0.2678,
+        )
+    )
+    assert rounded["mae_f"] == 2.35
+    assert rounded["mae_lo_f"] == 1.23
+    assert rounded["mae_hi_f"] == 3.51
+    assert rounded["bias_f"] == 0.51
+    assert rounded["bias_lo_f"] == 0.11
+    assert rounded["bias_hi_f"] == 0.99
+    assert rounded["skill"] == 0.123
+    assert rounded["skill_lo"] == 0.023
+    assert rounded["skill_hi"] == 0.268
+    assert rounded["n"] == 100
+    assert rounded["n_blocks"] == 3
+    assert rounded["min_sample_flag"] is True
+    assert rounded["no_detectable_bias"] is False
+
+
+def test_round_scorecard_stat_preserves_nulls() -> None:
+    rounded = export.round_scorecard_stat(
+        _scorecard_stat(
+            mae_lo_f=None, mae_hi_f=None, bias_f=None, bias_lo_f=None,
+            bias_hi_f=None, skill=None, skill_lo=None, skill_hi=None,
+            no_detectable_bias=True,
+        )
+    )
+    for name in (
+        "mae_lo_f", "mae_hi_f", "bias_f", "bias_lo_f", "bias_hi_f",
+        "skill", "skill_lo", "skill_hi",
+    ):
+        assert rounded[name] is None
+
+
+@pytest.mark.parametrize(
+    ("skill", "lo", "hi"),
+    [
+        (0.0004, 0.0001, 0.0009),  # excludes zero on the positive side
+        (-0.0004, -0.0009, -0.0001),  # ... and on the negative side
+        (0.2, -0.0004, 0.4),  # spans zero, barely
+        (0.0, -0.0001, 0.0001),  # spans zero, both tiny
+        (0.0, 0.0, 0.0),  # the reference source against itself
+        (0.15, 0.05, 0.25),  # ordinary
+        (-0.0001, -0.2, -0.00004),  # point rounds to 0 while the CI excludes it
+    ],
+)
+def test_skill_rounding_never_changes_whether_the_interval_excludes_zero(
+    skill: float, lo: float, hi: float
+) -> None:
+    rounded = export.round_scorecard_stat(
+        _scorecard_stat(skill=skill, skill_lo=lo, skill_hi=hi)
+    )
+    r_lo, r_hi, r_point = rounded["skill_lo"], rounded["skill_hi"], rounded["skill"]
+    assert (lo <= 0 <= hi) == (r_lo <= 0 <= r_hi)  # type: ignore[operator]
+    assert r_lo <= r_point <= r_hi  # type: ignore[operator]
+
+
+@pytest.mark.parametrize(
+    ("bias_f", "lo", "hi", "spans"),
+    [
+        (-0.34, -0.6523, -0.0041, False),
+        (0.34, 0.0032, 0.53, False),
+        (0.006, -0.0001, 0.02, True),
+    ],
+)
+def test_scorecard_bias_rounding_agrees_with_no_detectable_bias(
+    bias_f: float, lo: float, hi: float, spans: bool
+) -> None:
+    rounded = export.round_scorecard_stat(
+        _scorecard_stat(
+            bias_f=bias_f, bias_lo_f=lo, bias_hi_f=hi, no_detectable_bias=spans
+        )
+    )
+    assert (rounded["bias_lo_f"] <= 0 <= rounded["bias_hi_f"]) == spans  # type: ignore[operator]
+    assert rounded["bias_lo_f"] <= rounded["bias_f"] <= rounded["bias_hi_f"]  # type: ignore[operator]
+
+
+def test_scorecard_point_estimate_is_clamped_into_the_rounded_interval() -> None:
+    """A percentile interval need not contain its own point estimate; the
+    exported point is clamped so it never sits outside the exported interval."""
+    above = export.round_scorecard_stat(
+        _scorecard_stat(bias_f=1.0, bias_lo_f=0.2, bias_hi_f=0.9, skill=0.5,
+                        skill_lo=0.1, skill_hi=0.3)
+    )
+    assert above["bias_f"] == 0.9
+    assert above["skill"] == 0.3
+    below = export.round_scorecard_stat(
+        _scorecard_stat(bias_f=-0.5, bias_lo_f=0.2, bias_hi_f=0.9, skill=-0.5,
+                        skill_lo=0.1, skill_hi=0.3)
+    )
+    assert below["bias_f"] == 0.2
+    assert below["skill"] == 0.1
+
+
+def test_skill_nudge_off_zero_is_one_unit_of_the_third_decimal() -> None:
+    positive = export.round_scorecard_stat(
+        _scorecard_stat(skill=0.0004, skill_lo=0.0001, skill_hi=0.0009)
+    )
+    assert (positive["skill_lo"], positive["skill"]) == (0.001, 0.001)
+    assert positive["skill_hi"] == 0.001
+    negative = export.round_scorecard_stat(
+        _scorecard_stat(skill=-0.0004, skill_lo=-0.0009, skill_hi=-0.0001)
+    )
+    assert (negative["skill_lo"], negative["skill"], negative["skill_hi"]) == (
+        -0.001, -0.001, -0.001,
+    )
+
+
 # -- typical miss (lead-1 MAE pooled over seasons) -------------------------
 
 
@@ -537,3 +682,45 @@ def test_every_ambiguous_co_label_in_the_registry_has_an_override() -> None:
     assert ambiguous <= set(export.LABEL_OVERRIDES), sorted(
         ambiguous - set(export.LABEL_OVERRIDES)
     )
+
+
+# -- contract 1.1.0 is additive: 1.0.0 stays exactly as published ------------
+
+_LOCK_1_0_0 = {
+    "city.schema.json": (
+        "d119168ee7ee8205a088a52fae26bd1f08c5ecb2a34091deb22ab6f08a8a5060"
+    ),
+    "city_index.schema.json": (
+        "1c0e879805095eedab681e228d764514043c081519f288b37b0f52940ae94bfa"
+    ),
+    "completeness.schema.json": (
+        "3505f4dd0ec567e42ff435abcfe22b3e66c95026be6a1121924dab4cf0ab0615"
+    ),
+    "manifest.schema.json": (
+        "06a81136cff134911347a35289db24dad334da9ae5e24b6710889512c6420305"
+    ),
+}
+
+
+def test_current_version_is_1_1_0() -> None:
+    assert export.SCHEMA_VERSION == "1.1.0"
+
+
+def test_the_1_0_0_lock_entry_is_unchanged() -> None:
+    assert export.load_lock()["1.0.0"] == _LOCK_1_0_0
+
+
+def test_the_four_1_0_0_schema_files_are_untouched_on_disk() -> None:
+    files = export.schema_files()
+    for name, digest in _LOCK_1_0_0.items():
+        assert export.canonical_hash(json.loads(files[name].read_text())) == digest
+
+
+def test_1_1_0_adds_exactly_the_two_scorecard_schemas_to_the_1_0_0_set() -> None:
+    lock = export.load_lock()
+    assert set(lock["1.1.0"]) == set(lock["1.0.0"]) | {
+        "scorecard.schema.json",
+        "scorecard_city.schema.json",
+    }
+    for name, digest in _LOCK_1_0_0.items():
+        assert lock["1.1.0"][name] == digest

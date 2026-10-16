@@ -4,6 +4,9 @@ import {
   biasCellContent,
   formatBiasEndpoints,
   formatGeneratedAt,
+  formatInterval,
+  formatSignedFixed,
+  formatSkillPercent,
   formatSignedEndpoint,
   formatSignedF,
   formatTypicalMissLine,
@@ -169,5 +172,49 @@ describe("formatTypicalMissLine", () => {
 describe("formatGeneratedAt", () => {
   it("formats an ISO UTC timestamp as 'YYYY-MM-DD HH:MM UTC'", () => {
     expect(formatGeneratedAt("2026-09-27T14:03:00Z")).toBe("2026-09-27 14:03 UTC");
+  });
+});
+
+describe("formatSignedFixed", () => {
+  it("keeps two decimals and a true minus sign, never a hyphen", () => {
+    expect(formatSignedFixed(-0.04)).toBe("−0.04");
+    expect(formatSignedFixed(-0.04)).not.toContain("-");
+    expect(formatSignedFixed(1.5)).toBe("+1.50");
+    expect(formatSignedFixed(0)).toBe("0.00");
+  });
+
+  it("does not print a negative zero for a value that rounds to zero", () => {
+    expect(formatSignedFixed(-0.001)).toBe("0.00");
+  });
+});
+
+describe("formatInterval", () => {
+  it("renders 'lo to hi' with true minus signs, never a plus-minus", () => {
+    const text = formatInterval(-1.6, -0.6, formatSignedFixed);
+    expect(text).toBe("−1.60 to −0.60");
+    expect(text).not.toContain("±");
+  });
+
+  it("is null when either endpoint is missing", () => {
+    expect(formatInterval(null, 1, formatSignedFixed)).toBeNull();
+    expect(formatInterval(1, null, formatSignedFixed)).toBeNull();
+  });
+});
+
+describe("formatSkillPercent", () => {
+  it("shows a percentage with a true minus sign", () => {
+    expect(formatSkillPercent(0.123)).toBe("+12.3%");
+    expect(formatSkillPercent(-0.05)).toBe("−5.0%");
+    expect(formatSkillPercent(-0.05)).not.toContain("-");
+  });
+
+  it("is null for a missing skill", () => {
+    expect(formatSkillPercent(null)).toBeNull();
+  });
+
+  it("prints a skill that rounds to zero as plain 0.0%, never a signed zero", () => {
+    expect(formatSkillPercent(-0.0001)).toBe("0.0%");
+    expect(formatSkillPercent(0.0004)).toBe("0.0%");
+    expect(formatSkillPercent(0)).toBe("0.0%");
   });
 });

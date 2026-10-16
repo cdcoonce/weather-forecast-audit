@@ -174,3 +174,182 @@
   font-size: var(--text-xs);
   max-width: var(--container-narrow);
 }
+
+/* -- Header nav ------------------------------------------------------------ */
+
+.site-header__nav a {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+/* -- Scorecard (#/scorecard) ------------------------------------------------ */
+
+.scorecard {
+  max-width: var(--container-content);
+}
+
+.scorecard__title {
+  font-size: var(--text-2xl);
+  margin: 0 0 var(--space-3);
+}
+
+.scorecard__section-title {
+  font-size: var(--text-lg);
+  margin: var(--space-8) 0 var(--space-3);
+}
+
+.scorecard__window {
+  margin: 0 0 var(--space-3);
+  color: var(--text);
+  font-size: var(--text-md);
+}
+
+.scorecard__explainer,
+.scorecard__note-standing,
+.scorecard__empty {
+  max-width: var(--container-narrow);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.scorecard__empty {
+  color: var(--text);
+  font-size: var(--text-md);
+}
+
+.scorecard__table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  margin-bottom: var(--space-6);
+}
+
+.scorecard__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.scorecard__table caption {
+  text-align: left;
+  font-weight: var(--weight-semibold);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+}
+
+.scorecard__table th,
+.scorecard__table td {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.scorecard__table thead th {
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-xs);
+}
+
+.scorecard__lead {
+  background: var(--surface);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: var(--weight-semibold);
+}
+
+.scorecard__source {
+  white-space: nowrap;
+  font-weight: var(--weight-medium);
+}
+
+.scorecard__row--approximate .scorecard__cell {
+  color: var(--text);
+}
+
+.scorecard__cell-primary {
+  display: block;
+  font-weight: var(--weight-semibold);
+}
+
+.scorecard__cell-secondary {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.scorecard__cell-tag {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  border-left: 3px solid var(--focus);
+  padding-left: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.scorecard__cell--count {
+  color: var(--text-muted);
+}
+
+.scorecard__note {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.scorecard__whisker {
+  display: block;
+  margin-top: var(--space-1);
+  max-width: 100%;
+  color: var(--text);
+}
+
+.scorecard__whisker-zero {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.scorecard__whisker-span {
+  stroke: currentcolor;
+  stroke-width: 2;
+}
+
+.scorecard__whisker-point {
+  fill: currentcolor;
+}
+
+.scorecard__log {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+}
+
+.scorecard__log-title {
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-2);
+}
+
+.scorecard__log-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.scorecard__city-title {
+  font-size: var(--text-xl);
+  margin: var(--space-8) 0 var(--space-3);
+}
+
+.scorecard__icao {
+  color: var(--text-muted);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-lg);
+}

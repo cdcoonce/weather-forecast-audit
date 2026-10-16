@@ -1,7 +1,7 @@
 {
   "icao": "KPHX",
   "label": "Phoenix/Sky Harbor, AZ",
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "stats": [
     {
       "bias_f": -0.04,

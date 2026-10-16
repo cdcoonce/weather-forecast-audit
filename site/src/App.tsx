@@ -3,6 +3,7 @@ import { NotFound } from "./components/NotFound";
 import { useFetchJson } from "./lib/useFetchJson";
 import { CityPage } from "./pages/CityPage";
 import { Home } from "./pages/Home";
+import { Scorecard } from "./pages/Scorecard";
 import { useHashRoute } from "./router/useHashRoute";
 import type { CityIndex, Manifest } from "./types/export";
 
@@ -41,6 +42,9 @@ export function App(): JSX.Element {
             {route.name === "home" && <Home cityIndex={cityIndexFetch.data} />}
             {route.name === "city" && (
               <CityPage icao={route.icao} cityIndex={cityIndexFetch.data} />
+            )}
+            {route.name === "scorecard" && (
+              <Scorecard cityIndex={cityIndexFetch.data} />
             )}
             {route.name === "not-found" && <NotFound />}
           </>

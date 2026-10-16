@@ -1,0 +1,894 @@
+{
+  "runner": "pytest",
+  "runner_notes": "Mixed spec. Python mutants (no test_command key) run the global test_command from the repo root with `tests` appended in place of the last path, optionally narrowed by `run_only` (a -k expression; a mutant that survives the narrowed run MUST be re-run over its full `tests` files before it is declared survived). Site mutants carry their own test_command and `cwd: site`: run them from site/ (npx vitest run <files>); `file` paths still resolve relative to this directory. Revert each mutated file with `git checkout -- <file>` before the next mutant. `expect` is the test whose failure is the kill, or `survived` with the `why`.",
+  "test_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_scorecard.py",
+    "tests/unit/test_export.py"
+  ],
+  "mutants": [
+    {
+      "label": "window-start-31-days",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    start = end - timedelta(days=WINDOW_DAYS - 1)\n",
+      "replace": "    start = end - timedelta(days=WINDOW_DAYS)\n",
+      "why": "window must be exactly 30 consecutive target_dates, not 31",
+      "expect": "test_window_is_the_last_thirty_target_dates_inclusive",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_window_is_the_last_thirty"
+    },
+    {
+      "label": "window-start-29-days",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    start = end - timedelta(days=WINDOW_DAYS - 1)\n",
+      "replace": "    start = end - timedelta(days=WINDOW_DAYS - 2)\n",
+      "why": "window must be exactly 30 consecutive target_dates, not 29",
+      "expect": "test_window_is_the_last_thirty_target_dates_inclusive",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_window_is_the_last_thirty"
+    },
+    {
+      "label": "window-end-exclusive",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "_LOGGED_QUERY + \" where l.target_date between ? and ?\", [start, end]",
+      "replace": "_LOGGED_QUERY + \" where l.target_date >= ? and l.target_date < ?\", [start, end]",
+      "why": "the latest scorable target_date is inside the window (end inclusive)",
+      "expect": "test_window_is_the_last_thirty_target_dates_inclusive",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_window_is_the_last_thirty"
+    },
+    {
+      "label": "window-anchored-on-latest-logged",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    select max(l.target_date)\n    from live.prediction_log as l\n    join int_raw_verification_pairs as p\n        on p.station = l.station\n        and p.run_date = l.run_date\n        and p.lead_day = l.lead_day\n        and p.variable = l.variable\n    where p.scorable and p.observed_f is not null\n",
+      "replace": "    select max(l.target_date)\n    from live.prediction_log as l\n",
+      "why": "a logged date with no observation yet must never move the window",
+      "expect": "test_window_ignores_a_tail_of_dates_that_cannot_be_graded_yet[unobserved]",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_window_end or test_national_stats",
+      "note": "originally killed only incidentally by test_a_log_with_no_graded_row; the intended window-end test was vacuous (latest logged == latest scorable in the fixture). Pinned by new test_window_ignores_a_tail_of_dates_that_cannot_be_graded_yet.",
+      "originally": "killed only incidentally (test_a_log_with_no_graded_row_is_an_empty_scorecard); the intended window-end test is vacuous"
+    },
+    {
+      "label": "window-anchor-ignores-scorable-flag",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    where p.scorable and p.observed_f is not null\n",
+      "replace": "    where p.observed_f is not null\n",
+      "why": "an observation flagged not scorable must not anchor the window",
+      "expect": "test_window_ignores_a_tail_of_dates_that_cannot_be_graded_yet[unscorable]",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_window_end or test_national_stats",
+      "originally": "survived"
+    },
+    {
+      "label": "raw-nbm-from-pairs-table",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "l.target_date, l.forecast_f, l.raw_forecast_f, p.observed_f,",
+      "replace": "l.target_date, l.forecast_f, p.forecast_f as raw_forecast_f, p.observed_f,",
+      "why": "raw_nbm is what the log recorded, never the warehouse's current forecast_f",
+      "expect": "test_raw_nbm_comes_from_the_log_not_the_warehouse_forecast",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_raw_nbm_comes_from_the_log"
+    },
+    {
+      "label": "raw-nbm-not-deduplicated",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "        logged.sort(\"source\")\n        .unique(subset=list(_KEY), keep=\"first\", maintain_order=True)\n",
+      "replace": "        logged\n",
+      "why": "raw_nbm is one row per logged key, not one per (key, source)",
+      "expect": "test_raw_nbm_is_one_row_per_logged_key_across_sources",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_raw_nbm_is_one_row"
+    },
+    {
+      "label": "raw-disagreement-guard-never-fires",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "        .filter(pl.col(\"_n\") > 1)\n",
+      "replace": "        .filter(pl.col(\"_n\") > 2)\n",
+      "why": "sources disagreeing on raw_forecast_f is a corrupt log: refuse",
+      "expect": "test_sources_disagreeing_on_the_raw_forecast_are_refused_not_tie_broken",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_sources_disagreeing"
+    },
+    {
+      "label": "scorable-flag-ignored",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "           coalesce(p.scorable, false) and p.observed_f is not null as scorable\n",
+      "replace": "           p.observed_f is not null as scorable\n",
+      "why": "a pair with an observation but scorable=false must not be graded",
+      "expect": "test_an_observed_but_unscorable_pair_inside_the_window_is_not_graded",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "originally": "survived"
+    },
+    {
+      "label": "source-order-raw-last",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "SOURCE_ORDER = (RAW_SOURCE, \"baseline\", \"challenger\")",
+      "replace": "SOURCE_ORDER = (\"baseline\", \"challenger\", RAW_SOURCE)",
+      "why": "rows within a (variable, lead) group are raw, baseline, challenger",
+      "expect": "test_stats_are_ordered_deterministically",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_stats_are_ordered"
+    },
+    {
+      "label": "variable-order-min-first",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "_VARIABLE_ORDER = {\"max\": 0, \"min\": 1}",
+      "replace": "_VARIABLE_ORDER = {\"max\": 1, \"min\": 0}",
+      "why": "highs come before lows",
+      "expect": "test_stats_are_ordered_deterministically",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_stats_are_ordered"
+    },
+    {
+      "label": "national-sort-removed",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    national.sort(key=_sort_key)\n",
+      "replace": "    pass\n",
+      "why": "national stats carry the documented order, not score()'s alphabetical one",
+      "expect": "test_stats_are_ordered_deterministically",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_stats_are_ordered"
+    },
+    {
+      "label": "station-sort-removed",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "        stats.sort(key=_sort_key)\n",
+      "replace": "        pass\n",
+      "why": "per-station stats carry the documented order too",
+      "expect": "test_stats_are_ordered_deterministically",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_stats_are_ordered"
+    },
+    {
+      "label": "national-reference-is-baseline",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "score(frame, by=(\"variable\", \"lead_day\"), reference=RAW_SOURCE)",
+      "replace": "score(frame, by=(\"variable\", \"lead_day\"), reference=\"baseline\")",
+      "why": "skill is measured against raw_nbm, which scores exactly 0",
+      "expect": "test_national_stats_equal_score_computed_independently, test_skill_is_against_raw_and_raw_scores_exactly_zero",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_skill_is_against_raw or test_national_stats"
+    },
+    {
+      "label": "station-scored-with-national-by",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "score(frame, by=(\"station\", \"variable\", \"lead_day\"), reference=RAW_SOURCE)",
+      "replace": "score(frame, by=(\"variable\", \"lead_day\"), reference=RAW_SOURCE)",
+      "why": "per-station stats are grouped by station",
+      "expect": "test_per_station_stats_equal_score_computed_independently",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_per_station_stats"
+    },
+    {
+      "label": "empty-short-circuit-removed",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    if report.rows == 0:\n        return empty\n",
+      "replace": "    if False:\n        return empty\n",
+      "why": "an empty log (or a database without the live schema) is an empty scorecard",
+      "expect": "test_database_without_the_live_schema_exports_an_empty_scorecard",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_database_without_the_live_schema or test_empty_log"
+    },
+    {
+      "label": "live-schema-probe-always-true",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    return row is not None and int(row[0]) == 2\n",
+      "replace": "    return True\n",
+      "why": "a database predating the live schema verifies as an empty log",
+      "expect": "test_database_without_the_live_schema_exports_an_empty_scorecard",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_database_without_the_live_schema"
+    },
+    {
+      "label": "no-graded-row-guard-dropped",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "    if latest is None or latest[0] is None:\n        return empty\n",
+      "replace": "    if latest is None:\n        return empty\n",
+      "why": "a log with no graded key is an empty scorecard, not a TypeError",
+      "expect": "test_a_log_with_no_graded_row_is_an_empty_scorecard",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_a_log_with_no_graded_row"
+    },
+    {
+      "label": "log-late-total-zeroed",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "\"coalesce(sum(n_late_rejected), 0) from live.partition_seals\"",
+      "replace": "\"0 from live.partition_seals\"",
+      "why": "the log block reports the late-rejected total",
+      "expect": "test_log_block_reports_the_chain_and_the_late_refusals",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_log_block"
+    },
+    {
+      "label": "build-scorecard-skips-own-verification",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "        report = verified_log_report(conn)\n    log = _log_block(conn, report)\n",
+      "replace": "        _head = conn.execute(\n            \"select chain_sha256 from live.partition_seals \"\n            \"order by run_date desc limit 1\"\n        ).fetchone()\n        report = VerifyReport(\n            ok=True,\n            partitions=int(conn.execute(\"select count(*) from live.partition_seals\").fetchone()[0]),\n            rows=int(conn.execute(\"select count(*) from live.prediction_log\").fetchone()[0]),\n            problems=(),\n            head_chain_sha256=_head[0] if _head else GENESIS,\n        )\n    log = _log_block(conn, report)\n",
+      "why": "build_scorecard(conn) without a report must verify (never score a tampered log)",
+      "expect": "test_build_scorecard_called_directly_refuses_a_tampered_log",
+      "tests": [
+        "tests/unit/test_scorecard.py",
+        "tests/unit/test_export.py"
+      ],
+      "originally": "survived"
+    },
+    {
+      "label": "intervals-note-contradicts-itself",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "\"is approximate and the window is too short for a significance call.\"",
+      "replace": "\"is approximate but the window is long enough for a significance call.\"",
+      "why": "the standing caveat says the window is too short for a significance call",
+      "expect": "test_intervals_note_carries_the_window_the_blocks_and_the_floor",
+      "tests": [
+        "tests/unit/test_scorecard.py",
+        "tests/unit/test_export.py"
+      ],
+      "originally": "survived"
+    },
+    {
+      "label": "skill-rounding-not-sign-preserving",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "        exclude_zero=_interval_excludes_zero(stat[\"skill_lo\"], stat[\"skill_hi\"]),\n",
+      "replace": "        exclude_zero=False,\n",
+      "why": "skill endpoints must not round onto/across zero when the interval excludes it",
+      "expect": "test_skill_rounding_never_changes_whether_the_interval_excludes_zero",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_skill_rounding_never_changes"
+    },
+    {
+      "label": "bias-rounding-not-sign-preserving-scorecard",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    rounded = dict(stat)\n    bias_f, bias_lo_f, bias_hi_f = _round_interval(\n        stat[\"bias_f\"],\n        stat[\"bias_lo_f\"],\n        stat[\"bias_hi_f\"],\n        exclude_zero=not stat[\"no_detectable_bias\"],\n",
+      "replace": "    rounded = dict(stat)\n    bias_f, bias_lo_f, bias_hi_f = _round_interval(\n        stat[\"bias_f\"],\n        stat[\"bias_lo_f\"],\n        stat[\"bias_hi_f\"],\n        exclude_zero=False,\n",
+      "why": "scorecard bias endpoints must agree with no_detectable_bias after rounding",
+      "expect": "test_scorecard_bias_rounding_agrees_with_no_detectable_bias",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_scorecard_bias_rounding"
+    },
+    {
+      "label": "skill-nudge-is-hardcoded-0.01",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    smallest = round(10.0**-ndigits, ndigits)\n",
+      "replace": "    smallest = 0.01\n",
+      "why": "the nudge is one unit in the last place of the requested precision",
+      "expect": "test_skill_nudge_off_zero_is_one_unit_of_the_third_decimal",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "note": "killed incidentally by the skill-rounding parametrisation; explicit magnitude pinned by test_skill_nudge_off_zero_is_one_unit_of_the_third_decimal",
+      "originally": "killed only incidentally by the exclusion parametrisation"
+    },
+    {
+      "label": "skill-kept-at-2dp",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "        ndigits=3,\n    )\n    rounded[\"skill\"] = skill\n",
+      "replace": "        ndigits=2,\n    )\n    rounded[\"skill\"] = skill\n",
+      "why": "skill keeps 3 decimals (0.1% steps)",
+      "expect": "test_round_scorecard_stat_rounds_every_float_and_keeps_counts_and_flags",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_round_scorecard_stat_rounds"
+    },
+    {
+      "label": "point-estimate-clamp-removed",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    if rounded_point is not None and rounded_lo is not None:\n        rounded_point = max(rounded_point, rounded_lo)\n    if rounded_point is not None and rounded_hi is not None:\n        rounded_point = min(rounded_point, rounded_hi)\n",
+      "replace": "    pass\n",
+      "why": "the rounded point estimate is clamped into the rounded interval",
+      "expect": "test_scorecard_point_estimate_is_clamped_into_the_rounded_interval",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "note": "the pre-existing round_stat clamp test is vacuous: sign-preserving rounding already pulls the point inside; the clamp only bites when the bootstrap interval excludes its own point estimate",
+      "originally": "survived"
+    },
+    {
+      "label": "skill-excludes-zero-needs-both-sides",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    return float(lo) > 0 or float(hi) < 0  # type: ignore[arg-type]\n",
+      "replace": "    return float(lo) > 0 and float(hi) < 0  # type: ignore[arg-type]\n",
+      "why": "an interval excludes zero when lo > 0 OR hi < 0",
+      "expect": "test_skill_rounding_never_changes_whether_the_interval_excludes_zero",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_skill_rounding_never_changes"
+    },
+    {
+      "label": "mae-interval-left-unrounded",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    for name in (\"mae_f\", \"mae_lo_f\", \"mae_hi_f\"):\n        rounded[name] = _round2(stat[name])\n",
+      "replace": "    rounded[\"mae_f\"] = _round2(stat[\"mae_f\"])\n",
+      "why": "MAE interval endpoints are rounded for JSON output",
+      "expect": "test_round_scorecard_stat_rounds_every_float_and_keeps_counts_and_flags",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_round_scorecard_stat_rounds"
+    },
+    {
+      "label": "integrity-checked-after-files-written",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    log_report = scorecard_module.verified_log_report(conn)\n    card = scorecard_module.build_scorecard(conn, log_report)\n\n    rows = _load_verification_rows(conn)\n    scored = score(rows, by=(\"station\", \"variable\", \"lead_day\", \"season\"))\n    by_station = _station_stats(scored)\n\n    out_dir.mkdir(parents=True, exist_ok=True)\n    cities_dir = out_dir / \"cities\"\n    cities_dir.mkdir(exist_ok=True)\n    scorecard_cities_dir = out_dir / \"scorecard_cities\"\n    scorecard_cities_dir.mkdir(exist_ok=True)\n\n    window: dict[str, object] | None = None\n    if card.window is not None:\n        window = {\n            \"days\": scorecard_module.WINDOW_DAYS,\n            \"basis\": scorecard_module.WINDOW_BASIS,\n            \"start\": card.window[0].isoformat(),\n            \"end\": card.window[1].isoformat(),\n        }\n\n    city_index_entries: list[dict[str, object]] = []\n    for icao in sorted(registry):\n        station = registry[icao]\n        raw_stats = by_station.get(icao, [])\n        summary = build_summary(raw_stats)\n        rounded_stats = [round_stat(stat) for stat in raw_stats]\n        typical_miss = build_typical_miss(raw_stats)\n        rounded_typical_miss = {\n            variable: _round2(value) for variable, value in typical_miss.items()\n        }\n        label = title_case_label(station.label)\n\n        _write_json(\n            cities_dir / f\"{icao}.json\",\n            {\n                \"schema_version\": SCHEMA_VERSION,\n                \"icao\": station.icao,\n                \"label\": label,\n                \"stats\": rounded_stats,\n                \"typical_miss\": rounded_typical_miss,\n            },\n        )\n\n        _write_json(\n            scorecard_cities_dir / f\"{icao}.json\",\n            {\n                \"schema_version\": SCHEMA_VERSION,\n                \"icao\": station.icao,\n                \"label\": label,\n                \"window\": window,\n                \"stats\": [\n                    round_scorecard_stat(stat) for stat in card.stations.get(icao, [])\n                ],\n            },\n        )\n\n        city_index_entries.append(\n            {\n                \"icao\": station.icao,\n                \"label\": label,\n                \"lat\": station.lat,\n                \"lon\": station.lon,\n                \"climate_region\": station.climate_region,\n                \"summary\": summary,\n            }\n        )\n\n    _write_json(\n        out_dir / \"city_index.json\",\n        {\"schema_version\": SCHEMA_VERSION, \"cities\": city_index_entries},\n    )\n    _write_json(\n        out_dir / \"completeness.json\",\n        {\"schema_version\": SCHEMA_VERSION, \"stations\": []},\n    )\n\n    _write_json(\n        out_dir / \"scorecard.json\",\n        {\n            \"schema_version\": SCHEMA_VERSION,\n            \"window\": window,\n            \"intervals\": scorecard_module.intervals_block(),\n            \"log\": card.log,\n            \"national\": [round_scorecard_stat(stat) for stat in card.national],\n        },\n    )\n\n    data_through = _data_through(conn)\n    files = [\n        \"manifest.json\",\n        \"city_index.json\",\n        \"completeness.json\",\n        \"scorecard.json\",\n        *(f\"cities/{icao}.json\" for icao in sorted(registry)),\n        *(f\"scorecard_cities/{icao}.json\" for icao in sorted(registry)),\n    ]\n    _write_json(\n        out_dir / \"manifest.json\",\n        {\n            \"schema_version\": SCHEMA_VERSION,\n            \"generated_at\": datetime.now(UTC).strftime(\"%Y-%m-%dT%H:%M:%SZ\"),\n            \"data_through\": data_through.isoformat() if data_through else None,\n            \"station_count\": len(registry),\n            \"files\": files,\n        },\n    )\n\n",
+      "replace": "    try:\n        log_report = scorecard_module.verified_log_report(conn)\n        _late_error = None\n    except Exception as exc:\n        _late_error = exc\n        log_report = scorecard_module.VerifyReport(\n            ok=False, partitions=0, rows=0, problems=(),\n            head_chain_sha256=scorecard_module.GENESIS,\n        )\n    card = scorecard_module.build_scorecard(conn, log_report)\n\n    rows = _load_verification_rows(conn)\n    scored = score(rows, by=(\"station\", \"variable\", \"lead_day\", \"season\"))\n    by_station = _station_stats(scored)\n\n    out_dir.mkdir(parents=True, exist_ok=True)\n    cities_dir = out_dir / \"cities\"\n    cities_dir.mkdir(exist_ok=True)\n    scorecard_cities_dir = out_dir / \"scorecard_cities\"\n    scorecard_cities_dir.mkdir(exist_ok=True)\n\n    window: dict[str, object] | None = None\n    if card.window is not None:\n        window = {\n            \"days\": scorecard_module.WINDOW_DAYS,\n            \"basis\": scorecard_module.WINDOW_BASIS,\n            \"start\": card.window[0].isoformat(),\n            \"end\": card.window[1].isoformat(),\n        }\n\n    city_index_entries: list[dict[str, object]] = []\n    for icao in sorted(registry):\n        station = registry[icao]\n        raw_stats = by_station.get(icao, [])\n        summary = build_summary(raw_stats)\n        rounded_stats = [round_stat(stat) for stat in raw_stats]\n        typical_miss = build_typical_miss(raw_stats)\n        rounded_typical_miss = {\n            variable: _round2(value) for variable, value in typical_miss.items()\n        }\n        label = title_case_label(station.label)\n\n        _write_json(\n            cities_dir / f\"{icao}.json\",\n            {\n                \"schema_version\": SCHEMA_VERSION,\n                \"icao\": station.icao,\n                \"label\": label,\n                \"stats\": rounded_stats,\n                \"typical_miss\": rounded_typical_miss,\n            },\n        )\n\n        _write_json(\n            scorecard_cities_dir / f\"{icao}.json\",\n            {\n                \"schema_version\": SCHEMA_VERSION,\n                \"icao\": station.icao,\n                \"label\": label,\n                \"window\": window,\n                \"stats\": [\n                    round_scorecard_stat(stat) for stat in card.stations.get(icao, [])\n                ],\n            },\n        )\n\n        city_index_entries.append(\n            {\n                \"icao\": station.icao,\n                \"label\": label,\n                \"lat\": station.lat,\n                \"lon\": station.lon,\n                \"climate_region\": station.climate_region,\n                \"summary\": summary,\n            }\n        )\n\n    _write_json(\n        out_dir / \"city_index.json\",\n        {\"schema_version\": SCHEMA_VERSION, \"cities\": city_index_entries},\n    )\n    _write_json(\n        out_dir / \"completeness.json\",\n        {\"schema_version\": SCHEMA_VERSION, \"stations\": []},\n    )\n\n    _write_json(\n        out_dir / \"scorecard.json\",\n        {\n            \"schema_version\": SCHEMA_VERSION,\n            \"window\": window,\n            \"intervals\": scorecard_module.intervals_block(),\n            \"log\": card.log,\n            \"national\": [round_scorecard_stat(stat) for stat in card.national],\n        },\n    )\n\n    data_through = _data_through(conn)\n    files = [\n        \"manifest.json\",\n        \"city_index.json\",\n        \"completeness.json\",\n        \"scorecard.json\",\n        *(f\"cities/{icao}.json\" for icao in sorted(registry)),\n        *(f\"scorecard_cities/{icao}.json\" for icao in sorted(registry)),\n    ]\n    _write_json(\n        out_dir / \"manifest.json\",\n        {\n            \"schema_version\": SCHEMA_VERSION,\n            \"generated_at\": datetime.now(UTC).strftime(\"%Y-%m-%dT%H:%M:%SZ\"),\n            \"data_through\": data_through.isoformat() if data_through else None,\n            \"station_count\": len(registry),\n            \"files\": files,\n        },\n    )\n\n    if _late_error is not None:\n        raise _late_error\n\n",
+      "why": "the log is verified BEFORE any file is written",
+      "expect": "test_a_missing_seal_blocks_the_export_too, test_tampered_log_raises_and_writes_nothing",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_tampered_log or test_a_missing_seal"
+    },
+    {
+      "label": "export-skips-its-own-verification-call",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    log_report = scorecard_module.verified_log_report(conn)\n    card = scorecard_module.build_scorecard(conn, log_report)\n",
+      "replace": "    card = scorecard_module.build_scorecard(conn)\n",
+      "why": "double verification: export verifies, build_scorecard verifies again -- EQUIVALENT: build_scorecard verifies itself when handed no report and both checks precede every write; neither call alone is observable through export().",
+      "expect": "survived",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_tampered_log or test_a_missing_seal",
+      "equivalent": true,
+      "note": "equivalent: build_scorecard verifies itself when handed no report, and both verifications precede every write; double verification is unobservable from outside (only the export-level call and build_scorecard's own call exist, removing either alone changes nothing except that build_scorecard(conn) direct-call refusal is covered by its own test)"
+    },
+    {
+      "label": "city-file-only-for-stations-with-stats",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "        _write_json(\n            scorecard_cities_dir / f\"{icao}.json\",\n            {\n                \"schema_version\": SCHEMA_VERSION,\n                \"icao\": station.icao,\n                \"label\": label,\n                \"window\": window,\n                \"stats\": [\n                    round_scorecard_stat(stat) for stat in card.stations.get(icao, [])\n                ],\n            },\n        )\n",
+      "replace": "        if icao in card.stations:\n            _write_json(\n                scorecard_cities_dir / f\"{icao}.json\",\n                {\n                    \"schema_version\": SCHEMA_VERSION,\n                    \"icao\": station.icao,\n                    \"label\": label,\n                    \"window\": window,\n                    \"stats\": [\n                        round_scorecard_stat(stat) for stat in card.stations.get(icao, [])\n                    ],\n                },\n            )\n",
+      "why": "every registry station gets a scorecard city file, empty stats if none",
+      "expect": "test_every_manifest_file_exists, test_export_writes_a_city_file_for_every_registry_station",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_export_writes_a_city_file or test_every_manifest"
+    },
+    {
+      "label": "manifest-omits-scorecard-json",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "        \"scorecard.json\",\n        *(f\"cities/{icao}.json\" for icao in sorted(registry)),\n",
+      "replace": "        *(f\"cities/{icao}.json\" for icao in sorted(registry)),\n",
+      "why": "the manifest lists scorecard.json",
+      "expect": "test_export_writes_a_city_file_for_every_registry_station",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_export_writes_a_city_file"
+    },
+    {
+      "label": "manifest-omits-scorecard-city-files",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "        *(f\"scorecard_cities/{icao}.json\" for icao in sorted(registry)),\n",
+      "replace": "",
+      "why": "the manifest lists scorecard_cities/*.json",
+      "expect": "test_export_writes_a_city_file_for_every_registry_station",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_export_writes_a_city_file"
+    },
+    {
+      "label": "city-file-window-null",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "                \"window\": window,\n                \"stats\": [\n                    round_scorecard_stat",
+      "replace": "                \"window\": None,\n                \"stats\": [\n                    round_scorecard_stat",
+      "why": "a city file carries the same window as the national file",
+      "expect": "test_export_writes_a_city_file_for_every_registry_station",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_export_writes_a_city_file"
+    },
+    {
+      "label": "schema-version-left-at-1.0.0",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "SCHEMA_VERSION = \"1.1.0\"",
+      "replace": "SCHEMA_VERSION = \"1.0.0\"",
+      "why": "additive contract bump to 1.1.0",
+      "expect": "test_current_version_is_1_1_0, test_schema_matches_lock_for_current_version",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_current_version_is_1_1_0 or test_schema_matches_lock"
+    },
+    {
+      "label": "new-schema-not-in-filename-list",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "    \"scorecard_city.schema.json\",\n",
+      "replace": "",
+      "why": "both new schemas are part of the locked contract",
+      "expect": "test_lock_entry_matches_the_canonical_hash_of_all_six_files",
+      "tests": [
+        "tests/unit/test_scorecard.py",
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_lock_entry_matches or test_1_1_0_adds"
+    },
+    {
+      "label": "lock-1.0.0-entry-edited",
+      "file": "../../../export_schema/lock.json",
+      "oracle": "real",
+      "find": "    \"manifest.schema.json\": \"06a81136cff134911347a35289db24dad334da9ae5e24b6710889512c6420305\"\n  },\n",
+      "replace": "    \"manifest.schema.json\": \"06a81136cff134911347a35289db24dad334da9ae5e24b6710889512c6420304\"\n  },\n",
+      "why": "the published 1.0.0 lock entry is immutable",
+      "expect": "test_the_1_0_0_lock_entry_is_unchanged",
+      "tests": [
+        "tests/unit/test_export.py"
+      ],
+      "run_only": "test_the_1_0_0_lock_entry"
+    },
+    {
+      "label": "scorecard-schema-top-level-open",
+      "file": "../../../export_schema/v1/scorecard.schema.json",
+      "oracle": "real",
+      "find": "  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\n    \"schema_version\",\n    \"window\",\n    \"intervals\",",
+      "replace": "  \"type\": \"object\",\n  \"additionalProperties\": true,\n  \"required\": [\n    \"schema_version\",\n    \"window\",\n    \"intervals\",",
+      "why": "scorecard.json rejects unknown top-level fields (behavioural guard only)",
+      "expect": "test_schemas_reject_an_unknown_field_at_every_object_level, test_lock_entry_matches_the_canonical_hash_of_all_six_files",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_schemas_reject_unknown",
+      "note": "original suite: only the lock hash test (test_lock_entry_matches...) went red; behavioural guard tested only the stat level. Now also killed by test_schemas_reject_an_unknown_field_at_every_object_level",
+      "originally": "survived the behavioural schema test; only the lock hash test went red"
+    },
+    {
+      "label": "scorecard-schema-log-open",
+      "file": "../../../export_schema/v1/scorecard.schema.json",
+      "oracle": "real",
+      "find": "    \"log\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,",
+      "replace": "    \"log\": {\n      \"type\": \"object\",\n      \"additionalProperties\": true,",
+      "why": "the log block rejects unknown fields (behavioural guard only)",
+      "expect": "test_schemas_reject_an_unknown_field_at_every_object_level, test_lock_entry_matches_the_canonical_hash_of_all_six_files",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_schemas_reject_unknown",
+      "note": "same as top-level-open",
+      "originally": "survived the behavioural schema test; only the lock hash test went red"
+    },
+    {
+      "label": "scorecard-schema-stat-open",
+      "file": "../../../export_schema/v1/scorecard.schema.json",
+      "oracle": "real",
+      "find": "    \"stat\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,",
+      "replace": "    \"stat\": {\n      \"type\": \"object\",\n      \"additionalProperties\": true,",
+      "why": "a stat rejects unknown fields (behavioural guard only)",
+      "expect": "test_schemas_reject_unknown_and_missing_fields",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_schemas_reject_unknown"
+    },
+    {
+      "label": "scorecard-city-schema-top-level-open",
+      "file": "../../../export_schema/v1/scorecard_city.schema.json",
+      "oracle": "real",
+      "find": "  \"type\": \"object\",\n  \"additionalProperties\": false,",
+      "replace": "  \"type\": \"object\",\n  \"additionalProperties\": true,",
+      "why": "scorecard city file rejects unknown fields (behavioural guard only)",
+      "expect": "test_schemas_reject_an_unknown_field_at_every_object_level, test_lock_entry_matches_the_canonical_hash_of_all_six_files",
+      "tests": [
+        "tests/unit/test_scorecard.py"
+      ],
+      "run_only": "test_schemas_reject_unknown",
+      "note": "original suite: lock hash only; city schema had no behavioural negative test at all",
+      "originally": "survived the behavioural schema test; only the lock hash test went red"
+    },
+    {
+      "label": "site-flagged-note-loses-too-short-wording",
+      "file": "../../../site/src/components/ScorecardTable.tsx",
+      "oracle": "real",
+      "find": "    \"short for a significance call.\"\n",
+      "replace": "    \"long enough for a significance call.\"\n",
+      "why": "a flagged group says the window is too short for a significance call",
+      "expect": "src/components/ScorecardTable.test.tsx > ScorecardTable > carries the project's wording on a flagged group, and never claims significance",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/components/ScorecardTable.test.tsx"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "site-minus-sign-is-a-hyphen",
+      "file": "../../../site/src/lib/format.ts",
+      "oracle": "real",
+      "find": "${value > 0 ? \"+\" : MINUS}${text}",
+      "replace": "${value > 0 ? \"+\" : \"-\"}${text}",
+      "why": "negative numbers use a true minus sign",
+      "expect": "components/ScorecardTable.test.tsx > ScorecardTable > shows MAE and bias with their intervals, using a true minus sign | lib/format.test.ts > formatInterval > renders 'lo to hi' with true minus signs, never a plus-minus | lib/format.test.ts > formatSignedFixed > keeps two decimals and a true minus s",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/lib/format.test.ts",
+        "src/components/ScorecardTable.test.tsx"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "site-empty-wording-claims-nothing-logged",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "{card.log.rows === 0\n",
+      "replace": "{card.log.rows >= 0\n",
+      "why": "rows exist but none graded must not say nothing was logged",
+      "expect": "src/pages/Scorecard.test.tsx > Scorecard page > does not claim an empty log when rows exist but none is graded yet",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "site-route-prefix-match",
+      "file": "../../../site/src/router/useHashRoute.ts",
+      "oracle": "real",
+      "find": "  if (path === \"/scorecard\") return { name: \"scorecard\" };\n",
+      "replace": "  if (path.startsWith(\"/scorecard\")) return { name: \"scorecard\" };\n",
+      "why": "only #/scorecard is the scorecard route",
+      "expect": "src/router/useHashRoute.test.ts > parseHash > keeps unknown paths not-found, including near-misses of the scorecard",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/router/useHashRoute.test.ts"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "site-route-accepts-trailing-slash",
+      "file": "../../../site/src/router/useHashRoute.ts",
+      "oracle": "real",
+      "find": "  if (path === \"/scorecard\") return { name: \"scorecard\" };\n",
+      "replace": "  if (path === \"/scorecard\" || path === \"/scorecard/\") return { name: \"scorecard\" };\n",
+      "why": "#/scorecard/ is not-found, consistent with #/city/KPHX/",
+      "expect": "useHashRoute: treats a trailing slash the same way for scorecard and city routes",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/router/useHashRoute.test.ts"
+      ],
+      "cwd": "site",
+      "note": "pins current contract (no trailing-slash tolerance); judgement call",
+      "originally": "survived"
+    },
+    {
+      "label": "site-city-fetch-wrong-url",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "useFetchJson<ScorecardCity>(`scorecard_cities/${icao}.json`)",
+      "replace": "useFetchJson<ScorecardCity>(`cities/${icao}.json`)",
+      "why": "the city scorecard is fetched from scorecard_cities/{ICAO}.json",
+      "expect": "pages/Scorecard.test.tsx > Scorecard page > says so when a chosen city has no graded predictions | src/pages/Scorecard.test.tsx > Scorecard page > loads a city's file only when that city is chosen",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "site-page-retry-is-a-noop",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "    return <FetchError onRetry={scorecardFetch.retry} />;\n",
+      "replace": "    return <FetchError onRetry={() => undefined} />;\n",
+      "why": "the national fetch error has a working retry",
+      "expect": "src/pages/Scorecard.test.tsx > Scorecard page > shows an error with a working retry",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "site-city-retry-is-a-noop",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "    body = <FetchError onRetry={cityFetch.retry} />;\n",
+      "replace": "    body = <FetchError onRetry={() => undefined} />;\n",
+      "why": "the city fetch error has a working retry",
+      "expect": "Scorecard page: retries a failed city fetch from the city's own retry button",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-whisker-drawn-for-null-interval",
+      "file": "../../../site/src/components/ScorecardTable.tsx",
+      "oracle": "real",
+      "find": "  if (stat.bias_lo_f == null || stat.bias_hi_f == null) return null;\n",
+      "replace": "",
+      "why": "no whisker is drawn when the interval is missing",
+      "expect": "ScorecardTable: draws no whisker at all when the interval is missing",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/components/ScorecardTable.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-excludes-zero-ignores-no-detectable-bias",
+      "file": "../../../site/src/components/ScorecardTable.tsx",
+      "oracle": "real",
+      "find": "  const excludesZero = !stat.min_sample_flag && !stat.no_detectable_bias;\n",
+      "replace": "  const excludesZero = !stat.min_sample_flag;\n",
+      "why": "only an interval that really excludes zero may be called out as such",
+      "expect": "ScorecardTable: never calls out an interval that spans zero, even when the group is unflagged",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/components/ScorecardTable.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-note-needs-every-source-flagged",
+      "file": "../../../site/src/components/ScorecardTable.tsx",
+      "oracle": "real",
+      "find": "const flagged = group.some((s) => s.min_sample_flag);",
+      "replace": "const flagged = group.every((s) => s.min_sample_flag);",
+      "why": "one flagged source puts the approximate note on the group",
+      "expect": "ScorecardTable: puts the approximate note on a group when any one source is flagged",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/components/ScorecardTable.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-skill-signed-zero",
+      "file": "../../../site/src/lib/format.ts",
+      "oracle": "real",
+      "find": "  if (Number(text) === 0) return `${text}%`;\n",
+      "replace": "",
+      "why": "a skill that rounds to zero prints 0.0%, never a signed zero",
+      "expect": "format: prints a skill that rounds to zero as plain 0.0%, never a signed zero",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/lib/format.test.ts"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-raw-row-shows-skill",
+      "file": "../../../site/src/components/ScorecardTable.tsx",
+      "oracle": "real",
+      "find": "        {stat.source === \"raw_nbm\" ? (\n",
+      "replace": "        {false ? (\n",
+      "why": "raw is the reference and reads 'reference', not 0%",
+      "expect": "src/components/ScorecardTable.test.tsx > ScorecardTable > shows skill versus raw for corrected sources and 'reference' for raw",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/components/ScorecardTable.test.tsx"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "site-interval-level-wording",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "{Math.round(card.intervals.level * 100)}%",
+      "replace": "{Math.round(card.intervals.level * 10)}%",
+      "why": "the page words the interval level from the file",
+      "expect": "Scorecard page: words the interval level and shows the file's standing caveat",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-standing-interval-note-dropped",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "          <p className=\"scorecard__note-standing\">{card.intervals.note}</p>\n",
+      "replace": "",
+      "why": "the standing intervals caveat is shown on the page",
+      "expect": "Scorecard page: words the interval level and shows the file's standing caveat",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-whisker-domain-excludes-zero",
+      "file": "../../../site/src/components/ScorecardTable.tsx",
+      "oracle": "real",
+      "find": "  const values = [0];\n",
+      "replace": "  const values: number[] = [];\n",
+      "why": "the shared whisker scale always includes the zero tick",
+      "expect": "ScorecardTable: keeps the zero tick and the point estimate on the whisker's scale",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/components/ScorecardTable.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-national-window-days-hardcoded",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "<ScorecardTable stats={card.national} windowDays={card.window.days} />",
+      "replace": "<ScorecardTable stats={card.national} windowDays={30} />",
+      "why": "the approximate note names the file's own window length",
+      "expect": "Scorecard page: names the file's own window length in the national approximate note",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site",
+      "originally": "survived"
+    },
+    {
+      "label": "site-verified-flag-inverted",
+      "file": "../../../site/src/pages/Scorecard.tsx",
+      "oracle": "real",
+      "find": "{log.verified ? \"yes\" : \"no\"}",
+      "replace": "{log.verified ? \"no\" : \"yes\"}",
+      "why": "the log block shows verified: yes only when verified",
+      "expect": "src/pages/Scorecard.test.tsx > Scorecard page > shows a loading status, then the table with window dates and the log block",
+      "test_command": [
+        "npx",
+        "vitest",
+        "run",
+        "src/pages/Scorecard.test.tsx"
+      ],
+      "cwd": "site"
+    },
+    {
+      "label": "graded-observation-may-be-non-finite",
+      "file": "../../../src/weather_forecast_audit/scorecard.py",
+      "oracle": "real",
+      "find": "coalesce(isfinite(p.observed_f), false) as scorable",
+      "replace": "p.observed_f is not null as scorable",
+      "why": "NaN passes is-not-null; a NaN observation then poisons every MAE of its group and the file is not valid JSON",
+      "expect": "test_a_non_finite_observation_is_not_graded_and_never_reaches_the_json"
+    },
+    {
+      "label": "writer-allows-nan",
+      "file": "../../../src/weather_forecast_audit/export.py",
+      "oracle": "real",
+      "find": "sort_keys=True, allow_nan=False)",
+      "replace": "sort_keys=True)",
+      "why": "the exporter must fail rather than publish NaN/Infinity, which a browser's JSON.parse rejects",
+      "expect": "test_export_refuses_to_write_non_finite_numbers"
+    }
+  ]
+}
