@@ -1,0 +1,654 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_prediction_log.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/unit/test_prediction_log.py"
+  ],
+  "mutants": [
+    {
+      "label": "late-rule-inclusive-boundary",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    issuable = frame.filter(pl.col(\"window_end_utc\") > naive_now)\n    late = frame.filter(pl.col(\"window_end_utc\") <= naive_now)\n",
+      "replace": "    issuable = frame.filter(pl.col(\"window_end_utc\") >= naive_now)\n    late = frame.filter(pl.col(\"window_end_utc\") < naive_now)\n",
+      "why": "a row whose window closes exactly at now must be late (strict now < window_end_utc)"
+    },
+    {
+      "label": "late-rule-issuable-gte-only",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    issuable = frame.filter(pl.col(\"window_end_utc\") > naive_now)\n",
+      "replace": "    issuable = frame.filter(pl.col(\"window_end_utc\") >= naive_now)\n",
+      "why": "boundary row both stored and counted late"
+    },
+    {
+      "label": "late-rule-never-late",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    issuable = frame.filter(pl.col(\"window_end_utc\") > naive_now)\n    late = frame.filter(pl.col(\"window_end_utc\") <= naive_now)\n",
+      "replace": "    issuable = frame\n    late = frame.filter(pl.col(\"window_end_utc\") < naive_now)\n",
+      "why": "late rows are stored instead of rejected"
+    },
+    {
+      "label": "issued-at-from-frame-runtime",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        pl.lit(naive_now, dtype=pl.Datetime(\"us\")).alias(\"issued_at\")\n",
+      "replace": "        pl.col(\"runtime_utc\").alias(\"issued_at\")\n",
+      "why": "issued_at taken from the caller's frame, not the writer clock"
+    },
+    {
+      "label": "seal-issued-at-not-now",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "                HASH_VERSION,\n                naive_now,\n                naive_now,\n",
+      "replace": "                HASH_VERSION,\n                datetime(1970, 1, 1),\n                naive_now,\n",
+      "why": "seal issued_at differs from the rows' issued_at"
+    },
+    {
+      "label": "hash-rows-unsorted",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    return sorted(rows, key=lambda row: tuple(row[p] for p in key_positions))\n",
+      "replace": "    return rows\n",
+      "why": "hash depends on engine row order"
+    },
+    {
+      "label": "hash-sort-key-drops-source",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    key_positions = [index[name] for name in _KEY]\n",
+      "replace": "    key_positions = [index[name] for name in (\"station\", \"lead_day\", \"variable\")]\n",
+      "why": "ties on (station, lead_day, variable) keep insertion order"
+    },
+    {
+      "label": "hash-sort-key-lead-before-station",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    key_positions = [index[name] for name in _KEY]\n",
+      "replace": "    key_positions = [index[name] for name in (\"lead_day\", \"station\", \"variable\", \"source\")]\n",
+      "why": "sorted by a different key order than the documented one"
+    },
+    {
+      "label": "hash-sort-key-variable-first",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    key_positions = [index[name] for name in _KEY]\n",
+      "replace": "    key_positions = [index[name] for name in (\"variable\", \"station\", \"lead_day\", \"source\")]\n",
+      "why": "sorted by a different key order than the documented one"
+    },
+    {
+      "label": "timestamp-no-microseconds",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        return value.strftime(\"%Y-%m-%dT%H:%M:%S.%f\")\n",
+      "replace": "        return value.strftime(\"%Y-%m-%dT%H:%M:%S\")\n",
+      "why": "timestamps lose the six fractional digits"
+    },
+    {
+      "label": "timestamp-isoformat",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        return value.strftime(\"%Y-%m-%dT%H:%M:%S.%f\")\n",
+      "replace": "        return value.isoformat()\n",
+      "why": "isoformat drops .000000 when microsecond == 0"
+    },
+    {
+      "label": "timestamp-with-tz-suffix",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        return value.strftime(\"%Y-%m-%dT%H:%M:%S.%f\")\n",
+      "replace": "        return value.strftime(\"%Y-%m-%dT%H:%M:%S.%f\") + \"Z\"\n",
+      "why": "timestamps carry a zone marker"
+    },
+    {
+      "label": "canonical-date-branch-before-datetime",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if isinstance(value, datetime):\n        return value.strftime(\"%Y-%m-%dT%H:%M:%S.%f\")\n    if isinstance(value, date):\n        return value.isoformat()\n",
+      "replace": "    if isinstance(value, date):\n        return value.isoformat()\n    if isinstance(value, datetime):\n        return value.strftime(\"%Y-%m-%dT%H:%M:%S.%f\")\n",
+      "why": "datetime is a subclass of date; wrong branch order"
+    },
+    {
+      "label": "hash-allow-nan-true",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        allow_nan=False,\n",
+      "replace": "        allow_nan=True,\n",
+      "why": "a NaN stored cell hashes as the token NaN instead of being refused"
+    },
+    {
+      "label": "hash-ensure-ascii-false",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        ensure_ascii=True,\n",
+      "replace": "        ensure_ascii=False,\n",
+      "why": "non-ASCII params hash as raw UTF-8 instead of \\u escapes"
+    },
+    {
+      "label": "hash-separators-default",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        separators=(\",\", \":\"),\n",
+      "replace": "",
+      "why": "row JSON uses default ', ' / ': ' separators"
+    },
+    {
+      "label": "hash-header-changed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "_HASH_HEADER = \"wfa-prediction-log-v1\\n\"",
+      "replace": "_HASH_HEADER = \"wfa-prediction-log-v1\"",
+      "why": "header newline dropped"
+    },
+    {
+      "label": "hash-rows-joined-without-newline",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "\"\\n\".join(_row_string(tuple(row)) for row in rows)",
+      "replace": "\"\".join(_row_string(tuple(row)) for row in rows)",
+      "why": "row separator changed"
+    },
+    {
+      "label": "hash-column-order-swapped",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    \"forecast_f\",\n    \"raw_forecast_f\",\n    \"window_end_utc\",\n    \"issued_at\",\n    \"retrained_on\",",
+      "replace": "    \"raw_forecast_f\",\n    \"forecast_f\",\n    \"window_end_utc\",\n    \"issued_at\",\n    \"retrained_on\",",
+      "why": "hash column order differs from the documented one (second occurrence is _HASH_COLUMNS)"
+    },
+    {
+      "label": "chain-without-prev",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        chain = _chain_hash(prev_chain, run_date, partition_sha256)\n",
+      "replace": "        chain = _chain_hash(GENESIS, run_date, partition_sha256)\n",
+      "why": "chain ignores the previous seal"
+    },
+    {
+      "label": "chain-prev-is-earliest-seal",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "\"order by run_date desc limit 1\",",
+      "replace": "\"order by run_date asc limit 1\",",
+      "why": "wrong prev with three partitions: earliest seal instead of the latest earlier one"
+    },
+    {
+      "label": "chain-prev-any-seal-not-earlier",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "\"select chain_sha256 from live.partition_seals where run_date < ? \"",
+      "replace": "\"select chain_sha256 from live.partition_seals where run_date <> ? \"",
+      "why": "Equivalent mutant. The writer refuses any date earlier than an existing seal (out-of-order check), so at the moment the previous seal is looked up no seal with run_date > the new date exists; `run_date <> ?` and `run_date < ?` therefore select the same row. The out-of-order guard, not this predicate, carries the property, and is graded by out-of-order-check-removed.",
+      "expect": "survived"
+    },
+    {
+      "label": "chain-text-separator",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    text = f\"{prev_chain_sha256}:{run_date.isoformat()}:{partition_sha256}\"\n",
+      "replace": "    text = f\"{prev_chain_sha256}|{run_date.isoformat()}|{partition_sha256}\"\n",
+      "why": "chain layout"
+    },
+    {
+      "label": "chain-text-omits-run-date",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    text = f\"{prev_chain_sha256}:{run_date.isoformat()}:{partition_sha256}\"\n",
+      "replace": "    text = f\"{prev_chain_sha256}:{partition_sha256}\"\n",
+      "why": "run date not bound into the chain"
+    },
+    {
+      "label": "genesis-wrong-length",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "GENESIS = \"0\" * 64",
+      "replace": "GENESIS = \"0\" * 63",
+      "why": "genesis constant"
+    },
+    {
+      "label": "verify-stops-at-first-problem-in-loop",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        expected_prev = chain_sha\n",
+      "replace": "        expected_prev = chain_sha\n        if problems:\n            break\n",
+      "why": "verify stops scanning seals after the first problem"
+    },
+    {
+      "label": "verify-returns-before-unsealed-check",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    unsealed = conn.execute(\n",
+      "replace": "    if problems:\n        return VerifyReport(False, len(seals), 0, tuple(problems), GENESIS)\n    unsealed = conn.execute(\n",
+      "why": "verify stops before the unsealed-rows and issued_at checks when seals already failed"
+    },
+    {
+      "label": "verify-returns-before-issued-at-check",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    issue_rows = conn.execute(\n",
+      "replace": "    if problems:\n        return VerifyReport(False, len(seals), 0, tuple(problems), GENESIS)\n    issue_rows = conn.execute(\n",
+      "why": "verify skips the issued_at checks once any earlier problem exists"
+    },
+    {
+      "label": "verify-hash-version-unknown-silent",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if version != HASH_VERSION:\n            problems.append(",
+      "replace": "        if False:\n            problems.append(",
+      "why": "unknown hash_version silently falls through to the v1 recompute"
+    },
+    {
+      "label": "verify-hash-version-unknown-not-reported",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "                f\"(this verifier knows {HASH_VERSION}); partition hash not checked\"\n            )",
+      "replace": "                f\"(this verifier knows {HASH_VERSION}); partition hash not checked\"\n            )\n            problems.pop()",
+      "why": "unsupported hash_version noticed but never reported"
+    },
+    {
+      "label": "verify-row-count-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "            if stored_n != n_rows:\n",
+      "replace": "            if False:\n",
+      "why": "seal n_rows no longer compared with stored rows"
+    },
+    {
+      "label": "verify-partition-hash-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "            if recomputed != part_sha:\n",
+      "replace": "            if False:\n",
+      "why": "stored rows no longer compared with sealed hash"
+    },
+    {
+      "label": "verify-prev-link-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if prev_sha != expected_prev:\n",
+      "replace": "        if False:\n",
+      "why": "prev_chain_sha256 no longer compared with the previous seal's chain"
+    },
+    {
+      "label": "verify-chain-recompute-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if recomputed_chain != chain_sha:\n",
+      "replace": "        if False:\n",
+      "why": "chain_sha256 no longer recomputed from its inputs"
+    },
+    {
+      "label": "verify-unsealed-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    for run_date, n in unsealed:\n        problems.append(f\"{run_date}: {n} unsealed row(s) in prediction_log\")\n",
+      "replace": "    for run_date, n in unsealed:\n        pass\n",
+      "why": "rows with no seal are not reported"
+    },
+    {
+      "label": "verify-issued-at-seal-mismatch-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if n_mismatch:\n",
+      "replace": "        if False:\n",
+      "why": "row issued_at no longer compared with seal issued_at"
+    },
+    {
+      "label": "verify-issued-at-before-window-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if n_not_before:\n",
+      "replace": "        if False:\n",
+      "why": "issued_at < window_end_utc no longer checked"
+    },
+    {
+      "label": "verify-issued-at-boundary-gt",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "count(*) filter (where l.issued_at >= l.window_end_utc) ",
+      "replace": "count(*) filter (where l.issued_at > l.window_end_utc) ",
+      "why": "issued_at == window_end accepted"
+    },
+    {
+      "label": "verify-head-is-genesis",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    head = seals[-1][4] if seals else GENESIS\n",
+      "replace": "    head = GENESIS\n",
+      "why": "head chain not reported"
+    },
+    {
+      "label": "verify-head-is-first-seal",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    head = seals[-1][4] if seals else GENESIS\n",
+      "replace": "    head = seals[0][4] if seals else GENESIS\n",
+      "why": "head chain from the oldest seal"
+    },
+    {
+      "label": "sealed-check-seals-only",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if sealed_row is not None or logged_row is not None:\n",
+      "replace": "    if sealed_row is not None:\n",
+      "why": "PartitionSealedError ignores populated partitions"
+    },
+    {
+      "label": "sealed-check-rows-only",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if sealed_row is not None or logged_row is not None:\n",
+      "replace": "    if logged_row is not None:\n",
+      "why": "PartitionSealedError ignores a seal whose rows are gone"
+    },
+    {
+      "label": "sealed-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if sealed_row is not None or logged_row is not None:\n",
+      "replace": "    if False:\n",
+      "why": "append to a sealed partition not refused up front"
+    },
+    {
+      "label": "out-of-order-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if later is not None and later[0] is not None:\n",
+      "replace": "    if False:\n",
+      "why": "earlier date after a later seal is allowed"
+    },
+    {
+      "label": "out-of-order-compares-wrong-way",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "\"select min(run_date) from live.partition_seals where run_date > ?\",",
+      "replace": "\"select min(run_date) from live.partition_seals where run_date < ?\",",
+      "why": "refuses a LATER date after an earlier seal, allows earlier"
+    },
+    {
+      "label": "atomicity-no-begin",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    conn.execute(\"begin transaction\")\n    try:\n",
+      "replace": "    try:\n",
+      "why": "rows and seal written in autocommit"
+    },
+    {
+      "label": "atomicity-no-rollback",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        conn.execute(\"rollback\")\n        raise\n",
+      "replace": "        raise\n",
+      "why": "failed append leaves the connection in an aborted transaction"
+    },
+    {
+      "label": "atomicity-rows-committed-before-seal",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        n_rows, partition_sha256 = partition_hash(conn, run_date)\n",
+      "replace": "        conn.execute(\"commit\")\n        conn.execute(\"begin transaction\")\n        n_rows, partition_sha256 = partition_hash(conn, run_date)\n",
+      "why": "seal insert effectively outside the rows' transaction"
+    },
+    {
+      "label": "append-no-commit",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        conn.execute(\"commit\")\n    except Exception:",
+      "replace": "        pass\n    except Exception:",
+      "why": "transaction never committed (left open)"
+    },
+    {
+      "label": "validate-run-date-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if wrong.height > 0:\n",
+      "replace": "    if False:\n",
+      "why": "row run_date != partition date accepted"
+    },
+    {
+      "label": "validate-source-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if unknown:\n",
+      "replace": "    if False:\n",
+      "why": "unknown source accepted"
+    },
+    {
+      "label": "validate-duplicate-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if frame.select(_KEY).is_duplicated().any():\n",
+      "replace": "    if False:\n",
+      "why": "duplicate keys accepted"
+    },
+    {
+      "label": "validate-finite-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if not frame[name].is_finite().all():\n",
+      "replace": "        if False:\n",
+      "why": "NaN/inf not refused up front (the hash's allow_nan=False is a second line of defence)"
+    },
+    {
+      "label": "validate-runtime-after-now-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if future.height > 0:\n",
+      "replace": "    if False:\n",
+      "why": "runtime in the future accepted"
+    },
+    {
+      "label": "validate-runtime-boundary-gte",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    future = frame.filter(pl.col(\"runtime_utc\") > naive_now)\n",
+      "replace": "    future = frame.filter(pl.col(\"runtime_utc\") >= naive_now)\n",
+      "why": "runtime == now wrongly refused"
+    },
+    {
+      "label": "validate-nulls-check-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if frame[name].null_count() > 0:\n",
+      "replace": "        if False:\n",
+      "why": "null in a NOT NULL column surfaces as a driver error, not ValueError"
+    },
+    {
+      "label": "validate-missing-column-removed",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if missing:\n",
+      "replace": "    if False:\n",
+      "why": "missing columns not named"
+    },
+    {
+      "label": "normalize-cast-error-not-wrapped",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    except pl.exceptions.PolarsError as error:\n",
+      "replace": "    except ZeroDivisionError as error:\n",
+      "why": "uncastable column raises a raw polars error"
+    },
+    {
+      "label": "tz-converted-not-just-stripped",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "            column = column.dt.convert_time_zone(\"UTC\").dt.replace_time_zone(None)\n",
+      "replace": "            column = column.dt.replace_time_zone(None)\n",
+      "why": "non-UTC zone stripped instead of converted"
+    },
+    {
+      "label": "tz-normalization-skipped",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        if isinstance(actual, pl.Datetime) and actual.time_zone is not None:\n",
+      "replace": "        if False:\n",
+      "why": "Equivalent under polars' cast semantics: casting a tz-aware Datetime to a naive Datetime already yields the UTC wall time, so the explicit convert_time_zone+replace_time_zone(None) branch is redundant today (the Phoenix case in test_tz_aware_rows_hash_like_naive_rows passes with the branch skipped). The branch is still graded against its one real defect, tz-converted-not-just-stripped (strip without convert), which is killed. Kept as documentation of intent and insurance against a polars cast-semantics change.",
+      "expect": "survived"
+    },
+    {
+      "label": "now-not-utc-accepted",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if now.tzinfo is None or now.utcoffset() != timedelta(0):\n",
+      "replace": "    if now.tzinfo is None:\n",
+      "why": "non-UTC aware now accepted"
+    },
+    {
+      "label": "now-microseconds-truncated",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    return now.astimezone(UTC).replace(tzinfo=None)\n",
+      "replace": "    return now.astimezone(UTC).replace(tzinfo=None, microsecond=0)\n",
+      "why": "microsecond precision of now lost"
+    },
+    {
+      "label": "late-keys-unsorted-input-order",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "        sorted(\n            (str(s), int(lead), str(v), str(src))\n            for s, lead, v, src in late.select(_KEY).iter_rows()\n        )\n",
+      "replace": "        (str(s), int(lead), str(v), str(src))\n            for s, lead, v, src in late.select(_KEY).iter_rows()\n",
+      "why": "late_keys returned in caller order, not sorted"
+    },
+    {
+      "label": "seal-n-late-rejected-zero",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "                late.height,\n                partition_sha256,\n",
+      "replace": "                0,\n                partition_sha256,\n",
+      "why": "n_late_rejected not stored in the seal"
+    },
+    {
+      "label": "seal-hash-version-bumped",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "HASH_VERSION = 1\n",
+      "replace": "HASH_VERSION = 2\n",
+      "why": "version constant"
+    },
+    {
+      "label": "all-late-still-seals",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if issuable.height == 0:\n",
+      "replace": "    if False:\n",
+      "why": "all-late partition proceeds to write/seal an empty partition"
+    },
+    {
+      "label": "ddl-no-primary-key-log",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    params varchar,\n    primary key (station, run_date, lead_day, variable, source)\n);",
+      "replace": "    params varchar\n);",
+      "why": "table no longer enforces key uniqueness at the engine"
+    },
+    {
+      "label": "ddl-no-primary-key-seals",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    run_date date primary key,\n",
+      "replace": "    run_date date,\n",
+      "why": "seal table no longer enforces one seal per run_date"
+    },
+    {
+      "label": "ddl-create-or-replace-log",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "create table if not exists live.prediction_log (",
+      "replace": "create or replace table live.prediction_log (",
+      "why": "init wipes the log"
+    },
+    {
+      "label": "ddl-schema-not-idempotent",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "create schema if not exists live;",
+      "replace": "create schema live;",
+      "why": "init raises on 2nd call"
+    },
+    {
+      "label": "init-log-not-called-by-cli",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "        prediction_log.init_log(conn)\n        report = prediction_log.verify_immutability(conn)\n",
+      "replace": "        report = prediction_log.verify_immutability(conn)\n",
+      "why": "old database fails on missing schema"
+    },
+    {
+      "label": "cli-exit-0-on-fail",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    raise SystemExit(1)\n\n\ndef build_parser",
+      "replace": "    raise SystemExit(0)\n\n\ndef build_parser",
+      "why": "FAIL exits 0"
+    },
+    {
+      "label": "cli-no-exit-on-fail",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    raise SystemExit(1)\n\n\ndef build_parser",
+      "replace": "    return\n\n\ndef build_parser",
+      "why": "FAIL returns normally"
+    },
+    {
+      "label": "cli-problems-not-printed",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    for problem in report.problems:\n        print(problem)\n",
+      "replace": "    for problem in report.problems:\n        pass\n",
+      "why": "problem lines not printed"
+    },
+    {
+      "label": "cli-ok-branch-inverted",
+      "file": "../../../src/weather_forecast_audit/cli.py",
+      "oracle": "real",
+      "find": "    if report.ok:\n        print(f\"OK partitions",
+      "replace": "    if not report.ok:\n        print(f\"OK partitions",
+      "why": "inverted"
+    },
+    {
+      "label": "init-db-does-not-init-log",
+      "file": "../../../src/weather_forecast_audit/warehouse.py",
+      "oracle": "real",
+      "find": "    init_log(conn)\n",
+      "replace": "    pass\n",
+      "why": "warehouse.init_db no longer creates live tables"
+    },
+    {
+      "label": "datetime-run_date-accepted",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "    if isinstance(run_date, datetime):\n        msg = f\"run_date must be a date, not a datetime: {run_date!r}\"\n        raise ValueError(msg)\n",
+      "replace": "",
+      "why": "a datetime run_date is hashed into the chain with a time component but stored as a DATE, so a freshly sealed log fails its own verification",
+      "expect": "test_datetime_run_date_argument_is_refused_and_writes_nothing"
+    },
+    {
+      "label": "verify-does-not-catch-unhashable-cell",
+      "file": "../../../src/weather_forecast_audit/prediction_log.py",
+      "oracle": "real",
+      "find": "            except ValueError as error:\n                # A stored NaN/inf",
+      "replace": "            except KeyError as error:\n                # A stored NaN/inf",
+      "why": "a NaN/inf stored cell makes the canonical encoder raise; verify must report it and keep going so other partitions' problems are not lost",
+      "expect": "test_verify_reports_a_non_finite_stored_cell_instead_of_raising"
+    }
+  ]
+}
