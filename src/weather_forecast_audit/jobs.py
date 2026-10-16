@@ -13,6 +13,7 @@ other. `platform_smoke_job` stays in `definitions.py`: it only selects the
 from dagster import AssetCheckKey, AssetSelection, define_asset_job
 
 from weather_forecast_audit.assets import (
+    LIVE_PREDICTIONS_KEY,
     RAW_ASOS_HOURLY_KEY,
     RAW_INGEST_ASSETS,
     RAW_NBS_GUIDANCE_KEY,
@@ -90,5 +91,14 @@ FRESHNESS_CHECK_JOB_SELECTION = AssetSelection.checks(*FRESHNESS_CHECK_KEYS)
 freshness_check_job = define_asset_job(
     "freshness_check_job",
     selection=FRESHNESS_CHECK_JOB_SELECTION,
+    tags={"dagster/max_runtime": str(MAX_RUNTIME_SECONDS)},
+)
+
+# Issue one run date's baseline + challenger predictions into the live log.
+# Unscheduled on purpose: #16 owns the cadence (it must fire before the run
+# date's earliest verification window closes, or rows are rejected as late).
+issue_predictions_job = define_asset_job(
+    "issue_predictions_job",
+    selection=AssetSelection.assets(LIVE_PREDICTIONS_KEY),
     tags={"dagster/max_runtime": str(MAX_RUNTIME_SECONDS)},
 )

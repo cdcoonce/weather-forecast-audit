@@ -754,7 +754,22 @@ def load_predictions(
     re-load is reproducible rather than depending on wall-clock time read
     inside this function.
     """
-    frame = rows_frame.with_columns(pl.lit(now).alias("generated_at"))  # noqa: F841
+    # The evaluator emits tz-aware UTC instants. DuckDB casts those to a
+    # naive TIMESTAMP through the *session* TimeZone, so a host that is not
+    # on UTC stored shifted values (a laptop on America/Phoenix wrote
+    # trained_through 7 hours early). Convert to naive UTC here, once.
+    aware = [
+        name
+        for name, dtype in rows_frame.schema.items()
+        if isinstance(dtype, pl.Datetime) and dtype.time_zone is not None
+    ]
+    to_naive_utc = [
+        pl.col(name).dt.convert_time_zone("UTC").dt.replace_time_zone(None)
+        for name in aware
+    ]
+    frame = rows_frame.with_columns(  # noqa: F841
+        *to_naive_utc, pl.lit(now).alias("generated_at")
+    )
     conn.execute("begin transaction")
     try:
         conn.execute(

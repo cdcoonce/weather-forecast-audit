@@ -827,6 +827,51 @@ the shorter log still verifies. That is only detectable by comparing the
 head hash (`head=` in the CLI output) with a value recorded outside the
 database.
 
+### Issuing a night
+
+`wfa log issue --run-date D` (module `weather_forecast_audit.issuance`, Dagster
+asset `live_predictions` / `issue_predictions_job`, unscheduled until #16)
+appends one run date's baseline and challenger rows. The contract: they are
+bit-identical to what `walk_forward` produces for the same run dates, with the
+baseline refit daily and the challenger monthly, restricted to the dates
+actually issued. Every night reads `int_raw_verification_pairs` by named
+columns, never `select *`.
+
+- **Cadence.** The challenger retrains on the first issued run date of each
+  calendar month and persists the booster in `live.challenger_models` (one row
+  per retrain, never updated: cutoff, `trained_through`, the LightGBM text
+  model, its `model_sha256`, the region codes and params). Every other night
+  restores it and predicts. The baseline refits daily, as `wfa predict
+  baseline` does. A restored model is checked against its sha256 and against
+  the registry's region codes before use; either mismatch raises.
+- **Bounded loading, and why it is exact.** The baseline reads only the pairs
+  inside its 30-day window. A restored challenger reads the history `fit` +
+  `_trim` would have kept at the artifact's cutoff (per group: within 40 days
+  of the group's own latest close, or its last 7 pairs, same null filter as
+  `fit`), plus the pairs closed since. The trim is compositional: trimming
+  `trim(A) + B` equals trimming `A + B` when `B` closes after `A`, so one
+  large delta equals the evaluator's night-by-night deltas. `walk_forward`
+  still selects, orders and null-checks the rows; nothing is re-implemented.
+- **Information cutoff.** Training pairs are scorable pairs with
+  `window_end_utc` strictly before the run's `runtime_utc`, never before
+  `now`. `now` stamps `issued_at` and drives the late rule only. A pair
+  closing exactly at `T` is excluded from `T`'s fit and enters the next delta.
+- **Provenance.** Challenger `params` carries `model_sha256` and
+  `retrained_on`; `retrained_on` / `trained_through` are the artifact's, as in
+  the evaluated walk. A booster persisted by a night that then crashed before
+  its append is reused if that same date is rerun, and ignored by any later
+  date (the month retrains at its first issued date, as the restricted walk
+  does).
+- **Cost, measured 2026-10-12 on rammingspeed.** One retrain at about 5.5M
+  pairs: 148.3 s fit, 163.3 s wall, 3.96 GB peak. The full 73-retrain walk was
+  OOM-killed at 5 GiB, which is why the live path retrains once a month.
+  Training rows grow about 1M a year, so the retrain night is the one to
+  watch against the 600 s slot and the memory ceiling.
+- **Scheduling constraint.** Lead-0 max windows close at 06Z the next day
+  (23:00 America/Phoenix). An issue after that time is rejected row by row
+  under the strict late rule, `wfa log issue` exits 1 and the asset fails
+  without retries; the nightly job (#16) must issue before then.
+
 ## Live scorecard
 
 `weather_forecast_audit.scorecard` (issue #20) grades the prediction log above

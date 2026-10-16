@@ -66,6 +66,22 @@ create table if not exists live.partition_seals (
     issued_at timestamp not null,
     sealed_at timestamp not null
 );
+
+-- One persisted challenger booster per calendar month (written once by
+-- `issuance`, sha256-verified on load). It lives in this DDL so every
+-- connection path creates it without importing the model code.
+create table if not exists live.challenger_models (
+    retrained_on date primary key,
+    cutoff_utc timestamp not null,
+    trained_through timestamp,
+    n_train_rows integer not null,
+    model_text varchar not null,
+    model_sha256 varchar not null,
+    region_codes varchar not null,
+    params varchar not null,
+    fit_seconds double not null,
+    fitted_at timestamp not null
+);
 """
 
 # Columns a caller supplies. `issued_at` is deliberately absent: the writer
