@@ -1,14 +1,19 @@
 import pytest
-from dagster import AssetCheckKey, AssetKey, DagsterInstance
+from dagster import AssetCheckKey, AssetKey, AssetSelection, DagsterInstance
 
 from weather_forecast_audit.definitions import (
     FRESHNESS_CHECK_JOB_SELECTION,
     INGEST_JOB_SELECTION,
     defs,
 )
+from weather_forecast_audit.jobs import MAX_RUNTIME_SECONDS
 from weather_forecast_audit.regimes import load_archive_start
 
 pytestmark = pytest.mark.dagster
+
+
+def issue_predictions_selection() -> AssetSelection:
+    return AssetSelection.assets(AssetKey("live_predictions"))
 
 RAW_KEYS = [
     AssetKey(["raw", "nbs_guidance"]),
@@ -29,7 +34,11 @@ def test_definitions_expose_platform_smoke_job_with_max_runtime() -> None:
 def test_definitions_expose_expected_asset_keys() -> None:
     all_keys = defs.resolve_asset_graph().get_all_asset_keys()
 
-    for key in [*RAW_KEYS, AssetKey(["raw", "ingest_gaps"])]:
+    for key in [
+        *RAW_KEYS,
+        AssetKey(["raw", "ingest_gaps"]),
+        AssetKey("live_predictions"),
+    ]:
         assert key in all_keys
     for name in [
         "stg_nbs_guidance",
@@ -44,9 +53,32 @@ def test_definitions_expose_expected_asset_keys() -> None:
 
 
 def test_definitions_expose_ingest_transform_and_freshness_jobs() -> None:
-    for name in ["ingest_job", "transform_job", "freshness_check_job"]:
+    for name in [
+        "ingest_job",
+        "transform_job",
+        "freshness_check_job",
+        "issue_predictions_job",
+    ]:
         job = defs.resolve_job_def(name)
         assert int(job.tags["dagster/max_runtime"]) > 0
+
+
+def test_issue_predictions_job_is_capped_selects_the_asset_and_unscheduled() -> None:
+    """Slice B ships the job unscheduled: the cadence is #16's, and a schedule
+    firing after the earliest window closes would reject rows as late."""
+    job = defs.resolve_job_def("issue_predictions_job")
+    asset_graph = defs.resolve_asset_graph()
+
+    assert job.tags["dagster/max_runtime"] == str(MAX_RUNTIME_SECONDS)
+    selected = issue_predictions_selection().resolve(asset_graph)
+    assert selected == {AssetKey("live_predictions")}
+    partitions_def = asset_graph.get(AssetKey("live_predictions")).partitions_def
+    assert partitions_def is not None
+    assert load_archive_start().isoformat() in partitions_def.get_partition_keys()[:1]
+
+    assert not defs.schedules
+    for sensor in defs.sensors or []:
+        assert "issue_predictions_job" not in {t.job_name for t in sensor.targets}
 
 
 def test_raw_partitions_start_at_the_pinned_archive_start() -> None:
@@ -131,7 +163,13 @@ def test_platform_smoke_materializes_with_report_metadata() -> None:
 
 @pytest.mark.parametrize(
     "job_name",
-    ["platform_smoke_job", "ingest_job", "transform_job", "freshness_check_job"],
+    [
+        "platform_smoke_job",
+        "ingest_job",
+        "transform_job",
+        "freshness_check_job",
+        "issue_predictions_job",
+    ],
 )
 def test_every_job_runs_steps_in_one_process(job_name: str) -> None:
     """DuckDB allows one writer process per database file. Under Dagster's

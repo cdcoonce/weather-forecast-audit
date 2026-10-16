@@ -1,0 +1,50 @@
+{
+  "runner": "pytest",
+  "test_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/dagster/test_definitions.py"
+  ],
+  "collect_command": [
+    "uv",
+    "run",
+    "--no-sync",
+    "pytest",
+    "--collect-only",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "tests/dagster/test_definitions.py"
+  ],
+  "mutants": [
+    {
+      "label": "job-max-runtime-tag-removed",
+      "file": "../../../src/weather_forecast_audit/jobs.py",
+      "oracle": "real",
+      "find": "selection=AssetSelection.assets(LIVE_PREDICTIONS_KEY),\n    tags={\"dagster/max_runtime\": str(MAX_RUNTIME_SECONDS)},",
+      "replace": "selection=AssetSelection.assets(LIVE_PREDICTIONS_KEY),",
+      "why": "the issuing job carries the dagster/max_runtime cap"
+    },
+    {
+      "label": "job-gains-a-schedule",
+      "file": "../../../src/weather_forecast_audit/definitions.py",
+      "oracle": "real",
+      "find": "    sensors=[national_backfill_sensor],",
+      "replace": "    sensors=[national_backfill_sensor],\n    schedules=[__import__(\"dagster\").ScheduleDefinition(job=issue_predictions_job, cron_schedule=\"0 5 * * *\")],",
+      "why": "the job is unscheduled until #16"
+    },
+    {
+      "label": "job-missing-from-definitions",
+      "file": "../../../src/weather_forecast_audit/definitions.py",
+      "oracle": "real",
+      "find": "        issue_predictions_job,\n    ],\n    sensors=",
+      "replace": "    ],\n    sensors=",
+      "why": "the job is registered in Definitions"
+    }
+  ]
+}

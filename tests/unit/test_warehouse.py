@@ -542,6 +542,35 @@ def test_load_predictions_stamps_generated_at(
     assert generated_at == (now,)
 
 
+def test_load_predictions_stores_utc_wall_time_whatever_the_session_timezone(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
+    """The evaluator's timestamps are tz-aware UTC; a naive TIMESTAMP column
+    must receive the UTC wall time, not DuckDB's session-timezone rendering.
+
+    Found by replaying a live night against a laptop-built backfill: its
+    stored `trained_through` read 11:00 and 23:00 where the window closes
+    are 18:00 and 06:00 UTC (the laptop's America/Phoenix session zone).
+    """
+    conn.execute("set TimeZone = 'America/Phoenix'")
+    warehouse.load_predictions(
+        conn,
+        "baseline",
+        date(2024, 1, 1),
+        date(2024, 1, 1),
+        _prediction_rows([date(2024, 1, 1)]),
+        now=_naive_now("2024-06-01 00:00:00"),
+    )
+
+    stored = conn.execute(
+        "select runtime_utc, trained_through from raw.model_predictions"
+    ).fetchone()
+    assert stored == (
+        _naive_now("2024-01-01 13:00:00"),
+        _naive_now("2024-01-01 06:00:00"),
+    )
+
+
 # -- explicit-schema loader frames (issue #41) --------------------------------
 #
 # `pl.DataFrame(records)` infers each column's dtype from (by default) its
