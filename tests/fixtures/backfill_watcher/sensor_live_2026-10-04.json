@@ -1,0 +1,50 @@
+{
+ "data": {
+  "sensorOrError": {
+   "sensorState": {
+    "status": "RUNNING",
+    "typeSpecificData": {
+     "lastCursor": "{\"plan_end\": \"2026-09-26\", \"state\": {\"next_index\": 1055, \"attempt\": 1, \"last_run_id\": \"2023-09-c11-a1-g5\", \"transform_requested\": false, \"submitted_at\": \"2026-10-05T00:20:41.240255\", \"generation\": 5}}",
+     "lastTickTimestamp": 1791159640.818564
+    },
+    "ticks": [
+     {
+      "status": "SUCCESS",
+      "timestamp": 1791159640.818564,
+      "skipReason": null,
+      "cursor": "{\"plan_end\": \"2026-09-26\", \"state\": {\"next_index\": 1055, \"attempt\": 1, \"last_run_id\": \"2023-09-c11-a1-g5\", \"transform_requested\": false, \"submitted_at\": \"2026-10-05T00:20:41.240255\", \"generation\": 5}}",
+      "error": null
+     },
+     {
+      "status": "SKIPPED",
+      "timestamp": 1791159580.744622,
+      "skipReason": "run in flight",
+      "cursor": "{\"plan_end\": \"2026-09-26\", \"state\": {\"next_index\": 1054, \"attempt\": 1, \"last_run_id\": \"2023-09-c10-a1-g5\", \"transform_requested\": false, \"submitted_at\": \"2026-10-05T00:15:40.047570\", \"generation\": 5}}",
+      "error": null
+     },
+     {
+      "status": "SKIPPED",
+      "timestamp": 1791159520.693737,
+      "skipReason": "run in flight",
+      "cursor": "{\"plan_end\": \"2026-09-26\", \"state\": {\"next_index\": 1054, \"attempt\": 1, \"last_run_id\": \"2023-09-c10-a1-g5\", \"transform_requested\": false, \"submitted_at\": \"2026-10-05T00:15:40.047570\", \"generation\": 5}}",
+      "error": null
+     },
+     {
+      "status": "SKIPPED",
+      "timestamp": 1791159460.556801,
+      "skipReason": "run in flight",
+      "cursor": "{\"plan_end\": \"2026-09-26\", \"state\": {\"next_index\": 1054, \"attempt\": 1, \"last_run_id\": \"2023-09-c10-a1-g5\", \"transform_requested\": false, \"submitted_at\": \"2026-10-05T00:15:40.047570\", \"generation\": 5}}",
+      "error": null
+     },
+     {
+      "status": "SKIPPED",
+      "timestamp": 1791159400.443369,
+      "skipReason": "run in flight",
+      "cursor": "{\"plan_end\": \"2026-09-26\", \"state\": {\"next_index\": 1054, \"attempt\": 1, \"last_run_id\": \"2023-09-c10-a1-g5\", \"transform_requested\": false, \"submitted_at\": \"2026-10-05T00:15:40.047570\", \"generation\": 5}}",
+      "error": null
+     }
+    ]
+   }
+  }
+ }
+}

@@ -1193,6 +1193,47 @@ backfill was already stuck on, and the daemon would just find (or silently
 skip past) that same never-materialized run again. This is a deliberate,
 manual override; the sensor itself never bumps `generation` on its own.
 
+### Watching a running backfill
+
+`scripts/watch_backfill.py` is a stdlib-only detector (plain `python3`, no
+synced environment) that polls the Dagster GraphQL API and prints one line
+and exits only when something needs a human; silence means healthy. The
+URL is never in the repo: set `WFA_DAGSTER_URL` (the server's `/graphql`
+endpoint) or pass `--url`.
+
+- `python3 scripts/watch_backfill.py status` polls once and prints one
+  line (sensor status, generation, `next_index`, attempt, newest tick,
+  `halted=`, median recent run seconds, last run); exit 3 if unreachable.
+- `python3 scripts/watch_backfill.py wait` polls every `--interval` (60 s)
+  and, on the first event, prints `EVENT <KIND> <detail>` lines plus a
+  status line and exits 0. `--max-s N` prints `QUIET N` instead after N
+  event-free seconds.
+
+Events: `HALT` (newest tick is `HALTED:` and its cursor matches the
+sensor's current generation, `next_index`, and attempt, so a stale halt
+right after a reset does not fire), `SENSOR_ERROR`, `STOPPED`, `COMPLETE`,
+`SLOW` (a run at or over `--slow-s`, 450 s against the 600 s cap),
+`FAILED_ATTEMPT` (a new `FAILURE`/`CANCELED` run; `--ignore-failed-attempts`
+turns it off), `STALLED` (`next_index` unchanged for `--stall-s`, default
+3 h, longer than the morning blackout), and `UNREACHABLE`
+(`--unreachable-polls` failed polls in a row; a dropped or truncated HTTP
+response counts as a failed poll). Events are independent, so a stopped
+sensor that has also finished prints both `STOPPED` and `COMPLETE`. Runs
+finished before the first poll are history, not news.
+
+The `STALLED` timer and the `--max-s` timer run on the monotonic clock, so a
+laptop sleep or a clock step cannot fake a stall; only `SLOW` compares the
+wall clock (against the server's run start time). Every server-derived value
+is collapsed to one line, stripped of control characters, and cut at 200
+characters, so an event is always exactly one line. `--interval`, `--slow-s`
+and `--stall-s` must be above 0, `--unreachable-polls` at least 1, and
+`--max-s` at least 0; anything else exits 2.
+
+Arm it as an exit-on-event background command, and re-arm after each
+event. **Do not re-arm while the sensor is still halted**: the `HALT` would
+fire again immediately. Reset the cursor first, per "Starting, stopping,
+and resetting the sensor" above.
+
 ### Reading a slow unit: the HTTP statistics
 
 A unit once ran 701s and was killed by the cap because `raw__asos_hourly`
